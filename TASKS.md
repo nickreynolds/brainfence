@@ -82,7 +82,7 @@ Write the Docker Compose and PowerSync config files for the self-hosted PowerSyn
 
 ### INFRA-004b: Deploy Self-Hosted PowerSync
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: NO
 
 Start the PowerSync service and verify it connects to Supabase.
@@ -102,7 +102,7 @@ Start the PowerSync service and verify it connects to Supabase.
 
 ### INFRA-005: Write PowerSync Sync Rules
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Define sync rules so each user only receives their own data.
@@ -131,7 +131,7 @@ Deploy to PowerSync and verify sync rules apply.
 
 ### INFRA-006: Create Bootstrap Dev Script
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Create `dev/bootstrap.ts` and `dev/bootstrap.json` as described in README §8.
@@ -148,7 +148,7 @@ Create `dev/bootstrap.ts` and `dev/bootstrap.json` as described in README §8.
 
 ### INFRA-007: Verify Bootstrap Script End-to-End
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: NO
 
 Run the bootstrap script against the live Supabase project and verify data appears correctly in the dashboard.
@@ -171,7 +171,7 @@ Check Supabase Table Editor: all tasks, groups, and blocking rules should be vis
 
 ### ANDROID-001: Scaffold Android Project
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Create the Android project structure.

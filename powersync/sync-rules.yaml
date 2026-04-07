@@ -1,0 +1,11 @@
+bucket_definitions:
+  user_data:
+    parameters: SELECT token_parameters.user_id
+    data:
+      - SELECT * FROM groups WHERE user_id = bucket.user_id
+      - SELECT * FROM tasks WHERE user_id = bucket.user_id
+      - SELECT r.* FROM routine_steps r JOIN tasks t ON r.task_id = t.id WHERE t.user_id = bucket.user_id
+      - SELECT * FROM task_completions WHERE user_id = bucket.user_id
+      - SELECT sc.* FROM step_completions sc JOIN task_completions tc ON sc.task_completion_id = tc.id WHERE tc.user_id = bucket.user_id
+      - SELECT * FROM blocking_rules WHERE user_id = bucket.user_id
+      - SELECT * FROM notes WHERE user_id = bucket.user_id

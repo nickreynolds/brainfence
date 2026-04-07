@@ -1,0 +1,143 @@
+{
+  "user_email": "test@brainfence.dev",
+  "groups": [
+    {
+      "name": "Morning",
+      "color": "#F59E0B",
+      "icon": "sunrise",
+      "sort_order": 0
+    },
+    {
+      "name": "Fitness",
+      "color": "#10B981",
+      "icon": "dumbbell",
+      "sort_order": 1
+    }
+  ],
+  "tasks": [
+    {
+      "title": "Morning Walk",
+      "task_type": "simple",
+      "verification_type": "gps",
+      "verification_config": {
+        "lat": 37.7749,
+        "lng": -122.4194,
+        "radius_m": 200,
+        "mode": "leave",
+        "min_duration_m": 0
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": true,
+      "group": "Morning",
+      "sort_order": 0
+    },
+    {
+      "title": "Morning Meditation",
+      "task_type": "meditation",
+      "verification_type": "meditation",
+      "verification_config": {
+        "duration_seconds": 600,
+        "allow_pause": false
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": true,
+      "group": "Morning",
+      "sort_order": 1
+    },
+    {
+      "title": "Morning Routine",
+      "task_type": "routine",
+      "verification_type": "manual",
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": true,
+      "group": "Morning",
+      "sort_order": 2,
+      "steps": [
+        { "title": "Brush teeth", "step_type": "checkbox", "step_order": 0, "config": {} },
+        { "title": "Cold shower", "step_type": "timed", "step_order": 1, "config": { "duration_seconds": 120 } },
+        { "title": "Journaling", "step_type": "timed", "step_order": 2, "config": { "duration_seconds": 300 } }
+      ]
+    },
+    {
+      "title": "Read 30 Minutes",
+      "task_type": "timed",
+      "verification_type": "duration",
+      "verification_config": {
+        "duration_seconds": 1800
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": false,
+      "group": "Morning",
+      "sort_order": 3
+    },
+    {
+      "title": "Take Vitamins",
+      "task_type": "simple",
+      "verification_type": "time_gate",
+      "verification_config": {
+        "start_time": "07:00",
+        "end_time": "10:00",
+        "timezone": "America/Los_Angeles"
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": false,
+      "group": "Morning",
+      "sort_order": 4
+    },
+    {
+      "title": "Gym — Push Day",
+      "task_type": "workout",
+      "verification_type": "gps",
+      "verification_config": {
+        "lat": 37.7849,
+        "lng": -122.4094,
+        "radius_m": 100,
+        "mode": "enter",
+        "min_duration_m": 30
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": { "days": ["mon", "wed", "fri"] },
+      "is_blocking_condition": false,
+      "group": "Fitness",
+      "sort_order": 0,
+      "steps": [
+        { "title": "Bench Press", "step_type": "weight_reps", "step_order": 0, "config": { "default_sets": 3 } },
+        { "title": "Overhead Press", "step_type": "weight_reps", "step_order": 1, "config": { "default_sets": 3 } },
+        { "title": "Tricep Dips", "step_type": "just_reps", "step_order": 2, "config": {} }
+      ]
+    },
+    {
+      "title": "Weekly Review",
+      "task_type": "simple",
+      "verification_type": "manual",
+      "recurrence_type": "weekly",
+      "recurrence_config": { "day": "sun" },
+      "is_blocking_condition": false,
+      "sort_order": 0
+    }
+  ],
+  "blocking_rules": [
+    {
+      "name": "Morning Block",
+      "blocked_apps": [
+        { "platform": "android", "package": "com.twitter.android" },
+        { "platform": "android", "package": "com.instagram.android" },
+        { "platform": "macos", "bundle_id": "com.twitter.twitter" },
+        { "platform": "macos", "bundle_id": "com.burbn.instagram" }
+      ],
+      "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com"],
+      "condition_task_titles": ["Morning Walk", "Morning Meditation", "Morning Routine"],
+      "condition_logic": "all",
+      "active_schedule": {
+        "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "start": "06:00",
+        "end": "11:00"
+      }
+    }
+  ]
+}
