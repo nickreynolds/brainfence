@@ -28,7 +28,7 @@ Create a new Supabase project via the Supabase dashboard.
 
 ### INFRA-002: Apply Postgres Schema
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Write and apply the full Postgres schema from the README (§4.1) as a SQL migration file.
