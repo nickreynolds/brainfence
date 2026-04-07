@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
+import dev.brainfence.ui.navigation.BrainfenceNavGraph
 import dev.brainfence.ui.theme.BrainfenceTheme
 
 @AndroidEntryPoint
@@ -14,7 +15,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             BrainfenceTheme {
-                // Navigation host added in ANDROID-004
+                BrainfenceNavGraph()
             }
         }
     }

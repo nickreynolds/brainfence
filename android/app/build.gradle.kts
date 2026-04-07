@@ -1,9 +1,25 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+// Read secrets from the repo-root .env (one level above android/)
+fun envVar(key: String): String {
+    val envFile = rootProject.file("../.env")
+    if (envFile.exists()) {
+        envFile.readLines().forEach { line ->
+            if (!line.startsWith("#") && line.contains("=")) {
+                val (k, v) = line.split("=", limit = 2)
+                if (k.trim() == key) return v.trim()
+            }
+        }
+    }
+    return System.getenv(key) ?: error("Missing env var: $key")
 }
 
 android {
@@ -18,6 +34,9 @@ android {
         versionName     = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "SUPABASE_URL",      "\"${envVar("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${envVar("SUPABASE_ANON_KEY")}\"")
     }
 
     buildTypes {
@@ -40,7 +59,8 @@ android {
     }
 
     buildFeatures {
-        compose = true
+        compose      = true
+        buildConfig  = true
     }
 }
 
@@ -68,6 +88,15 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
+
+    // Supabase
+    implementation(platform(libs.supabase.bom))
+    implementation(libs.supabase.auth)
+    implementation(libs.supabase.postgrest)
+    implementation(libs.ktor.client.okhttp)
+
+    // Security
+    implementation(libs.androidx.security.crypto)
 
     // Testing
     testImplementation(libs.junit)

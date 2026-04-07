@@ -187,7 +187,7 @@ Create the Android project structure.
 
 ### ANDROID-002: Integrate Supabase Auth (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Add Supabase Auth to the Android app.
