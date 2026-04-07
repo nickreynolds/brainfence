@@ -98,6 +98,10 @@ dependencies {
     // Security
     implementation(libs.androidx.security.crypto)
 
+    // PowerSync
+    implementation(libs.powersync.core)
+    implementation(libs.powersync.connector.supabase)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

@@ -204,7 +204,7 @@ Add Supabase Auth to the Android app.
 
 ### ANDROID-003: Integrate PowerSync SDK (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Add the PowerSync Kotlin SDK and set up local SQLite sync.
