@@ -45,7 +45,7 @@ Write and apply the full Postgres schema from the README (§4.1) as a SQL migrat
 
 ### INFRA-003: Configure Row Level Security (RLS)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Write RLS policies for all tables so users can only access their own data.
