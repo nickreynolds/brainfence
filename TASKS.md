@@ -62,7 +62,7 @@ Write RLS policies for all tables so users can only access their own data.
 
 ### INFRA-004: Write PowerSync Self-Hosted Config
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Write the Docker Compose and PowerSync config files for the self-hosted PowerSync service.

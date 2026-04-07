@@ -1,0 +1,12 @@
+services:
+  powersync:
+    image: journeyapps/powersync-service:latest
+    ports:
+      - "8080:8080"
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/config.yaml
+    volumes:
+      - .:/config
+    env_file:
+      - ../.env
+    restart: unless-stopped
