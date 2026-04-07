@@ -13,6 +13,8 @@ import dev.brainfence.data.auth.AuthState
 import dev.brainfence.ui.auth.AuthViewModel
 import dev.brainfence.ui.auth.SignInScreen
 import dev.brainfence.ui.auth.SignUpScreen
+import dev.brainfence.ui.tasks.TaskListScreen
+import dev.brainfence.ui.tasks.TaskListViewModel
 
 private object Routes {
     const val SIGN_IN = "auth/sign-in"
@@ -24,11 +26,10 @@ private object Routes {
 fun BrainfenceNavGraph(
     navController: NavHostController = rememberNavController(),
 ) {
-    val viewModel: AuthViewModel = hiltViewModel()
-    val authState by viewModel.authState.collectAsStateWithLifecycle()
-    val uiState   by viewModel.uiState.collectAsStateWithLifecycle()
+    val authViewModel: AuthViewModel = hiltViewModel()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val authUiState by authViewModel.uiState.collectAsStateWithLifecycle()
 
-    // Redirect based on auth state
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.SignedIn  -> navController.navigate(Routes.HOME) {
@@ -44,20 +45,30 @@ fun BrainfenceNavGraph(
     NavHost(navController = navController, startDestination = Routes.SIGN_IN) {
         composable(Routes.SIGN_IN) {
             SignInScreen(
-                uiState           = uiState,
-                onSignIn          = viewModel::signIn,
+                uiState            = authUiState,
+                onSignIn           = authViewModel::signIn,
                 onNavigateToSignUp = { navController.navigate(Routes.SIGN_UP) },
             )
         }
         composable(Routes.SIGN_UP) {
             SignUpScreen(
-                uiState            = uiState,
-                onSignUp           = viewModel::signUp,
+                uiState            = authUiState,
+                onSignUp           = authViewModel::signUp,
                 onNavigateToSignIn = { navController.popBackStack() },
             )
         }
         composable(Routes.HOME) {
-            // Task list added in ANDROID-004
+            val taskViewModel: TaskListViewModel = hiltViewModel()
+            val tasks       by taskViewModel.tasks.collectAsStateWithLifecycle()
+            val pendingTask by taskViewModel.pendingTask.collectAsStateWithLifecycle()
+            TaskListScreen(
+                tasks             = tasks,
+                pendingTask       = pendingTask,
+                onTaskTap         = taskViewModel::requestComplete,
+                onConfirmComplete = taskViewModel::confirmComplete,
+                onDismissComplete = taskViewModel::dismissComplete,
+                onSignOut         = taskViewModel::signOut,
+            )
         }
     }
 }

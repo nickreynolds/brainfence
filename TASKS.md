@@ -221,7 +221,7 @@ Add the PowerSync Kotlin SDK and set up local SQLite sync.
 
 ### ANDROID-004: Basic Task List UI (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Build a read-only task list screen sufficient for testing blocking logic.
@@ -238,7 +238,7 @@ Build a read-only task list screen sufficient for testing blocking logic.
 
 ### ANDROID-005: Task Completion — Manual
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement manual task completion flow.
