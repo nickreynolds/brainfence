@@ -15,9 +15,9 @@ class EncryptedSessionManager(context: Context) : SessionManager {
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
         EncryptedSharedPreferences.create(
+            context,
             "brainfence_session",
             masterKey,
-            context,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )

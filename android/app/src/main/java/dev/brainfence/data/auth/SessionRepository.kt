@@ -19,10 +19,10 @@ class SessionRepository @Inject constructor(
     val authState = supabase.auth.sessionStatus
         .map { status ->
             when (status) {
-                is SessionStatus.Authenticated    -> AuthState.SignedIn(status.session.user)
-                is SessionStatus.NotAuthenticated -> AuthState.SignedOut
-                is SessionStatus.LoadingFromStorage -> AuthState.Loading
-                is SessionStatus.NetworkError     -> AuthState.SignedOut
+                is SessionStatus.Authenticated      -> AuthState.SignedIn(status.session.user)
+                is SessionStatus.NotAuthenticated   -> AuthState.SignedOut
+                is SessionStatus.Initializing       -> AuthState.Loading
+                else                               -> AuthState.SignedOut
             }
         }
         .stateIn(

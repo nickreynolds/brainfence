@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Minimal window theme for the Compose app.
+         NoActionBar so Compose's Scaffold controls the full window. -->
+    <style name="Theme.Brainfence" parent="android:Theme.Material.Light.NoActionBar"/>
+</resources>

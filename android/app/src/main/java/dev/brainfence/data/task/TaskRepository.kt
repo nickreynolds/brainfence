@@ -1,6 +1,6 @@
 package dev.brainfence.data.task
 
-import app.cash.sqldelight.db.SqlCursor
+import com.powersync.db.SqlCursor
 import com.powersync.PowerSyncDatabase
 import dev.brainfence.domain.model.Task
 import kotlinx.coroutines.flow.Flow
@@ -63,7 +63,7 @@ class TaskRepository @Inject constructor(
         verificationConfig  = cursor.getString(9) ?: "{}",
         tags                = cursor.getString(10) ?: "[]",
         groupId             = cursor.getString(11),
-        sortOrder           = cursor.getLong(12)?.toInt() ?: 0,
+        sortOrder           = (cursor.getLong(12) ?: 0L).toInt(),
         isBlockingCondition = (cursor.getLong(13) ?: 0L) != 0L,
         blockingRuleIds     = cursor.getString(14) ?: "[]",
         createdAt           = cursor.getString(15)!!,

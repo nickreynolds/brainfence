@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -24,12 +25,12 @@ fun envVar(key: String): String {
 
 android {
     namespace   = "dev.brainfence"
-    compileSdk  = 35
+    compileSdk  = 36
 
     defaultConfig {
         applicationId   = "dev.brainfence"
         minSdk          = 26
-        targetSdk       = 35
+        targetSdk       = 36
         versionCode     = 1
         versionName     = "1.0"
 
@@ -54,13 +55,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
-    }
-
     buildFeatures {
         compose      = true
         buildConfig  = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
     }
 }
 
@@ -77,6 +80,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // Navigation
     implementation(libs.androidx.navigation.compose)
