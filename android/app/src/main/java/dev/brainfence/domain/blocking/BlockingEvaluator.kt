@@ -88,10 +88,12 @@ private fun isWithinSchedule(
         if (zoned.dayOfWeek !in allowedDays) return false
     }
 
-    // Check time window
-    if (schedule.has("start_time") && schedule.has("end_time")) {
-        val start = LocalTime.parse(schedule.getString("start_time"))
-        val end = LocalTime.parse(schedule.getString("end_time"))
+    // Check time window — support both "start"/"end" and "start_time"/"end_time" keys
+    val startKey = if (schedule.has("start")) "start" else "start_time"
+    val endKey = if (schedule.has("end")) "end" else "end_time"
+    if (schedule.has(startKey) && schedule.has(endKey)) {
+        val start = LocalTime.parse(schedule.getString(startKey))
+        val end = LocalTime.parse(schedule.getString(endKey))
         val now = zoned.toLocalTime()
         if (now < start || now >= end) return false
     }

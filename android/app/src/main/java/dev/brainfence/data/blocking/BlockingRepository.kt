@@ -45,7 +45,7 @@ class BlockingRepository @Inject constructor(
         id               = cursor.getString(0)!!,
         userId           = cursor.getString(1)!!,
         name             = cursor.getString(2) ?: "",
-        blockedApps      = parseJsonStringArray(cursor.getString(3)),
+        blockedApps      = parseBlockedApps(cursor.getString(3)),
         blockedDomains   = parseJsonStringArray(cursor.getString(4)),
         conditionTaskIds = parseJsonStringArray(cursor.getString(5)),
         conditionLogic   = cursor.getString(6) ?: "all",
@@ -53,9 +53,37 @@ class BlockingRepository @Inject constructor(
         isActive         = (cursor.getLong(8) ?: 0L) != 0L,
     )
 
+    /**
+     * Parse a JSON array of strings (e.g. condition_task_ids, blocked_domains).
+     */
     private fun parseJsonStringArray(json: String?): List<String> {
         if (json.isNullOrBlank() || json == "null") return emptyList()
         val array = JSONArray(json)
         return (0 until array.length()).map { array.getString(it) }
+    }
+
+    /**
+     * Parse the blocked_apps JSON array, which contains objects like
+     * {"platform":"android","package":"com.example.app"}.
+     * Extracts only Android package names.
+     */
+    private fun parseBlockedApps(json: String?): List<String> {
+        if (json.isNullOrBlank() || json == "null") return emptyList()
+        val array = JSONArray(json)
+        val packages = mutableListOf<String>()
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i)
+            if (item != null) {
+                if (item.optString("platform") == "android") {
+                    val pkg = item.optString("package", "")
+                    if (pkg.isNotEmpty()) packages.add(pkg)
+                }
+            } else {
+                // Fallback: treat as plain string (bare package name)
+                val str = array.optString(i, "")
+                if (str.isNotEmpty()) packages.add(str)
+            }
+        }
+        return packages
     }
 }

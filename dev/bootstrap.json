@@ -139,6 +139,16 @@
         "start": "06:00",
         "end": "11:00"
       }
+    },
+    {
+      "name": "Dev Test Block",
+      "blocked_apps": [
+        { "platform": "android", "package": "com.google.android.youtube" }
+      ],
+      "blocked_domains": ["youtube.com"],
+      "condition_task_titles": ["Morning Routine"],
+      "condition_logic": "all",
+      "active_schedule": "auto"
     }
   ]
 }
