@@ -303,21 +303,39 @@ Implement the core Android app-blocking mechanism.
 
 ---
 
+### ANDROID-008b: Accessibility Service Setup Wizard
+
+**STATUS**: TODO
+**CAN_BE_DONE_BY_CLAUDE**: YES
+
+Build an in-app setup flow that detects whether the accessibility service is enabled and guides the user to enable it.
+
+- On app launch (and on returning from settings), check if `BrainfenceAccessibilityService` is enabled via `AccessibilityManager.getEnabledAccessibilityServiceList()`
+- If not enabled: show a setup screen explaining why the permission is needed
+- Provide a button that deep-links directly to the accessibility settings page (`Settings.ACTION_ACCESSIBILITY_SETTINGS`)
+- On return from settings, re-check and update the UI accordingly
+- Show a persistent banner/indicator on the home screen if the service is not enabled
+- This replaces the manual "navigate to Settings → Accessibility" step for most users
+
+**Depends on**: ANDROID-008
+
+---
+
 ### ANDROID-009: Enable Accessibility Service on Device
 
 **STATUS**: TODO
 **CAN_BE_DONE_BY_CLAUDE**: NO
 
-Install the APK via ADB and enable the accessibility service.
+Install the APK via ADB and enable the accessibility service (using the in-app setup wizard from ANDROID-008b).
 
 ```bash
 adb install android/app/build/outputs/apk/debug/app-debug.apk
-# Then: Settings → Accessibility → Brainfence → Enable
+# Then: open the app → follow the setup wizard to enable the accessibility service
 ```
 
-**Human action required**: Build APK, install via ADB, navigate to Accessibility settings and enable.
+**Human action required**: Build APK, install via ADB, follow the in-app setup wizard.
 
-**Depends on**: ANDROID-008
+**Depends on**: ANDROID-008b
 
 ---
 
@@ -335,6 +353,25 @@ Verify that opening a blocked app (e.g. Twitter) triggers the overlay, and compl
 **Human action required**: Manual device testing.
 
 **Depends on**: ANDROID-009, INFRA-007
+
+---
+
+### ANDROID-010b: Home Screen Blocking Status Indicator
+
+**STATUS**: TODO
+**CAN_BE_DONE_BY_CLAUDE**: YES
+
+Add a section to the home screen that shows which apps are currently blocked and why.
+
+- Run the blocking evaluator against all active blocking rules
+- If any rules are currently blocking, display a summary card/section at the top of the home screen:
+  - List of currently blocked apps (by name/icon)
+  - Which tasks are incomplete and preventing unblocking
+  - Quick-complete buttons for manual tasks directly from the summary
+- If no rules are currently blocking, show a positive "All clear" state
+- Update reactively as tasks are completed (re-evaluate and refresh)
+
+**Depends on**: ANDROID-008, ANDROID-005
 
 ---
 
@@ -495,6 +532,27 @@ Implement the multi-step flow to disable blocking entirely.
 
 ---
 
+### ANDROID-020: Blocking Rule Editor & App Picker (Android)
+
+**STATUS**: TODO
+**CAN_BE_DONE_BY_CLAUDE**: YES
+
+Build a UI for creating and editing blocking rules, including selecting which apps to block.
+
+- List installed apps using `PackageManager.getInstalledApplications()`, showing app name and icon
+- Allow the user to select/deselect apps to block (searchable list with checkboxes)
+- Allow adding blocked domains (text input)
+- Configure condition tasks: pick which tasks must be completed to unblock
+- Configure condition logic (`all` vs `any`)
+- Configure active schedule (days of week, start/end time)
+- Save blocking rules to local SQLite (synced via PowerSync)
+- Edits to existing rules go through the time-lock flow (ANDROID-018)
+- This is the primary configuration surface for the blocking system
+
+**Depends on**: ANDROID-005, ANDROID-018
+
+---
+
 ## macOS App
 
 ---
@@ -596,11 +654,14 @@ Implement manual task completion on macOS.
 **STATUS**: TODO
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
-Implement the FamilyControls permission request flow.
+Implement the FamilyControls permission request flow with auto-detection and user guidance.
 
 - Add `FamilyControls` capability to the entitlements file
-- On first launch: call `AuthorizationCenter.shared.requestAuthorization(for: .individual)`
-- Handle denied state gracefully (explain what's missing)
+- On app launch (and on returning from System Settings), check current authorization status via `AuthorizationCenter.shared.authorizationStatus`
+- If not authorized: show a setup screen explaining why the permission is needed
+- Call `AuthorizationCenter.shared.requestAuthorization(for: .individual)` and handle the result
+- If denied: provide a button that opens System Settings → Screen Time so the user can grant permission manually
+- Show a persistent banner/indicator on the main screen if authorization is missing
 - Note: FamilyControls `.individual` authorization requires macOS 13+ and Apple Silicon or Intel Mac with T2 chip
 
 **Depends on**: MACOS-001
@@ -719,7 +780,45 @@ Port the time-lock and multi-step disable to macOS.
 
 ---
 
-### MACOS-015: Routine/Workout UI (macOS)
+### MACOS-015: Blocking Rule Editor & App Picker (macOS)
+
+**STATUS**: TODO
+**CAN_BE_DONE_BY_CLAUDE**: YES
+
+Build a UI for creating and editing blocking rules on macOS.
+
+- Use `FamilyActivityPicker` to let the user select apps and web domains to block
+- Allow adding blocked domains manually (text input)
+- Configure condition tasks: pick which tasks must be completed to unblock
+- Configure condition logic (`all` vs `any`)
+- Configure active schedule (days of week, start/end time)
+- Save blocking rules to local SQLite (synced via PowerSync)
+- Edits to existing rules go through the time-lock flow (MACOS-014)
+
+**Depends on**: MACOS-009, MACOS-014
+
+---
+
+### MACOS-016: Home Screen Blocking Status Indicator (macOS)
+
+**STATUS**: TODO
+**CAN_BE_DONE_BY_CLAUDE**: YES
+
+Add a section to the main view that shows which apps are currently blocked and why.
+
+- Run the blocking evaluator against all active blocking rules
+- If any rules are currently blocking, display a summary at the top of the main view:
+  - List of currently blocked apps
+  - Which tasks are incomplete and preventing unblocking
+  - Quick-complete buttons for manual tasks
+- If no rules are currently blocking, show an "All clear" state
+- Update reactively as tasks are completed
+
+**Depends on**: MACOS-010, MACOS-006
+
+---
+
+### MACOS-017: Routine/Workout UI (macOS)
 
 **STATUS**: TODO
 **CAN_BE_DONE_BY_CLAUDE**: YES
@@ -731,6 +830,8 @@ Build the step-by-step routine UI for macOS using SwiftUI.
 - Sheet or split-view presentation
 
 **Depends on**: MACOS-006
+
+
 
 ---
 
