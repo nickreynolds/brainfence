@@ -255,7 +255,7 @@ Implement manual task completion flow.
 
 ### ANDROID-006: Recurrence Engine (Android / Kotlin)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement the recurrence calculator as a pure Kotlin function.

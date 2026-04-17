@@ -3,6 +3,7 @@ package dev.brainfence.data.task
 import com.powersync.db.SqlCursor
 import com.powersync.PowerSyncDatabase
 import dev.brainfence.domain.model.Task
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -50,6 +51,7 @@ class TaskRepository @Inject constructor(
      * are inserted, since PowerSync's watch auto-detection can miss tables
      * referenced only in JOINs/subqueries.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun watchActiveTasks(): Flow<List<Task>> =
         database.onChange(tables = setOf("tasks", "task_completions"))
             .onStart { emit(emptySet()) }

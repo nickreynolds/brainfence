@@ -107,6 +107,7 @@ dependencies {
     implementation(libs.powersync.connector.supabase)
 
     // Testing
+    testImplementation(libs.json)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
