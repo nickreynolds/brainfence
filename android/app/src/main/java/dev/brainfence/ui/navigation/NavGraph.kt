@@ -110,11 +110,13 @@ fun BrainfenceNavGraph(
         }
         composable(Routes.HOME) {
             val taskViewModel: TaskListViewModel = hiltViewModel()
-            val tasks       by taskViewModel.tasks.collectAsStateWithLifecycle()
-            val pendingTask by taskViewModel.pendingTask.collectAsStateWithLifecycle()
+            val tasks          by taskViewModel.tasks.collectAsStateWithLifecycle()
+            val pendingTask    by taskViewModel.pendingTask.collectAsStateWithLifecycle()
+            val blockingStatus by taskViewModel.blockingStatus.collectAsStateWithLifecycle()
             TaskListScreen(
                 tasks                  = tasks,
                 pendingTask            = pendingTask,
+                blockingStatus         = blockingStatus,
                 isAccessibilityEnabled = isAccessibilityEnabled,
                 onTaskTap              = taskViewModel::requestComplete,
                 onConfirmComplete      = taskViewModel::confirmComplete,

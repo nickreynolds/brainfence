@@ -358,7 +358,7 @@ Verify that opening a blocked app (e.g. Twitter) triggers the overlay, and compl
 
 ### ANDROID-010b: Home Screen Blocking Status Indicator
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Add a section to the home screen that shows which apps are currently blocked and why.
