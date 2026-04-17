@@ -323,7 +323,7 @@ Build an in-app setup flow that detects whether the accessibility service is ena
 
 ### ANDROID-009: Enable Accessibility Service on Device
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: NO
 
 Install the APK via ADB and enable the accessibility service (using the in-app setup wizard from ANDROID-008b).
@@ -830,8 +830,6 @@ Build the step-by-step routine UI for macOS using SwiftUI.
 - Sheet or split-view presentation
 
 **Depends on**: MACOS-006
-
-
 
 ---
 
