@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Brainfence</string>
+    <string name="service_notification_channel">Brainfence Service</string>
+    <string name="service_notification_title">Brainfence is active</string>
+    <string name="service_notification_text">Monitoring blocking rules</string>
 </resources>

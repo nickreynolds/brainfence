@@ -272,7 +272,7 @@ Implement the recurrence calculator as a pure Kotlin function.
 
 ### ANDROID-007: Foreground Service + Boot Receiver
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Set up the persistent background service.
