@@ -305,7 +305,7 @@ Implement the core Android app-blocking mechanism.
 
 ### ANDROID-008b: Accessibility Service Setup Wizard
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Build an in-app setup flow that detects whether the accessibility service is enabled and guides the user to enable it.
