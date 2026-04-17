@@ -127,10 +127,11 @@
       "blocked_apps": [
         { "platform": "android", "package": "com.twitter.android" },
         { "platform": "android", "package": "com.instagram.android" },
+        { "platform": "android", "package": "com.google.android.youtube" },
         { "platform": "macos", "bundle_id": "com.twitter.twitter" },
         { "platform": "macos", "bundle_id": "com.burbn.instagram" }
       ],
-      "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com"],
+      "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
       "condition_task_titles": ["Morning Walk", "Morning Meditation", "Morning Routine"],
       "condition_logic": "all",
       "active_schedule": {

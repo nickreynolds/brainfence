@@ -15,7 +15,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !USER_EMAIL || !USER_PASSWORD
   process.exit(1);
 }
 
-// Service role client for admin operations (create user, bypass RLS for upserts)
 const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
@@ -61,56 +60,51 @@ async function main() {
     fs.readFileSync(path.resolve(__dirname, "bootstrap.json"), "utf8")
   );
 
-  // ── 1. Ensure test user exists ──────────────────────────────────────────────
-  console.log(`\n→ Ensuring user: ${USER_EMAIL}`);
+  // ── 1. Delete existing user (cascades to all data) ─────────────────────────
+  console.log(`\n→ Cleaning up existing user: ${USER_EMAIL}`);
 
   const { data: userList } = await adminClient.auth.admin.listUsers();
-  let userId: string | undefined = userList?.users.find(
+  const existingUserId = userList?.users.find(
     (u) => u.email === USER_EMAIL
   )?.id;
 
-  if (!userId) {
-    const { data: created, error } = await adminClient.auth.admin.createUser({
-      email: USER_EMAIL,
-      password: USER_PASSWORD,
-      email_confirm: true,
-    });
-    if (error) throw new Error(`Failed to create user: ${error.message}`);
-    userId = created.user.id;
-    console.log(`  Created user ${userId}`);
+  if (existingUserId) {
+    const { error } = await adminClient.auth.admin.deleteUser(existingUserId);
+    if (error) throw new Error(`Failed to delete user: ${error.message}`);
+    console.log(`  Deleted user ${existingUserId} (all data cascaded)`);
   } else {
-    console.log(`  Found existing user ${userId}`);
+    console.log("  No existing user found");
   }
 
-  // ── 2. Upsert groups ────────────────────────────────────────────────────────
-  console.log("\n→ Upserting groups...");
+  // ── 2. Create fresh user ───────────────────────────────────────────────────
+  console.log(`\n→ Creating user: ${USER_EMAIL}`);
+
+  const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
+    email: USER_EMAIL,
+    password: USER_PASSWORD,
+    email_confirm: true,
+  });
+  if (createErr) throw new Error(`Failed to create user: ${createErr.message}`);
+  const userId = created.user.id;
+  console.log(`  Created user ${userId}`);
+
+  // ── 3. Insert groups ───────────────────────────────────────────────────────
+  console.log("\n→ Inserting groups...");
   const groupIdByName: Record<string, string> = {};
 
   for (const group of data.groups) {
-    const { data: existing } = await adminClient
+    const { data: inserted, error } = await adminClient
       .from("groups")
+      .insert({ ...group, user_id: userId })
       .select("id")
-      .eq("user_id", userId)
-      .eq("name", group.name)
-      .maybeSingle();
-
-    if (existing) {
-      groupIdByName[group.name] = existing.id;
-      console.log(`  Existing: ${group.name} (${existing.id})`);
-    } else {
-      const { data: inserted, error } = await adminClient
-        .from("groups")
-        .insert({ ...group, user_id: userId })
-        .select("id")
-        .single();
-      if (error) throw new Error(`Failed to insert group "${group.name}": ${error.message}`);
-      groupIdByName[group.name] = inserted.id;
-      console.log(`  Created:  ${group.name} (${inserted.id})`);
-    }
+      .single();
+    if (error) throw new Error(`Failed to insert group "${group.name}": ${error.message}`);
+    groupIdByName[group.name] = inserted.id;
+    console.log(`  Created: ${group.name} (${inserted.id})`);
   }
 
-  // ── 3. Upsert tasks + routine steps ────────────────────────────────────────
-  console.log("\n→ Upserting tasks...");
+  // ── 4. Insert tasks + routine steps ────────────────────────────────────────
+  console.log("\n→ Inserting tasks...");
   const taskIdByTitle: Record<string, string> = {};
 
   for (const task of data.tasks) {
@@ -122,54 +116,31 @@ async function main() {
       group_id: group ? groupIdByName[group] ?? null : null,
     };
 
-    const { data: existing } = await adminClient
+    const { data: inserted, error } = await adminClient
       .from("tasks")
+      .insert(row)
       .select("id")
-      .eq("user_id", userId)
-      .eq("title", task.title)
-      .maybeSingle();
-
-    let taskId: string;
-    if (existing) {
-      const { error } = await adminClient
-        .from("tasks")
-        .update(row)
-        .eq("id", existing.id);
-      if (error) throw new Error(`Failed to update task "${task.title}": ${error.message}`);
-      taskId = existing.id;
-      console.log(`  Updated:  ${task.title} (${taskId})`);
-    } else {
-      const { data: inserted, error } = await adminClient
-        .from("tasks")
-        .insert(row)
-        .select("id")
-        .single();
-      if (error) throw new Error(`Failed to insert task "${task.title}": ${error.message}`);
-      taskId = inserted.id;
-      console.log(`  Created:  ${task.title} (${taskId})`);
-    }
-
+      .single();
+    if (error) throw new Error(`Failed to insert task "${task.title}": ${error.message}`);
+    const taskId = inserted.id;
     taskIdByTitle[task.title] = taskId;
+    console.log(`  Created: ${task.title} (${taskId})`);
 
-    // Upsert routine steps if present
     if (steps && steps.length > 0) {
-      // Delete existing steps and re-insert to handle reordering
-      await adminClient.from("routine_steps").delete().eq("task_id", taskId);
-      const { error } = await adminClient.from("routine_steps").insert(
-        steps.map((s) => ({ ...s, task_id: taskId }))
+      const { error: stepErr } = await adminClient.from("routine_steps").insert(
+        steps.map((s) => ({ ...s, task_id: taskId, user_id: userId }))
       );
-      if (error) throw new Error(`Failed to insert steps for "${task.title}": ${error.message}`);
-      console.log(`    └─ ${steps.length} steps upserted`);
+      if (stepErr) throw new Error(`Failed to insert steps for "${task.title}": ${stepErr.message}`);
+      console.log(`    └─ ${steps.length} steps inserted`);
     }
   }
 
-  // ── 4. Upsert blocking rules ────────────────────────────────────────────────
-  console.log("\n→ Upserting blocking rules...");
+  // ── 5. Insert blocking rules ───────────────────────────────────────────────
+  console.log("\n→ Inserting blocking rules...");
 
   for (const rule of data.blocking_rules) {
     const { condition_task_titles, ...ruleFields } = rule;
 
-    // Resolve task titles → IDs
     const condition_task_ids = condition_task_titles.map((title) => {
       const id = taskIdByTitle[title];
       if (!id) throw new Error(`Blocking rule "${rule.name}" references unknown task: "${title}"`);
@@ -178,27 +149,9 @@ async function main() {
 
     const row = { ...ruleFields, condition_task_ids, user_id: userId };
 
-    const { data: existing } = await adminClient
-      .from("blocking_rules")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("name", rule.name)
-      .maybeSingle();
-
-    if (existing) {
-      const { error } = await adminClient
-        .from("blocking_rules")
-        .update(row)
-        .eq("id", existing.id);
-      if (error) throw new Error(`Failed to update rule "${rule.name}": ${error.message}`);
-      console.log(`  Updated:  ${rule.name}`);
-    } else {
-      const { error } = await adminClient
-        .from("blocking_rules")
-        .insert(row);
-      if (error) throw new Error(`Failed to insert rule "${rule.name}": ${error.message}`);
-      console.log(`  Created:  ${rule.name}`);
-    }
+    const { error } = await adminClient.from("blocking_rules").insert(row);
+    if (error) throw new Error(`Failed to insert rule "${rule.name}": ${error.message}`);
+    console.log(`  Created: ${rule.name}`);
   }
 
   console.log("\n✓ Bootstrap complete\n");
