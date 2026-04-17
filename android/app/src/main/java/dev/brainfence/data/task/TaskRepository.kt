@@ -4,51 +4,60 @@ import com.powersync.db.SqlCursor
 import com.powersync.PowerSyncDatabase
 import dev.brainfence.domain.model.Task
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onStart
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private val ACTIVE_TASKS_SQL = """
+    SELECT
+        t.id,
+        t.user_id,
+        t.title,
+        t.description,
+        t.task_type,
+        t.status,
+        t.recurrence_type,
+        t.recurrence_config,
+        t.verification_type,
+        t.verification_config,
+        t.tags,
+        t.group_id,
+        t.sort_order,
+        t.is_blocking_condition,
+        t.blocking_rule_ids,
+        t.created_at,
+        t.updated_at,
+        CASE WHEN COUNT(tc.id) > 0 THEN 1 ELSE 0 END AS completed_today
+    FROM tasks t
+    LEFT JOIN task_completions tc
+        ON tc.task_id = t.id
+        AND date(tc.completed_at, 'localtime') = date('now', 'localtime')
+    WHERE t.status = 'active'
+    GROUP BY t.id
+    ORDER BY t.sort_order, t.created_at
+""".trimIndent()
 
 @Singleton
 class TaskRepository @Inject constructor(
     private val database: PowerSyncDatabase,
 ) {
     /**
-     * Watches active tasks from local SQLite, with a `completedToday` flag derived
-     * from task_completions for the current calendar day (device local time).
+     * Watches active tasks with a `completedToday` flag.
      *
-     * PowerSync re-emits whenever the underlying tables change, so the UI stays
-     * up to date automatically as completions sync in.
+     * Uses onChange on both tables to guarantee re-emission when completions
+     * are inserted, since PowerSync's watch auto-detection can miss tables
+     * referenced only in JOINs/subqueries.
      */
-    fun watchActiveTasks(): Flow<List<Task>> = database.watch(
-        sql = """
-            SELECT
-                t.id,
-                t.user_id,
-                t.title,
-                t.description,
-                t.task_type,
-                t.status,
-                t.recurrence_type,
-                t.recurrence_config,
-                t.verification_type,
-                t.verification_config,
-                t.tags,
-                t.group_id,
-                t.sort_order,
-                t.is_blocking_condition,
-                t.blocking_rule_ids,
-                t.created_at,
-                t.updated_at,
-                CASE WHEN EXISTS (
-                    SELECT 1 FROM task_completions tc
-                    WHERE tc.task_id = t.id
-                    AND date(tc.completed_at) = date('now', 'localtime')
-                ) THEN 1 ELSE 0 END AS completed_today
-            FROM tasks t
-            WHERE t.status = 'active'
-            ORDER BY t.sort_order, t.created_at
-        """.trimIndent(),
-        mapper = ::mapTask,
-    )
+    fun watchActiveTasks(): Flow<List<Task>> =
+        database.onChange(tables = setOf("tasks", "task_completions"))
+            .onStart { emit(emptySet()) }
+            .flatMapLatest {
+                flow {
+                    emit(database.getAll(ACTIVE_TASKS_SQL, mapper = ::mapTask))
+                }
+            }
 
     private fun mapTask(cursor: SqlCursor): Task = Task(
         id                  = cursor.getString(0)!!,
