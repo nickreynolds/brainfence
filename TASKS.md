@@ -342,7 +342,7 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 ### ANDROID-010: Test Blocking Flow End-to-End (Android)
 
 **STATUS**: TODO
-**CAN_BE_DONE_BY_CLAUDE**: NO
+**CAN_BE_DONE_BY_CLAUDE**: YES
 
 Verify that opening a blocked app (e.g. Twitter) triggers the overlay, and completing tasks dismisses it.
 
