@@ -4,4 +4,5 @@
     <string name="service_notification_channel">Brainfence Service</string>
     <string name="service_notification_title">Brainfence is active</string>
     <string name="service_notification_text">Monitoring blocking rules</string>
+    <string name="accessibility_service_description">Brainfence monitors which app is in the foreground to enforce blocking rules. When you open a blocked app, an overlay appears until the required tasks are completed.</string>
 </resources>

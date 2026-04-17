@@ -288,7 +288,7 @@ Set up the persistent background service.
 
 ### ANDROID-008: AccessibilityService + Blocking Overlay
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement the core Android app-blocking mechanism.
