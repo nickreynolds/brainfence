@@ -7,15 +7,16 @@ replication:
     - type: postgresql
       # Reads SUPABASE_DB_URL from .env
       # Requires logical replication on Supabase Postgres (wal_level = logical)
-      uri: !env SUPABASE_DB_URL
+      uri: !env PS_DB_URL
 
-# JWT validation
-# Supabase uses asymmetric RS256 — no shared secret needed.
-# Set SUPABASE_JWKS_URL = https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
-api:
-  tokens:
-    jwks:
-      - url: !env SUPABASE_JWKS_URL
+# Client JWT validation (explicit JWKS — Supabase auto-detect requires db.<ref> URI)
+client_auth:
+  jwks_uri: !env PS_JWKS_URL
+  audience: ["authenticated"]
+
+storage:
+  type: mongodb
+  uri: !env PS_MONGO_URI
 
 # Sync rules — defined in INFRA-005
 sync_rules:
