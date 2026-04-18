@@ -1,7 +1,9 @@
 package dev.brainfence.ui.tasks
 
+import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import androidx.core.content.ContextCompat
 import javax.inject.Inject
 
 data class BlockedAppInfo(
@@ -90,6 +93,27 @@ class TaskListViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = BlockingStatusState(emptyList(), emptyList(), false),
     )
+
+    private val _hasLocationPermission = MutableStateFlow(checkLocationPermission())
+    val hasLocationPermission = _hasLocationPermission.asStateFlow()
+
+    fun onLocationPermissionResult(granted: Boolean) {
+        _hasLocationPermission.value = checkLocationPermission()
+    }
+
+    private fun checkLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        val background = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+        return fine && background
+    }
 
     // The task currently awaiting confirmation; null = no dialog shown
     private val _pendingTask = MutableStateFlow<Task?>(null)

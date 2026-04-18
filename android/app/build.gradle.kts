@@ -102,6 +102,9 @@ dependencies {
     // Security
     implementation(libs.androidx.security.crypto)
 
+    // Google Play Services — Location & Geofencing
+    implementation(libs.play.services.location)
+
     // PowerSync
     implementation(libs.powersync.core)
     implementation(libs.powersync.connector.supabase)

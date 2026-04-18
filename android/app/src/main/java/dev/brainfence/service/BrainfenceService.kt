@@ -52,6 +52,7 @@ class BrainfenceService : Service() {
 
     @Inject lateinit var taskRepository: TaskRepository
     @Inject lateinit var blockingRepository: BlockingRepository
+    @Inject lateinit var gpsVerificationManager: GpsVerificationManager
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var evalJob: Job? = null
@@ -63,6 +64,7 @@ class BrainfenceService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         observeData()
         startPeriodicEvaluation()
+        gpsVerificationManager.startWatching()
         Log.i(TAG, "Service created")
     }
 
@@ -73,6 +75,7 @@ class BrainfenceService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        gpsVerificationManager.stop()
         scope.cancel()
         Log.i(TAG, "Service destroyed")
         super.onDestroy()

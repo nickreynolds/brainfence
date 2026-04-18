@@ -1,8 +1,12 @@
 package dev.brainfence.ui.tasks
 
+import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Logout
@@ -38,13 +43,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import dev.brainfence.domain.model.Task
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,11 +63,35 @@ fun TaskListScreen(
     pendingTask: Task?,
     blockingStatus: BlockingStatusState,
     isAccessibilityEnabled: Boolean,
+    hasLocationPermission: Boolean,
+    onLocationPermissionResult: (Boolean) -> Unit,
     onTaskTap: (Task) -> Unit,
     onConfirmComplete: () -> Unit,
     onDismissComplete: () -> Unit,
     onSignOut: () -> Unit,
 ) {
+    val context = LocalContext.current
+
+    // Foreground location permission launcher
+    val fineLocationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        if (fineGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Fine location granted — now request background separately (Android 10+)
+            onLocationPermissionResult(false) // signal partial grant; background requested below
+        } else {
+            onLocationPermissionResult(fineGranted)
+        }
+    }
+
+    // Background location launcher (must be requested separately on Android 10+)
+    val backgroundLocationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        onLocationPermissionResult(granted)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -79,6 +112,29 @@ fun TaskListScreen(
             if (!isAccessibilityEnabled) {
                 item(key = "a11y_banner") {
                     AccessibilityBanner()
+                }
+            }
+            if (!hasLocationPermission) {
+                item(key = "location_banner") {
+                    val hasFineLocation = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_FINE_LOCATION,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    LocationPermissionBanner(
+                        onRequestPermission = {
+                            if (!hasFineLocation) {
+                                fineLocationLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    )
+                                )
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                backgroundLocationLauncher.launch(
+                                    Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                )
+                            }
+                        },
+                    )
                 }
             }
             if (blockingStatus.hasActiveRules) {
@@ -303,6 +359,37 @@ private fun AppIcon(packageName: String, modifier: Modifier = Modifier) {
     }
     if (bitmap != null) {
         Image(bitmap = bitmap, contentDescription = null, modifier = modifier)
+    }
+}
+
+@Composable
+private fun LocationPermissionBanner(onRequestPermission: () -> Unit) {
+    Card(
+        onClick = onRequestPermission,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.LocationOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "Location permission needed for GPS tasks. Tap to grant.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
     }
 }
 

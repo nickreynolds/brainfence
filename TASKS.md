@@ -377,7 +377,7 @@ Add a section to the home screen that shows which apps are currently blocked and
 
 ### ANDROID-011: GPS Verification — Enter Mode (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement GPS geofence "enter" completion.

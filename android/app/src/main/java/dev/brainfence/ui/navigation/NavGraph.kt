@@ -110,18 +110,21 @@ fun BrainfenceNavGraph(
         }
         composable(Routes.HOME) {
             val taskViewModel: TaskListViewModel = hiltViewModel()
-            val tasks          by taskViewModel.tasks.collectAsStateWithLifecycle()
-            val pendingTask    by taskViewModel.pendingTask.collectAsStateWithLifecycle()
-            val blockingStatus by taskViewModel.blockingStatus.collectAsStateWithLifecycle()
+            val tasks              by taskViewModel.tasks.collectAsStateWithLifecycle()
+            val pendingTask        by taskViewModel.pendingTask.collectAsStateWithLifecycle()
+            val blockingStatus     by taskViewModel.blockingStatus.collectAsStateWithLifecycle()
+            val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
             TaskListScreen(
-                tasks                  = tasks,
-                pendingTask            = pendingTask,
-                blockingStatus         = blockingStatus,
-                isAccessibilityEnabled = isAccessibilityEnabled,
-                onTaskTap              = taskViewModel::requestComplete,
-                onConfirmComplete      = taskViewModel::confirmComplete,
-                onDismissComplete      = taskViewModel::dismissComplete,
-                onSignOut              = taskViewModel::signOut,
+                tasks                    = tasks,
+                pendingTask              = pendingTask,
+                blockingStatus           = blockingStatus,
+                isAccessibilityEnabled   = isAccessibilityEnabled,
+                hasLocationPermission    = hasLocationPerm,
+                onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
+                onTaskTap                = taskViewModel::requestComplete,
+                onConfirmComplete        = taskViewModel::confirmComplete,
+                onDismissComplete        = taskViewModel::dismissComplete,
+                onSignOut                = taskViewModel::signOut,
             )
         }
     }
