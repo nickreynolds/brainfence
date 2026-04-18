@@ -20,9 +20,9 @@
       "task_type": "simple",
       "verification_type": "gps",
       "verification_config": {
-        "lat": 37.7749,
-        "lng": -122.4194,
-        "radius_m": 200,
+        "lat": 40.702692,
+        "lng": -73.922820,
+        "radius_m": 100,
         "mode": "leave",
         "min_duration_m": 0
       },
@@ -92,14 +92,7 @@
     {
       "title": "Gym — Push Day",
       "task_type": "workout",
-      "verification_type": "gps",
-      "verification_config": {
-        "lat": 37.7849,
-        "lng": -122.4094,
-        "radius_m": 100,
-        "mode": "enter",
-        "min_duration_m": 30
-      },
+      "verification_type": "manual",
       "recurrence_type": "daily",
       "recurrence_config": { "days": ["mon", "wed", "fri"] },
       "is_blocking_condition": false,

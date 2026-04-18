@@ -22,14 +22,19 @@ import dev.brainfence.ui.auth.AuthViewModel
 import dev.brainfence.ui.auth.SignInScreen
 import dev.brainfence.ui.auth.SignUpScreen
 import dev.brainfence.ui.setup.AccessibilitySetupScreen
+import dev.brainfence.ui.tasks.GpsTaskScreen
+import dev.brainfence.ui.tasks.GpsTaskViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
 import dev.brainfence.ui.tasks.TaskListViewModel
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 private object Routes {
     const val SIGN_IN           = "auth/sign-in"
     const val SIGN_UP           = "auth/sign-up"
     const val ACCESSIBILITY_SETUP = "setup/accessibility"
     const val HOME              = "home"
+    const val GPS_TASK          = "task/{taskId}"
 }
 
 @Composable
@@ -121,11 +126,37 @@ fun BrainfenceNavGraph(
                 isAccessibilityEnabled   = isAccessibilityEnabled,
                 hasLocationPermission    = hasLocationPerm,
                 onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
-                onTaskTap                = taskViewModel::requestComplete,
+                onTaskTap                = { task ->
+                    if (task.verificationType == "gps") {
+                        navController.navigate("task/${task.id}")
+                    } else {
+                        taskViewModel.requestComplete(task)
+                    }
+                },
                 onConfirmComplete        = taskViewModel::confirmComplete,
                 onDismissComplete        = taskViewModel::dismissComplete,
                 onSignOut                = taskViewModel::signOut,
             )
+        }
+        composable(
+            route = Routes.GPS_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val gpsViewModel: GpsTaskViewModel = hiltViewModel()
+            val task       by gpsViewModel.task.collectAsStateWithLifecycle()
+            val gpsConfig  by gpsViewModel.gpsConfig.collectAsStateWithLifecycle()
+            val isTracking by gpsViewModel.isTracking.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            val currentConfig = gpsConfig
+            if (currentTask != null && currentConfig != null) {
+                GpsTaskScreen(
+                    task = currentTask,
+                    gpsConfig = currentConfig,
+                    isTracking = isTracking,
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
     }
 }

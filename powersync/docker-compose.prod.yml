@@ -1,0 +1,46 @@
+services:
+  mongo:
+    image: mongo:7
+    command: ["mongod", "--replSet", "rs0"]
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        mongosh --quiet --eval "
+        try { rs.status().ok }
+        catch(e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"
+      interval: 5s
+      start_period: 10s
+
+  powersync:
+    image: journeyapps/powersync-service:latest
+    depends_on:
+      - mongo
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/config.yaml
+    volumes:
+      - .:/config
+    env_file:
+      - ../.env
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - powersync
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    env_file:
+      - ../.env
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  caddy_data:
+  caddy_config:

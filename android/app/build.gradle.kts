@@ -38,6 +38,7 @@ android {
 
         buildConfigField("String", "SUPABASE_URL",      "\"${envVar("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${envVar("SUPABASE_ANON_KEY")}\"")
+
     }
 
     buildTypes {
@@ -104,6 +105,9 @@ dependencies {
 
     // Google Play Services — Location & Geofencing
     implementation(libs.play.services.location)
+
+    // OpenStreetMap
+    implementation(libs.osmdroid)
 
     // PowerSync
     implementation(libs.powersync.core)
