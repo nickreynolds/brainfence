@@ -22,6 +22,8 @@ import dev.brainfence.ui.auth.AuthViewModel
 import dev.brainfence.ui.auth.SignInScreen
 import dev.brainfence.ui.auth.SignUpScreen
 import dev.brainfence.ui.setup.AccessibilitySetupScreen
+import dev.brainfence.ui.debug.DebugScreen
+import dev.brainfence.ui.debug.DebugViewModel
 import dev.brainfence.ui.tasks.GpsTaskScreen
 import dev.brainfence.ui.tasks.GpsTaskViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
@@ -35,6 +37,7 @@ private object Routes {
     const val ACCESSIBILITY_SETUP = "setup/accessibility"
     const val HOME              = "home"
     const val GPS_TASK          = "task/{taskId}"
+    const val DEBUG             = "debug"
 }
 
 @Composable
@@ -136,6 +139,7 @@ fun BrainfenceNavGraph(
                 onConfirmComplete        = taskViewModel::confirmComplete,
                 onDismissComplete        = taskViewModel::dismissComplete,
                 onSignOut                = taskViewModel::signOut,
+                onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
             )
         }
         composable(
@@ -157,6 +161,18 @@ fun BrainfenceNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+        }
+        composable(Routes.DEBUG) {
+            val debugViewModel: DebugViewModel = hiltViewModel()
+            val logs by debugViewModel.logs.collectAsStateWithLifecycle()
+            val selectedCategory by debugViewModel.selectedCategory.collectAsStateWithLifecycle()
+            DebugScreen(
+                logs = logs,
+                selectedCategory = selectedCategory,
+                onCategorySelected = debugViewModel::setCategory,
+                onClearLogs = debugViewModel::clearLogs,
+                onBack = { navController.popBackStack() },
+            )
         }
     }
 }

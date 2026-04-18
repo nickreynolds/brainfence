@@ -1,5 +1,6 @@
 package dev.brainfence.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -11,10 +12,12 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
+import com.google.android.gms.location.LocationServices
 import dagger.hilt.android.AndroidEntryPoint
 import dev.brainfence.MainActivity
 import dev.brainfence.R
 import dev.brainfence.data.blocking.BlockingRepository
+import dev.brainfence.data.debug.DebugLogRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.blocking.BlockingState
 import dev.brainfence.domain.blocking.evaluateBlocking
@@ -39,6 +42,7 @@ class BrainfenceService : Service() {
         const val NOTIFICATION_CHANNEL_ID = "brainfence_service"
         const val NOTIFICATION_ID = 1
         private const val EVAL_INTERVAL_MS = 60_000L
+        private const val BREADCRUMB_INTERVAL_EVALS = 5  // Log location every 5 evals (5 min)
         private const val TAG = "BrainfenceService"
 
         private val _blockingState = MutableStateFlow(
@@ -56,19 +60,17 @@ class BrainfenceService : Service() {
     @Inject lateinit var taskRepository: TaskRepository
     @Inject lateinit var blockingRepository: BlockingRepository
     @Inject lateinit var gpsVerificationManager: GpsVerificationManager
+    @Inject lateinit var debugLog: DebugLogRepository
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var evalJob: Job? = null
     private var currentTasks: List<Task> = emptyList()
     private var currentRules: List<BlockingRule> = emptyList()
+    private var breadcrumbCounter = 0
 
     override fun onCreate() {
         super.onCreate()
-        val hasLocation = ContextCompat.checkSelfPermission(
-            this, android.Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
-            this, android.Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+        val hasLocation = hasLocationPermission()
 
         val fgsType = if (hasLocation) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
@@ -80,6 +82,9 @@ class BrainfenceService : Service() {
         startPeriodicEvaluation()
         gpsVerificationManager.startWatching()
         Log.i(TAG, "Service created")
+        scope.launch {
+            debugLog.log("service", "BrainfenceService created (location permission: $hasLocation)")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -90,6 +95,7 @@ class BrainfenceService : Service() {
 
     override fun onDestroy() {
         gpsVerificationManager.stop()
+        scope.launch { debugLog.log("service", "BrainfenceService destroyed") }
         scope.cancel()
         Log.i(TAG, "Service destroyed")
         super.onDestroy()
@@ -117,12 +123,17 @@ class BrainfenceService : Service() {
     /**
      * Periodic re-evaluation for time-based checks (schedule windows, time gates).
      * Data-driven changes are handled reactively by [observeData].
+     * Also logs location breadcrumbs every [BREADCRUMB_INTERVAL_EVALS] cycles.
      */
     private fun startPeriodicEvaluation() {
         evalJob = scope.launch {
             while (true) {
                 delay(EVAL_INTERVAL_MS)
                 runEvaluation()
+                breadcrumbCounter++
+                if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
+                    logLocationBreadcrumb()
+                }
             }
         }
     }
@@ -132,6 +143,36 @@ class BrainfenceService : Service() {
         _blockingState.value = state
         Log.d(TAG, "Evaluated: ${state.blockedApps.size} apps blocked")
     }
+
+    /**
+     * Periodically log the device's last known location for debugging.
+     * Uses getLastLocation() which returns a cached location — no battery impact.
+     */
+    @SuppressLint("MissingPermission")
+    private fun logLocationBreadcrumb() {
+        if (!hasLocationPermission()) return
+        val client = LocationServices.getFusedLocationProviderClient(this)
+        client.lastLocation.addOnSuccessListener { location ->
+            if (location != null) {
+                scope.launch {
+                    debugLog.log(
+                        category = "location",
+                        message = "Location breadcrumb",
+                        lat = location.latitude,
+                        lng = location.longitude,
+                        accuracyM = location.accuracy,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
 
     private fun buildNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java)
