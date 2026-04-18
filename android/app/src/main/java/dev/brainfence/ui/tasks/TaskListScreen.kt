@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Logout
@@ -71,6 +72,7 @@ fun TaskListScreen(
     onDismissComplete: () -> Unit,
     onSignOut: () -> Unit,
     onNavigateToDebug: () -> Unit = {},
+    onCreateQuickTimer: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -99,6 +101,9 @@ fun TaskListScreen(
             TopAppBar(
                 title = { Text("Tasks") },
                 actions = {
+                    IconButton(onClick = onCreateQuickTimer) {
+                        Icon(Icons.Default.Add, contentDescription = "Create task")
+                    }
                     IconButton(onClick = onNavigateToDebug) {
                         Icon(Icons.Default.BugReport, contentDescription = "Debug logs")
                     }

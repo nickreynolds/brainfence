@@ -24,6 +24,8 @@ import dev.brainfence.ui.auth.SignUpScreen
 import dev.brainfence.ui.setup.AccessibilitySetupScreen
 import dev.brainfence.ui.debug.DebugScreen
 import dev.brainfence.ui.debug.DebugViewModel
+import dev.brainfence.ui.tasks.DurationTaskScreen
+import dev.brainfence.ui.tasks.DurationTaskViewModel
 import dev.brainfence.ui.tasks.GpsTaskScreen
 import dev.brainfence.ui.tasks.GpsTaskViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
@@ -37,6 +39,7 @@ private object Routes {
     const val ACCESSIBILITY_SETUP = "setup/accessibility"
     const val HOME              = "home"
     const val GPS_TASK          = "task/{taskId}"
+    const val DURATION_TASK     = "duration-task/{taskId}"
     const val DEBUG             = "debug"
 }
 
@@ -130,16 +133,21 @@ fun BrainfenceNavGraph(
                 hasLocationPermission    = hasLocationPerm,
                 onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
                 onTaskTap                = { task ->
-                    if (task.verificationType == "gps") {
-                        navController.navigate("task/${task.id}")
-                    } else {
-                        taskViewModel.requestComplete(task)
+                    when (task.verificationType) {
+                        "gps" -> navController.navigate("task/${task.id}")
+                        "duration" -> navController.navigate("duration-task/${task.id}")
+                        else -> taskViewModel.requestComplete(task)
                     }
                 },
                 onConfirmComplete        = taskViewModel::confirmComplete,
                 onDismissComplete        = taskViewModel::dismissComplete,
                 onSignOut                = taskViewModel::signOut,
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
+                onCreateQuickTimer       = {
+                    taskViewModel.createQuickTimer { taskId ->
+                        navController.navigate("duration-task/$taskId")
+                    }
+                },
             )
         }
         composable(
@@ -158,6 +166,33 @@ fun BrainfenceNavGraph(
                     task = currentTask,
                     gpsConfig = currentConfig,
                     isTracking = isTracking,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+        composable(
+            route = Routes.DURATION_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val durationViewModel: DurationTaskViewModel = hiltViewModel()
+            val task           by durationViewModel.task.collectAsStateWithLifecycle()
+            val durationConfig by durationViewModel.durationConfig.collectAsStateWithLifecycle()
+            val timerState     by durationViewModel.timerState.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            val currentConfig = durationConfig
+            if (currentTask != null && currentConfig != null) {
+                DurationTaskScreen(
+                    task = currentTask,
+                    durationConfig = currentConfig,
+                    timerState = timerState,
+                    onStart = durationViewModel::startTimer,
+                    onPause = durationViewModel::pauseTimer,
+                    onResume = durationViewModel::resumeTimer,
+                    onCancel = {
+                        durationViewModel.cancelTimer()
+                        navController.popBackStack()
+                    },
                     onBack = { navController.popBackStack() },
                 )
             }

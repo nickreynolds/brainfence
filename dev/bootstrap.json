@@ -75,6 +75,19 @@
       "sort_order": 3
     },
     {
+      "title": "Quick Timer (30s Test)",
+      "task_type": "timed",
+      "verification_type": "duration",
+      "verification_config": {
+        "duration_seconds": 30
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": false,
+      "group": "Morning",
+      "sort_order": 4
+    },
+    {
       "title": "Take Vitamins",
       "task_type": "simple",
       "verification_type": "time_gate",
@@ -87,7 +100,7 @@
       "recurrence_config": {},
       "is_blocking_condition": false,
       "group": "Morning",
-      "sort_order": 4
+      "sort_order": 5
     },
     {
       "title": "Gym — Push Day",

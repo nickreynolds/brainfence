@@ -77,33 +77,60 @@ async function main() {
     fs.readFileSync(path.resolve(__dirname, "bootstrap.json"), "utf8")
   );
 
-  // ── 1. Delete existing user (cascades to all data) ─────────────────────────
-  console.log(`\n→ Cleaning up existing user: ${USER_EMAIL}`);
+  // ── 1. Find or create user ──────────────────────────────────────────────────
+  console.log(`\n→ Looking up user: ${USER_EMAIL}`);
 
   const { data: userList } = await adminClient.auth.admin.listUsers();
-  const existingUserId = userList?.users.find(
-    (u) => u.email === USER_EMAIL
-  )?.id;
+  let userId = userList?.users.find((u) => u.email === USER_EMAIL)?.id;
 
-  if (existingUserId) {
-    const { error } = await adminClient.auth.admin.deleteUser(existingUserId);
-    if (error) throw new Error(`Failed to delete user: ${error.message}`);
-    console.log(`  Deleted user ${existingUserId} (all data cascaded)`);
+  if (userId) {
+    console.log(`  Found existing user ${userId}`);
+
+    // Delete all table data for this user (order matters for FK constraints)
+    console.log("\n→ Deleting existing data (keeping user)...");
+    const tables = [
+      "step_completions",   // references task_completions
+      "task_completions",   // references tasks
+      "routine_steps",      // references tasks
+      "blocking_rules",
+      "notes",
+      "tasks",
+      "groups",
+    ];
+    for (const table of tables) {
+      if (table === "step_completions") {
+        // step_completions doesn't have user_id directly; delete via task_completions join
+        const { data: tcIds } = await adminClient
+          .from("task_completions")
+          .select("id")
+          .eq("user_id", userId);
+        if (tcIds && tcIds.length > 0) {
+          const { error } = await adminClient
+            .from("step_completions")
+            .delete()
+            .in("task_completion_id", tcIds.map((tc: { id: string }) => tc.id));
+          if (error) console.warn(`  Warning deleting ${table}: ${error.message}`);
+          else console.log(`  Cleared ${table} (${tcIds.length} parent completions)`);
+        } else {
+          console.log(`  Cleared ${table} (nothing to delete)`);
+        }
+      } else {
+        const { error } = await adminClient.from(table).delete().eq("user_id", userId);
+        if (error) console.warn(`  Warning deleting ${table}: ${error.message}`);
+        else console.log(`  Cleared ${table}`);
+      }
+    }
   } else {
-    console.log("  No existing user found");
+    console.log("  No existing user found, creating...");
+    const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
+      email: USER_EMAIL,
+      password: USER_PASSWORD,
+      email_confirm: true,
+    });
+    if (createErr) throw new Error(`Failed to create user: ${createErr.message}`);
+    userId = created.user.id;
+    console.log(`  Created user ${userId}`);
   }
-
-  // ── 2. Create fresh user ───────────────────────────────────────────────────
-  console.log(`\n→ Creating user: ${USER_EMAIL}`);
-
-  const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
-    email: USER_EMAIL,
-    password: USER_PASSWORD,
-    email_confirm: true,
-  });
-  if (createErr) throw new Error(`Failed to create user: ${createErr.message}`);
-  const userId = created.user.id;
-  console.log(`  Created user ${userId}`);
 
   // ── 3. Insert groups ───────────────────────────────────────────────────────
   console.log("\n→ Inserting groups...");

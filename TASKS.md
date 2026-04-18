@@ -429,7 +429,7 @@ Verify GPS enter and leave modes work on a real device with actual location data
 
 ### ANDROID-014: Duration Timer Verification (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement duration-based task completion.

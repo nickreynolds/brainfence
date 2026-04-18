@@ -60,6 +60,7 @@ class BrainfenceService : Service() {
     @Inject lateinit var taskRepository: TaskRepository
     @Inject lateinit var blockingRepository: BlockingRepository
     @Inject lateinit var gpsVerificationManager: GpsVerificationManager
+    @Inject lateinit var durationTimerManager: DurationTimerManager
     @Inject lateinit var debugLog: DebugLogRepository
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -81,6 +82,7 @@ class BrainfenceService : Service() {
         observeData()
         startPeriodicEvaluation()
         gpsVerificationManager.startWatching()
+        durationTimerManager.restoreTimers()
         Log.i(TAG, "Service created")
         scope.launch {
             debugLog.log("service", "BrainfenceService created (location permission: $hasLocation)")
@@ -94,6 +96,7 @@ class BrainfenceService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        durationTimerManager.stop()
         gpsVerificationManager.stop()
         scope.launch { debugLog.log("service", "BrainfenceService destroyed") }
         scope.cancel()
