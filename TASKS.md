@@ -395,7 +395,7 @@ Implement GPS geofence "enter" completion.
 
 ### ANDROID-012: GPS Verification — Leave Mode (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement GPS geofence "leave" completion.

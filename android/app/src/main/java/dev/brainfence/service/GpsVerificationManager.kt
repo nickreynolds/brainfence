@@ -51,6 +51,8 @@ data class GeofenceTrackingState(
     val config: GpsConfig,
     val enteredAt: Instant? = null,
     val durationJob: Job? = null,
+    /** For leave mode: tracks whether the user has been inside the geofence at least once. */
+    val insideGeofence: Boolean = false,
 )
 
 /**
@@ -118,7 +120,7 @@ class GpsVerificationManager @Inject constructor(
                 val gpsTasks = tasks.filter { task ->
                     task.verificationType == "gps"
                         && !task.completedToday
-                        && parseGpsConfig(task.verificationConfig)?.mode == "enter"
+                        && parseGpsConfig(task.verificationConfig)?.mode in setOf("enter", "leave")
                 }
                 syncGeofences(gpsTasks)
             }
@@ -161,14 +163,19 @@ class GpsVerificationManager @Inject constructor(
             }
             Geofence.GEOFENCE_TRANSITION_EXIT -> {
                 for (geofence in triggeringGeofences) {
-                    handleExit(taskId = geofence.requestId)
+                    handleExit(
+                        taskId = geofence.requestId,
+                        lat = triggeringLocation?.latitude,
+                        lng = triggeringLocation?.longitude,
+                        accuracyM = triggeringLocation?.accuracy,
+                    )
                 }
             }
         }
     }
 
     /**
-     * Sync registered geofences with the current set of active GPS enter-mode tasks.
+     * Sync registered geofences with the current set of active GPS tasks (enter and leave modes).
      */
     private fun syncGeofences(gpsTasks: List<Task>) {
         if (!hasLocationPermission()) {
@@ -259,6 +266,15 @@ class GpsVerificationManager @Inject constructor(
         val now = Instant.now()
         Log.i(TAG, "Geofence ENTER for task '${state.taskTitle}' (id=$taskId)")
 
+        if (state.config.mode == "leave") {
+            // Leave mode: just record that the user is inside the geofence.
+            // Completion happens on EXIT, but only if they were inside first.
+            Log.d(TAG, "Leave-mode task '${state.taskTitle}': user is now inside geofence")
+            trackingStates[taskId] = state.copy(insideGeofence = true)
+            return
+        }
+
+        // Enter mode
         val updatedState = state.copy(enteredAt = now)
 
         val minDurationMinutes = state.config.minDurationM
@@ -277,11 +293,28 @@ class GpsVerificationManager @Inject constructor(
         }
     }
 
-    private fun handleExit(taskId: String) {
+    private fun handleExit(
+        taskId: String,
+        lat: Double? = null,
+        lng: Double? = null,
+        accuracyM: Float? = null,
+    ) {
         val state = trackingStates[taskId] ?: return
         Log.i(TAG, "Geofence EXIT for task '${state.taskTitle}' (id=$taskId)")
 
-        // Cancel the duration timer — user left before required time elapsed
+        if (state.config.mode == "leave") {
+            // Leave mode: complete immediately on exit, but only if user was inside first
+            if (!state.insideGeofence) {
+                Log.w(TAG, "Leave-mode task '${state.taskTitle}': ignoring exit — user was never inside")
+                return
+            }
+            scope.launch {
+                completeGpsLeaveTask(taskId, lat, lng, accuracyM)
+            }
+            return
+        }
+
+        // Enter mode: cancel the duration timer — user left before required time elapsed
         state.durationJob?.cancel()
         trackingStates[taskId] = state.copy(enteredAt = null, durationJob = null)
     }
@@ -313,6 +346,28 @@ class GpsVerificationManager @Inject constructor(
         // since completedToday will be true
         state.durationJob?.cancel()
         trackingStates[taskId] = state.copy(durationJob = null)
+    }
+
+    private suspend fun completeGpsLeaveTask(
+        taskId: String,
+        lat: Double?,
+        lng: Double?,
+        accuracyM: Float?,
+    ) {
+        val state = trackingStates[taskId] ?: return
+
+        val verificationData = JSONObject().apply {
+            put("departed_at", Instant.now().toString())
+            put("lat", lat ?: state.config.lat)
+            put("lng", lng ?: state.config.lng)
+            if (accuracyM != null) put("accuracy_m", accuracyM.toDouble())
+        }.toString()
+
+        Log.i(TAG, "Completing GPS leave task '${state.taskTitle}' with proof: $verificationData")
+        completionRepository.completeTask(
+            taskId = taskId,
+            verificationData = verificationData,
+        )
     }
 
     private fun buildGeofence(taskId: String, config: GpsConfig): Geofence =
