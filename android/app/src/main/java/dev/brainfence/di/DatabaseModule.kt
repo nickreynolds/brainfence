@@ -19,7 +19,7 @@ object DatabaseModule {
     @Provides
     @Named("powerSyncUrl")
     fun providePowerSyncUrl(): String =
-        "http://10.0.2.2:8080" // localhost from Android emulator; update for physical device
+        "https://powersync.brainfence.online"
 
     @Provides
     @Singleton

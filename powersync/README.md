@@ -202,10 +202,10 @@ docker compose -f docker-compose.prod.yml logs -f
 #### 6. Verify it's working
 
 ```bash
-curl https://powersync.yourdomain.com/api/status
+curl https://powersync.yourdomain.com/
 ```
 
-You should get a JSON response with sync status information.
+If you get a JSON response (even a 404 with a PowerSync error code), the service is running and reachable over HTTPS.
 
 #### 7. Update the Android app
 
