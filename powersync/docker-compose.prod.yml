@@ -40,6 +40,10 @@ services:
       - ../.env
     restart: unless-stopped
 
+networks:
+  default:
+    enable_ipv6: true
+
 volumes:
   mongo_data:
   caddy_data:
