@@ -23,7 +23,7 @@ object SupabaseModule {
     fun provideSupabaseClient(@ApplicationContext context: Context): SupabaseClient =
         createSupabaseClient(
             supabaseUrl = BuildConfig.SUPABASE_URL,
-            supabaseKey = BuildConfig.SUPABASE_ANON_KEY,
+            supabaseKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
         ) {
             install(Auth) {
                 sessionManager = EncryptedSessionManager(context)

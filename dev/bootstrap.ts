@@ -6,16 +6,16 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY!;
 const USER_EMAIL = process.env.BOOTSTRAP_USER_EMAIL!;
 const USER_PASSWORD = process.env.BOOTSTRAP_USER_PASSWORD!;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !USER_EMAIL || !USER_PASSWORD) {
-  console.error("Missing required env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BOOTSTRAP_USER_EMAIL, BOOTSTRAP_USER_PASSWORD");
+if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !USER_EMAIL || !USER_PASSWORD) {
+  console.error("Missing required env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, BOOTSTRAP_USER_EMAIL, BOOTSTRAP_USER_PASSWORD");
   process.exit(1);
 }
 
-const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+const adminClient = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 

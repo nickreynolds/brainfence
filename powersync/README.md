@@ -165,8 +165,8 @@ Set the following:
 ```env
 # Supabase (same values as local dev)
 SUPABASE_URL=https://yourproject.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SECRET_KEY=your-secret-key
 SUPABASE_DB_URL=postgresql://postgres:yourpassword@db.yourproject.supabase.co:5432/postgres
 
 # PowerSync

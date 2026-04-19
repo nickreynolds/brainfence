@@ -36,8 +36,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "SUPABASE_URL",      "\"${envVar("SUPABASE_URL")}\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${envVar("SUPABASE_ANON_KEY")}\"")
+        buildConfigField("String", "SUPABASE_URL",            "\"${envVar("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${envVar("SUPABASE_PUBLISHABLE_KEY")}\"")
 
     }
 
