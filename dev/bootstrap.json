@@ -46,7 +46,13 @@
       "verification_type": "meditation",
       "verification_config": {
         "duration_seconds": 600,
-        "allow_pause": false
+        "allow_pause": false,
+        "companion_apps": [
+          { "platform": "android", "package": "com.calm.android" },
+          { "platform": "macos", "bundle_id": "com.calm.mac" },
+          { "platform": "android", "package": "com.spotlightsix.zentimerlite2" },
+          { "platform": "macos", "bundle_id": "com.insighttimer.ios" }
+        ]
       },
       "recurrence_type": "daily",
       "recurrence_config": {},
