@@ -129,18 +129,36 @@ class BrainfenceService : Service() {
     /**
      * Periodic re-evaluation for time-based checks (schedule windows, time gates).
      * Data-driven changes are handled reactively by [observeData].
-     * Also logs location breadcrumbs every [BREADCRUMB_INTERVAL_EVALS] cycles.
+     * Also applies expired pending config changes and logs location breadcrumbs.
      */
     private fun startPeriodicEvaluation() {
         evalJob = scope.launch {
             while (true) {
                 delay(EVAL_INTERVAL_MS)
+                applyExpiredConfigChanges()
                 runEvaluation()
                 breadcrumbCounter++
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()
                 }
             }
+        }
+    }
+
+    /**
+     * Check for blocking rules with expired time-locks and promote their
+     * pending changes to live config. The subsequent [runEvaluation] will
+     * pick up the updated rules via the reactive [observeData] flow.
+     */
+    private suspend fun applyExpiredConfigChanges() {
+        try {
+            val applied = blockingRepository.applyExpiredPendingChanges()
+            if (applied > 0) {
+                Log.i(TAG, "Applied pending config changes to $applied rule(s)")
+                debugLog.log("config_lock", "Applied pending config changes to $applied rule(s)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying pending config changes", e)
         }
     }
 

@@ -510,7 +510,7 @@ Build the step-by-step routine completion UI.
 
 ### ANDROID-018: Anti-Bypass — Config Change Time Lock
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement the 24-hour delay on blocking rule modifications.

@@ -77,6 +77,9 @@ class BlockingEvaluatorTest {
         conditionTaskIds = conditionTaskIds,
         conditionLogic = conditionLogic,
         activeSchedule = "{}",
+        configLockHours = 24,
+        pendingChanges = null,
+        changesApplyAt = null,
         isActive = true,
     )
 
