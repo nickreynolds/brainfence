@@ -12,6 +12,12 @@
       "color": "#10B981",
       "icon": "dumbbell",
       "sort_order": 1
+    },
+    {
+      "name": "Evening",
+      "color": "#8B5CF6",
+      "icon": "moon",
+      "sort_order": 2
     }
   ],
   "tasks": [
@@ -118,6 +124,23 @@
       ]
     },
     {
+      "title": "Night Walk",
+      "task_type": "simple",
+      "verification_type": "gps",
+      "verification_config": {
+        "lat": 40.702692,
+        "lng": -73.922820,
+        "radius_m": 100,
+        "mode": "leave",
+        "min_duration_m": 0
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": {},
+      "is_blocking_condition": true,
+      "group": "Evening",
+      "sort_order": 0
+    },
+    {
       "title": "Weekly Review",
       "task_type": "simple",
       "verification_type": "manual",
@@ -144,6 +167,24 @@
         "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
         "start": "06:00",
         "end": "11:00"
+      }
+    },
+    {
+      "name": "Night Block",
+      "blocked_apps": [
+        { "platform": "android", "package": "com.twitter.android" },
+        { "platform": "android", "package": "com.instagram.android" },
+        { "platform": "android", "package": "com.google.android.youtube" },
+        { "platform": "macos", "bundle_id": "com.twitter.twitter" },
+        { "platform": "macos", "bundle_id": "com.burbn.instagram" }
+      ],
+      "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
+      "condition_task_titles": ["Night Walk"],
+      "condition_logic": "all",
+      "active_schedule": {
+        "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "start": "20:30",
+        "end": "23:59"
       }
     },
     {

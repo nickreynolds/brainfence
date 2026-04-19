@@ -2,7 +2,8 @@
   "name": "brainfence",
   "private": true,
   "scripts": {
-    "bootstrap": "npx tsx dev/bootstrap.ts"
+    "bootstrap": "npx tsx dev/bootstrap.ts",
+    "bootstrap:full": "npx tsx dev/bootstrap-full.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4"

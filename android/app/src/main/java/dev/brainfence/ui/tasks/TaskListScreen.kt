@@ -331,12 +331,21 @@ private fun BlockingStatusCard(
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = task.title,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f),
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = task.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                                val hint = blockingVerificationHint(task)
+                                if (hint != null) {
+                                    Text(
+                                        text = hint,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
+                                    )
+                                }
+                            }
                             if (task.verificationType == null || task.verificationType == "manual") {
                                 TextButton(onClick = { onQuickComplete(task) }) {
                                     Text("Complete", style = MaterialTheme.typography.labelSmall)
@@ -348,6 +357,15 @@ private fun BlockingStatusCard(
             }
         }
     }
+}
+
+/** Human-readable hint for non-trivial verification types shown in the blocking status card. */
+private fun blockingVerificationHint(task: Task): String? = when (task.verificationType) {
+    "gps" -> "Requires GPS verification"
+    "meditation" -> "Requires meditation session"
+    "duration" -> "Requires timed session"
+    "time_gate" -> "Available during scheduled window only"
+    else -> null
 }
 
 @Composable

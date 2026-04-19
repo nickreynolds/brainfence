@@ -157,6 +157,14 @@ private fun BlockingOverlayScreen(
     }
 }
 
+private fun verificationHint(task: Task): String = when (task.verificationType) {
+    "gps" -> "Requires GPS verification — open the app to start"
+    "meditation" -> "Requires meditation session — open the app to start"
+    "duration" -> "Requires timed session — open the app to start"
+    "time_gate" -> "Only available during scheduled window"
+    else -> "Tap Complete to finish"
+}
+
 @Composable
 private fun RequiredTaskCard(
     task: Task,
@@ -198,14 +206,16 @@ private fun RequiredTaskCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                 )
-                Text(
-                    text = task.verificationType ?: "manual",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (!task.completedToday) {
+                    Text(
+                        text = verificationHint(task),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
-            if (!task.completedToday && task.verificationType == "manual") {
+            if (!task.completedToday && (task.verificationType == null || task.verificationType == "manual")) {
                 Button(onClick = onComplete) {
                     Text("Complete")
                 }
