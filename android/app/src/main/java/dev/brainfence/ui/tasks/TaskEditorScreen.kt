@@ -70,8 +70,6 @@ fun TaskEditorScreen(
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onSetAllowCompanion: (Boolean) -> Unit,
-    onSetStartTime: (String) -> Unit,
-    onSetEndTime: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
@@ -80,6 +78,8 @@ fun TaskEditorScreen(
     onSetRecurrenceType: (String?) -> Unit,
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
+    onSetAvailableFrom: (String) -> Unit,
+    onSetDueAt: (String) -> Unit,
     onNextStep: () -> Unit,
     onPrevStep: () -> Unit,
     onSave: () -> Unit,
@@ -178,8 +178,6 @@ fun TaskEditorScreen(
                         onSetRadiusMeters = onSetRadiusMeters,
                         onSetMeditationSeconds = onSetMeditationSeconds,
                         onSetAllowCompanion = onSetAllowCompanion,
-                        onSetStartTime = onSetStartTime,
-                        onSetEndTime = onSetEndTime,
                         onAddRoutineStep = onAddRoutineStep,
                         onRemoveRoutineStep = onRemoveRoutineStep,
                         onUpdateRoutineStep = onUpdateRoutineStep,
@@ -191,6 +189,8 @@ fun TaskEditorScreen(
                         onSetRecurrenceType = onSetRecurrenceType,
                         onToggleWeeklyDay = onToggleWeeklyDay,
                         onSetBlockingCondition = onSetBlockingCondition,
+                        onSetAvailableFrom = onSetAvailableFrom,
+                        onSetDueAt = onSetDueAt,
                     )
                 }
             }
@@ -400,8 +400,6 @@ private fun ConfigStep(
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onSetAllowCompanion: (Boolean) -> Unit,
-    onSetStartTime: (String) -> Unit,
-    onSetEndTime: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
@@ -412,8 +410,6 @@ private fun ConfigStep(
         "simple" -> SimpleConfigContent(
             state = state,
             onSetVerificationType = onSetVerificationType,
-            onSetStartTime = onSetStartTime,
-            onSetEndTime = onSetEndTime,
             onSetLatitude = onSetLatitude,
             onSetLongitude = onSetLongitude,
             onSetRadiusMeters = onSetRadiusMeters,
@@ -439,8 +435,6 @@ private fun ConfigStep(
 private fun SimpleConfigContent(
     state: TaskEditorState,
     onSetVerificationType: (String) -> Unit,
-    onSetStartTime: (String) -> Unit,
-    onSetEndTime: (String) -> Unit,
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
@@ -463,7 +457,6 @@ private fun SimpleConfigContent(
             Spacer(Modifier.height(8.dp))
             val verificationTypes = listOf(
                 "manual" to "Manual",
-                "time_gate" to "Time Gate",
                 "gps" to "GPS Location",
                 "meditation" to "Meditation",
             )
@@ -482,31 +475,6 @@ private fun SimpleConfigContent(
         }
 
         when (state.verificationType) {
-            "time_gate" -> {
-                item {
-                    Text("Availability Window", style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = state.startTime,
-                            onValueChange = onSetStartTime,
-                            label = { Text("Start (HH:mm)") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = state.endTime,
-                            onValueChange = onSetEndTime,
-                            label = { Text("End (HH:mm)") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
             "gps" -> {
                 item {
                     Text("GPS Location", style = MaterialTheme.typography.titleSmall)
@@ -671,11 +639,6 @@ private fun RoutineConfigContent(
                 }
             }
         }
-
-        // Group steps by superset for visual indicators
-        val supersetGroups = state.routineSteps
-            .mapNotNull { it.supersetGroup }
-            .distinct()
 
         itemsIndexed(state.routineSteps, key = { _, step -> step.id }) { _, step ->
             EditableStepCard(
@@ -895,6 +858,8 @@ private fun ScheduleStep(
     onSetRecurrenceType: (String?) -> Unit,
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
+    onSetAvailableFrom: (String) -> Unit,
+    onSetDueAt: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -943,6 +908,36 @@ private fun ScheduleStep(
                         )
                     }
                 }
+            }
+        }
+
+        item {
+            Text("Availability Window", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "When this task can be completed and when it becomes overdue",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.availableFrom,
+                    onValueChange = onSetAvailableFrom,
+                    label = { Text("Available from (HH:mm)") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = state.dueAt,
+                    onValueChange = onSetDueAt,
+                    label = { Text("Due at (HH:mm)") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 

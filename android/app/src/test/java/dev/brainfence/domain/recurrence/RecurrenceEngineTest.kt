@@ -27,8 +27,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = null,
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"),
             timeZone = zone,
@@ -41,8 +41,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = null,
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = instant("2026-04-15"),
             currentTime = instant("2026-04-16"),
             timeZone = zone,
@@ -59,8 +59,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = instant("2026-04-15"),
             currentTime = instant("2026-04-16"),
             timeZone = zone,
@@ -74,8 +74,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = instant("2026-04-16", 8),
             currentTime = now,
             timeZone = zone,
@@ -88,8 +88,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"),
             timeZone = zone,
@@ -107,8 +107,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = """{"days": ["mon", "thu", "fri"]}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"), // Thursday
             timeZone = zone,
@@ -122,8 +122,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = """{"days": ["mon", "thu", "fri"]}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-15"), // Wednesday
             timeZone = zone,
@@ -145,8 +145,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "weekly",
             recurrenceConfig = """{"day": "thu"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"), // Thursday
             timeZone = zone,
@@ -159,8 +159,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "weekly",
             recurrenceConfig = """{"day": "thu"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = instant("2026-04-16", 8),
             currentTime = instant("2026-04-16", 14),
             timeZone = zone,
@@ -174,8 +174,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "weekly",
             recurrenceConfig = """{"day": "thu"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-15"), // Wednesday
             timeZone = zone,
@@ -195,8 +195,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "monthly",
             recurrenceConfig = """{"week": 2, "day": "wed"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-08"), // 2nd Wednesday
             timeZone = zone,
@@ -209,8 +209,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "monthly",
             recurrenceConfig = """{"week": 2, "day": "wed"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-06"), // Monday before 2nd Wed
             timeZone = zone,
@@ -225,8 +225,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "monthly",
             recurrenceConfig = """{"week": 2, "day": "wed"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"), // Past 2nd Wed
             timeZone = zone,
@@ -246,8 +246,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "interval",
             recurrenceConfig = """{"minutes": 480}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"),
             timeZone = zone,
@@ -260,8 +260,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "interval",
             recurrenceConfig = """{"minutes": 480}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = instant("2026-04-16", 0),
             currentTime = instant("2026-04-16", 9), // 9 hours later > 8 hours
             timeZone = zone,
@@ -274,8 +274,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "interval",
             recurrenceConfig = """{"minutes": 480}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = instant("2026-04-16", 6),
             currentTime = instant("2026-04-16", 10), // 4 hours later < 8 hours
             timeZone = zone,
@@ -290,8 +290,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "interval",
             recurrenceConfig = """{"minutes": 60, "active_days": ["mon", "tue", "wed", "thu", "fri"], "active_start": "09:00", "active_end": "17:00"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-18", 20), // Saturday 8 PM — not an active day
             timeZone = zone,
@@ -305,8 +305,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "interval",
             recurrenceConfig = """{"minutes": 60, "active_start": "09:00", "active_end": "17:00"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16", 20),
             timeZone = zone,
@@ -319,8 +319,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "interval",
             recurrenceConfig = """{"minutes": 60, "active_days": ["mon", "tue", "wed", "thu", "fri"], "active_start": "09:00", "active_end": "17:00"}""",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16", 12), // Thursday noon
             timeZone = zone,
@@ -329,60 +329,60 @@ class RecurrenceEngineTest {
     }
 
     // -----------------------------------------------------------------------
-    // Time gate
+    // Availability window (available_from / due_at)
     // -----------------------------------------------------------------------
 
     @Test
-    fun `time gate - inside window is due`() {
+    fun `available_from - before start is not due`() {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "time_gate",
-            verificationConfig = """{"start_time": "07:00", "end_time": "10:00", "timezone": "America/Los_Angeles"}""",
+            availableFrom = "07:00",
+            dueAt = "10:00",
             lastCompletionAt = null,
-            currentTime = instant("2026-04-16", 11), // 11 AM ET = 8 AM PT
-            timeZone = zone,
-        )
-        assertEquals(OccurrenceStatus.Due, result)
-    }
-
-    @Test
-    fun `time gate - before start is not due`() {
-        val result = computeOccurrenceStatus(
-            recurrenceType = "daily",
-            recurrenceConfig = "{}",
-            verificationType = "time_gate",
-            verificationConfig = """{"start_time": "07:00", "end_time": "10:00", "timezone": "America/Los_Angeles"}""",
-            lastCompletionAt = null,
-            currentTime = instant("2026-04-16", 9), // 9 AM ET = 6 AM PT (before 7 AM start)
+            currentTime = instant("2026-04-16", 6), // 6 AM, before 7 AM available_from
             timeZone = zone,
         )
         assertEquals(OccurrenceStatus.NotDue, result)
     }
 
     @Test
-    fun `time gate - after end is still due (completable)`() {
+    fun `available_from - inside window is due`() {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "time_gate",
-            verificationConfig = """{"start_time": "07:00", "end_time": "10:00", "timezone": "America/Los_Angeles"}""",
+            availableFrom = "07:00",
+            dueAt = "10:00",
             lastCompletionAt = null,
-            currentTime = instant("2026-04-16", 18), // 6 PM ET = 3 PM PT (after 10 AM end)
+            currentTime = instant("2026-04-16", 8), // 8 AM, between 7 and 10
             timeZone = zone,
         )
         assertEquals(OccurrenceStatus.Due, result)
     }
 
     @Test
-    fun `time gate - inside window and already completed today`() {
+    fun `available_from - after due_at is still due (completable)`() {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "time_gate",
-            verificationConfig = """{"start_time": "07:00", "end_time": "10:00", "timezone": "America/Los_Angeles"}""",
-            lastCompletionAt = instant("2026-04-16", 10), // completed at 10 AM ET = 7 AM PT
-            currentTime = instant("2026-04-16", 11),      // now 11 AM ET = 8 AM PT
+            availableFrom = "07:00",
+            dueAt = "10:00",
+            lastCompletionAt = null,
+            currentTime = instant("2026-04-16", 15), // 3 PM, past due_at
+            timeZone = zone,
+        )
+        assertEquals(OccurrenceStatus.Due, result)
+    }
+
+    @Test
+    fun `available_from - inside window and already completed today`() {
+        val result = computeOccurrenceStatus(
+            recurrenceType = "daily",
+            recurrenceConfig = "{}",
+            availableFrom = "07:00",
+            dueAt = "10:00",
+            lastCompletionAt = instant("2026-04-16", 8),
+            currentTime = instant("2026-04-16", 9),
             timeZone = zone,
         )
         assertEquals(OccurrenceStatus.Completed, result)
@@ -397,8 +397,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "unknown_future_type",
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"),
             timeZone = zone,
@@ -412,8 +412,8 @@ class RecurrenceEngineTest {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
-            verificationType = "manual",
-            verificationConfig = "{}",
+            availableFrom = null,
+            dueAt = null,
             lastCompletionAt = null,
             currentTime = instant("2026-04-16"),
             timeZone = zone,

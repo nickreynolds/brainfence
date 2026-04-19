@@ -28,6 +28,8 @@ private val ACTIVE_TASKS_SQL = """
         t.sort_order,
         t.is_blocking_condition,
         t.blocking_rule_ids,
+        t.available_from,
+        t.due_at,
         t.created_at,
         t.updated_at,
         CASE WHEN COUNT(tc.id) > 0 THEN 1 ELSE 0 END AS completed_today
@@ -77,8 +79,10 @@ class TaskRepository @Inject constructor(
         sortOrder           = (cursor.getLong(12) ?: 0L).toInt(),
         isBlockingCondition = (cursor.getLong(13) ?: 0L) != 0L,
         blockingRuleIds     = cursor.getString(14) ?: "[]",
-        createdAt           = cursor.getString(15)!!,
-        updatedAt           = cursor.getString(16)!!,
-        completedToday      = (cursor.getLong(17) ?: 0L) != 0L,
+        availableFrom       = cursor.getString(15),
+        dueAt               = cursor.getString(16),
+        createdAt           = cursor.getString(17)!!,
+        updatedAt           = cursor.getString(18)!!,
+        completedToday      = (cursor.getLong(19) ?: 0L) != 0L,
     )
 }

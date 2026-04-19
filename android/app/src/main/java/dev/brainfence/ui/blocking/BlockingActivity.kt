@@ -161,7 +161,6 @@ private fun verificationHint(task: Task): String = when (task.verificationType) 
     "gps" -> "Requires GPS verification \u2014 open the app to start"
     "meditation" -> "Requires meditation session \u2014 open the app to start"
     "duration" -> "Requires timed session \u2014 open the app to start"
-    "time_gate" -> "Overdue \u2014 tap Complete to unblock"
     else -> "Tap Complete to finish"
 }
 
@@ -215,7 +214,7 @@ private fun RequiredTaskCard(
                 }
             }
 
-            if (!task.completedToday && (task.verificationType == null || task.verificationType == "manual" || task.verificationType == "time_gate")) {
+            if (!task.completedToday && (task.verificationType == null || task.verificationType == "manual")) {
                 Button(onClick = onComplete) {
                     Text("Complete")
                 }

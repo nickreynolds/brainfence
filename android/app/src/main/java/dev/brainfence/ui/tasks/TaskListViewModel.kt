@@ -13,14 +13,19 @@ import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.completion.CompletionRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
+import dev.brainfence.domain.recurrence.TimeGatePhase
+import dev.brainfence.domain.recurrence.computeTaskPhase
 import dev.brainfence.service.BrainfenceService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
+import java.time.Instant
+import java.time.ZoneId
 import javax.inject.Inject
 
 data class BlockedAppInfo(
@@ -33,6 +38,8 @@ data class BlockingStatusState(
     val incompleteTasks: List<Task>,
     val hasActiveRules: Boolean,
 )
+
+enum class HomeTab { ACTIVE, COMPLETED, UPCOMING }
 
 @HiltViewModel
 class TaskListViewModel @Inject constructor(
@@ -49,6 +56,52 @@ class TaskListViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList<Task>(),
         )
+
+    /** Tasks that are available now and not yet completed. */
+    val activeTasks = tasks.map { allTasks ->
+        val now = Instant.now()
+        val zone = ZoneId.systemDefault()
+        allTasks.filter { task ->
+            if (task.completedToday) return@filter false
+            val phase = computeTaskPhase(task.availableFrom, task.dueAt, now, zone)
+            phase != TimeGatePhase.BEFORE_START
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    /** Tasks completed today. */
+    val completedTasks = tasks.map { allTasks ->
+        allTasks.filter { it.completedToday }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    /** Tasks not yet available (before their available_from time). */
+    val upcomingTasks = tasks.map { allTasks ->
+        val now = Instant.now()
+        val zone = ZoneId.systemDefault()
+        allTasks.filter { task ->
+            if (task.completedToday) return@filter false
+            val phase = computeTaskPhase(task.availableFrom, task.dueAt, now, zone)
+            phase == TimeGatePhase.BEFORE_START
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    private val _selectedTab = MutableStateFlow(HomeTab.ACTIVE)
+    val selectedTab = _selectedTab.asStateFlow()
+
+    fun selectTab(tab: HomeTab) {
+        _selectedTab.value = tab
+    }
 
     val activeRules = blockingRepository.watchActiveRules()
         .stateIn(

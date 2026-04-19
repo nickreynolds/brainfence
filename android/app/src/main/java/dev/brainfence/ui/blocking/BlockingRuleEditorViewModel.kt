@@ -42,9 +42,6 @@ data class EditorUiState(
     val blockedDomains: List<String> = emptyList(),
     val conditionTaskIds: Set<String> = emptySet(),
     val conditionLogic: String = "all",
-    val scheduleDays: Set<String> = emptySet(),
-    val scheduleStartTime: String = "",
-    val scheduleEndTime: String = "",
     val isActive: Boolean = true,
     val hasPendingChanges: Boolean = false,
     val changesApplyAt: String? = null,
@@ -115,18 +112,6 @@ class BlockingRuleEditorViewModel @Inject constructor(
     private fun loadExistingRule() {
         viewModelScope.launch {
             val rule = blockingRepository.getRuleById(ruleId!!) ?: return@launch
-            val schedule = try {
-                JSONObject(rule.activeSchedule)
-            } catch (_: Exception) {
-                JSONObject()
-            }
-            val days = mutableSetOf<String>()
-            if (schedule.has("days")) {
-                val arr = schedule.getJSONArray("days")
-                for (i in 0 until arr.length()) days.add(arr.getString(i))
-            }
-            val startKey = if (schedule.has("start_time")) "start_time" else "start"
-            val endKey = if (schedule.has("end_time")) "end_time" else "end"
             _state.value = EditorUiState(
                 isNew = false,
                 name = rule.name,
@@ -134,9 +119,6 @@ class BlockingRuleEditorViewModel @Inject constructor(
                 blockedDomains = rule.blockedDomains,
                 conditionTaskIds = rule.conditionTaskIds.toSet(),
                 conditionLogic = rule.conditionLogic,
-                scheduleDays = days,
-                scheduleStartTime = schedule.optString(startKey, ""),
-                scheduleEndTime = schedule.optString(endKey, ""),
                 isActive = rule.isActive,
                 hasPendingChanges = rule.pendingChanges != null,
                 changesApplyAt = rule.changesApplyAt,
@@ -175,20 +157,6 @@ class BlockingRuleEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(conditionLogic = logic)
     }
 
-    fun toggleDay(day: String) {
-        _state.value = _state.value.let { s ->
-            s.copy(scheduleDays = if (day in s.scheduleDays) s.scheduleDays - day else s.scheduleDays + day)
-        }
-    }
-
-    fun setScheduleStartTime(time: String) {
-        _state.value = _state.value.copy(scheduleStartTime = time)
-    }
-
-    fun setScheduleEndTime(time: String) {
-        _state.value = _state.value.copy(scheduleEndTime = time)
-    }
-
     fun save(onComplete: () -> Unit) {
         val s = _state.value
         if (s.name.isBlank()) {
@@ -209,7 +177,6 @@ class BlockingRuleEditorViewModel @Inject constructor(
                 }
                 val blockedDomains = JSONArray(s.blockedDomains)
                 val conditionTaskIds = JSONArray(s.conditionTaskIds.toList())
-                val activeSchedule = buildScheduleJson(s)
 
                 if (s.isNew) {
                     val userId = sessionRepository.currentUser?.id
@@ -221,7 +188,6 @@ class BlockingRuleEditorViewModel @Inject constructor(
                         blockedDomains = blockedDomains,
                         conditionTaskIds = conditionTaskIds,
                         conditionLogic = s.conditionLogic,
-                        activeSchedule = activeSchedule,
                     )
                 } else {
                     val changes = JSONObject().apply {
@@ -230,7 +196,6 @@ class BlockingRuleEditorViewModel @Inject constructor(
                         put("blocked_domains", blockedDomains)
                         put("condition_task_ids", conditionTaskIds)
                         put("condition_logic", s.conditionLogic)
-                        put("active_schedule", activeSchedule)
                         put("is_active", if (s.isActive) 1 else 0)
                     }
                     blockingRepository.scheduleRuleChange(ruleId!!, changes)
@@ -253,17 +218,5 @@ class BlockingRuleEditorViewModel @Inject constructor(
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
-    }
-
-    private fun buildScheduleJson(s: EditorUiState): JSONObject {
-        val schedule = JSONObject()
-        if (s.scheduleDays.isNotEmpty()) {
-            schedule.put("days", JSONArray(s.scheduleDays.toList()))
-        }
-        if (s.scheduleStartTime.isNotBlank() && s.scheduleEndTime.isNotBlank()) {
-            schedule.put("start_time", s.scheduleStartTime)
-            schedule.put("end_time", s.scheduleEndTime)
-        }
-        return schedule
     }
 }

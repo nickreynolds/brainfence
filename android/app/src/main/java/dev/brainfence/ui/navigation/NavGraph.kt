@@ -149,19 +149,26 @@ fun BrainfenceNavGraph(
         }
         composable(Routes.HOME) {
             val taskViewModel: TaskListViewModel = hiltViewModel()
-            val tasks              by taskViewModel.tasks.collectAsStateWithLifecycle()
+            val activeTasks        by taskViewModel.activeTasks.collectAsStateWithLifecycle()
+            val completedTasks     by taskViewModel.completedTasks.collectAsStateWithLifecycle()
+            val upcomingTasks      by taskViewModel.upcomingTasks.collectAsStateWithLifecycle()
+            val selectedTab        by taskViewModel.selectedTab.collectAsStateWithLifecycle()
             val pendingTask        by taskViewModel.pendingTask.collectAsStateWithLifecycle()
             val blockingStatus     by taskViewModel.blockingStatus.collectAsStateWithLifecycle()
             val activeRules        by taskViewModel.activeRules.collectAsStateWithLifecycle()
             val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
             TaskListScreen(
-                tasks                    = tasks,
+                activeTasks              = activeTasks,
+                completedTasks           = completedTasks,
+                upcomingTasks            = upcomingTasks,
+                selectedTab              = selectedTab,
                 activeRules              = activeRules,
                 pendingTask              = pendingTask,
                 blockingStatus           = blockingStatus,
                 isAccessibilityEnabled   = isAccessibilityEnabled,
                 hasLocationPermission    = hasLocationPerm,
                 onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
+                onSelectTab              = taskViewModel::selectTab,
                 onTaskTap                = { task ->
                     when {
                         task.verificationType == "gps" -> navController.navigate("task/${task.id}")
@@ -315,8 +322,6 @@ fun BrainfenceNavGraph(
                 onSetRadiusMeters = viewModel::setRadiusMeters,
                 onSetMeditationSeconds = viewModel::setMeditationSeconds,
                 onSetAllowCompanion = viewModel::setAllowCompanion,
-                onSetStartTime = viewModel::setStartTime,
-                onSetEndTime = viewModel::setEndTime,
                 onAddRoutineStep = viewModel::addRoutineStep,
                 onRemoveRoutineStep = viewModel::removeRoutineStep,
                 onUpdateRoutineStep = viewModel::updateRoutineStep,
@@ -325,6 +330,8 @@ fun BrainfenceNavGraph(
                 onSetRecurrenceType = viewModel::setRecurrenceType,
                 onToggleWeeklyDay = viewModel::toggleWeeklyDay,
                 onSetBlockingCondition = viewModel::setBlockingCondition,
+                onSetAvailableFrom = viewModel::setAvailableFrom,
+                onSetDueAt = viewModel::setDueAt,
                 onNextStep = viewModel::nextStep,
                 onPrevStep = viewModel::prevStep,
                 onSave = { viewModel.save { navController.popBackStack() } },
@@ -365,9 +372,6 @@ fun BrainfenceNavGraph(
                 onRemoveDomain = viewModel::removeDomain,
                 onToggleConditionTask = viewModel::toggleConditionTask,
                 onSetConditionLogic = viewModel::setConditionLogic,
-                onToggleDay = viewModel::toggleDay,
-                onSetStartTime = viewModel::setScheduleStartTime,
-                onSetEndTime = viewModel::setScheduleEndTime,
                 onSave = { viewModel.save { navController.popBackStack() } },
                 onCancelPendingChanges = viewModel::cancelPendingChanges,
                 onClearError = viewModel::clearError,

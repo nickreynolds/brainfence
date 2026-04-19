@@ -15,11 +15,11 @@ class BlockingEvaluatorTest {
     private fun instant(hour: Int, minute: Int = 0) =
         LocalDate.parse("2026-04-16").atTime(hour, minute).atZone(zone).toInstant()
 
-    private fun timeGateTask(
+    private fun taskWithWindow(
         id: String = "task-1",
         completedToday: Boolean = false,
-        startTime: String = "07:00",
-        endTime: String = "10:00",
+        availableFrom: String? = "07:00",
+        dueAt: String? = "10:00",
     ) = Task(
         id = id,
         userId = "user-1",
@@ -29,13 +29,15 @@ class BlockingEvaluatorTest {
         status = "active",
         recurrenceType = "daily",
         recurrenceConfig = "{}",
-        verificationType = "time_gate",
-        verificationConfig = """{"start_time": "$startTime", "end_time": "$endTime", "timezone": "America/New_York"}""",
+        verificationType = "manual",
+        verificationConfig = "{}",
         tags = "[]",
         groupId = null,
         sortOrder = 0,
         isBlockingCondition = true,
         blockingRuleIds = "[]",
+        availableFrom = availableFrom,
+        dueAt = dueAt,
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
@@ -60,6 +62,8 @@ class BlockingEvaluatorTest {
         sortOrder = 0,
         isBlockingCondition = true,
         blockingRuleIds = "[]",
+        availableFrom = null,
+        dueAt = null,
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
@@ -76,7 +80,6 @@ class BlockingEvaluatorTest {
         blockedDomains = emptyList(),
         conditionTaskIds = conditionTaskIds,
         conditionLogic = conditionLogic,
-        activeSchedule = "{}",
         configLockHours = 24,
         pendingChanges = null,
         changesApplyAt = null,
@@ -84,24 +87,24 @@ class BlockingEvaluatorTest {
     )
 
     // -----------------------------------------------------------------------
-    // Time gate + blocking evaluator
+    // Task with availability window + blocking evaluator
     // -----------------------------------------------------------------------
 
     @Test
-    fun `time gate task before start_time does not cause blocking`() {
-        val task = timeGateTask(completedToday = false)
+    fun `task before available_from does not cause blocking`() {
+        val task = taskWithWindow(completedToday = false)
         val result = evaluateBlocking(
             rules = listOf(rule()),
             tasks = listOf(task),
-            currentTime = instant(6, 0), // before 07:00 start
+            currentTime = instant(6, 0), // before 07:00 available_from
             timeZone = zone,
         )
-        assertTrue("Apps should not be blocked before start_time", result.blockedApps.isEmpty())
+        assertTrue("Apps should not be blocked before available_from", result.blockedApps.isEmpty())
     }
 
     @Test
-    fun `time gate task during active window does not cause blocking`() {
-        val task = timeGateTask(completedToday = false)
+    fun `task during active window does not cause blocking`() {
+        val task = taskWithWindow(completedToday = false)
         val result = evaluateBlocking(
             rules = listOf(rule()),
             tasks = listOf(task),
@@ -112,20 +115,20 @@ class BlockingEvaluatorTest {
     }
 
     @Test
-    fun `time gate task after end_time and not completed causes blocking`() {
-        val task = timeGateTask(completedToday = false)
+    fun `task after due_at and not completed causes blocking`() {
+        val task = taskWithWindow(completedToday = false)
         val result = evaluateBlocking(
             rules = listOf(rule()),
             tasks = listOf(task),
-            currentTime = instant(11, 0), // after 10:00 end
+            currentTime = instant(11, 0), // after 10:00 due_at
             timeZone = zone,
         )
         assertEquals(setOf("com.twitter.android"), result.blockedApps)
     }
 
     @Test
-    fun `time gate task after end_time but completed does not cause blocking`() {
-        val task = timeGateTask(completedToday = true)
+    fun `task after due_at but completed does not cause blocking`() {
+        val task = taskWithWindow(completedToday = true)
         val result = evaluateBlocking(
             rules = listOf(rule()),
             tasks = listOf(task),
@@ -136,34 +139,32 @@ class BlockingEvaluatorTest {
     }
 
     @Test
-    fun `time gate completed during active window does not cause blocking later`() {
-        val task = timeGateTask(completedToday = true)
+    fun `task completed during active window does not cause blocking later`() {
+        val task = taskWithWindow(completedToday = true)
         val result = evaluateBlocking(
             rules = listOf(rule()),
             tasks = listOf(task),
-            currentTime = instant(15, 0), // well past end
+            currentTime = instant(15, 0), // well past due_at
             timeZone = zone,
         )
         assertTrue(result.blockedApps.isEmpty())
     }
 
     // -----------------------------------------------------------------------
-    // Mixed conditions: time_gate + manual with "all" logic
+    // Mixed conditions: timed task + manual with "all" logic
     // -----------------------------------------------------------------------
 
     @Test
-    fun `all logic - time gate before end and manual incomplete - no blocking`() {
-        // Before the time gate's end_time, the time_gate condition is treated as met.
-        // The manual task is NOT completed, so "all" is not met → blocks? No.
-        // Wait: time_gate returns true (met), manual returns false (not met) → all = false → block.
-        // But the key point: the time_gate NOT blocking shouldn't override the manual.
-        val tgTask = timeGateTask(id = "task-1", completedToday = false)
+    fun `all logic - timed task before due_at and manual incomplete - blocks`() {
+        // Timed task is before due_at so its condition is met.
+        // Manual task (no window) is NOT completed → condition not met → blocks.
+        val timedTask = taskWithWindow(id = "task-1", completedToday = false)
         val mTask = manualTask(id = "task-2", completedToday = false)
         val r = rule(conditionTaskIds = listOf("task-1", "task-2"), conditionLogic = "all")
         val result = evaluateBlocking(
             rules = listOf(r),
-            tasks = listOf(tgTask, mTask),
-            currentTime = instant(8, 0), // time gate active window
+            tasks = listOf(timedTask, mTask),
+            currentTime = instant(8, 0), // timed task in active window
             timeZone = zone,
         )
         // Manual task is incomplete → blocks
@@ -171,29 +172,29 @@ class BlockingEvaluatorTest {
     }
 
     @Test
-    fun `any logic - time gate before end and manual incomplete - no blocking`() {
-        // With "any" logic: time_gate returns true (treated as met before end_time) → any is satisfied
-        val tgTask = timeGateTask(id = "task-1", completedToday = false)
+    fun `any logic - timed task before due_at and manual incomplete - no blocking`() {
+        // With "any" logic: timed task's condition is met (before due_at) → any is satisfied
+        val timedTask = taskWithWindow(id = "task-1", completedToday = false)
         val mTask = manualTask(id = "task-2", completedToday = false)
         val r = rule(conditionTaskIds = listOf("task-1", "task-2"), conditionLogic = "any")
         val result = evaluateBlocking(
             rules = listOf(r),
-            tasks = listOf(tgTask, mTask),
+            tasks = listOf(timedTask, mTask),
             currentTime = instant(8, 0),
             timeZone = zone,
         )
-        assertTrue("Any logic: time_gate treated as met before end_time", result.blockedApps.isEmpty())
+        assertTrue("Any logic: timed task treated as met before due_at", result.blockedApps.isEmpty())
     }
 
     @Test
-    fun `all logic - both past end and incomplete - blocks`() {
-        val tgTask = timeGateTask(id = "task-1", completedToday = false)
+    fun `all logic - both past due_at and incomplete - blocks`() {
+        val timedTask = taskWithWindow(id = "task-1", completedToday = false)
         val mTask = manualTask(id = "task-2", completedToday = false)
         val r = rule(conditionTaskIds = listOf("task-1", "task-2"), conditionLogic = "all")
         val result = evaluateBlocking(
             rules = listOf(r),
-            tasks = listOf(tgTask, mTask),
-            currentTime = instant(11, 0), // past end_time
+            tasks = listOf(timedTask, mTask),
+            currentTime = instant(11, 0), // past due_at
             timeZone = zone,
         )
         assertEquals(setOf("com.twitter.android"), result.blockedApps)

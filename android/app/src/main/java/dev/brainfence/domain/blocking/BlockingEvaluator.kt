@@ -3,11 +3,8 @@ package dev.brainfence.domain.blocking
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
-import dev.brainfence.domain.recurrence.computeTimeGatePhase
-import org.json.JSONObject
-import java.time.DayOfWeek
+import dev.brainfence.domain.recurrence.computeTaskPhase
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 
 /**
@@ -23,6 +20,11 @@ data class BlockingState(
 
 /**
  * Evaluates blocking rules against current task completion state.
+ *
+ * A rule blocks when it is active and its condition tasks are not met.
+ * Blocking is driven by each task's due_at time — a task only triggers
+ * blocking once it is past its due_at and still incomplete.
+ *
  * Pure function — no side effects or dependencies.
  */
 fun evaluateBlocking(
@@ -39,10 +41,9 @@ fun evaluateBlocking(
 
     for (rule in rules) {
         if (!rule.isActive) continue
-        if (!isWithinSchedule(rule.activeSchedule, currentTime, timeZone)) continue
         if (conditionsMet(rule, taskById, currentTime, timeZone)) continue
 
-        // Rule is active, within schedule, and conditions NOT met → block
+        // Rule is active and conditions NOT met → block
         blockedApps.addAll(rule.blockedApps)
         blockedDomains.addAll(rule.blockedDomains)
         for (app in rule.blockedApps) {
@@ -56,8 +57,11 @@ fun evaluateBlocking(
 /**
  * Returns true if the rule's conditions are satisfied (i.e. blocking should be lifted).
  *
- * For time_gate condition tasks, the condition is considered "met" (non-blocking)
- * until the task's end_time has passed. After end_time, normal completion logic applies.
+ * A condition task is considered "met" (non-blocking) when:
+ * - It is completed today, OR
+ * - It has a due_at and the current time is before that due_at (not yet overdue), OR
+ * - It has no due_at and is completed (for tasks without time constraints that
+ *   aren't yet completed, they block immediately)
  */
 private fun conditionsMet(
     rule: BlockingRule,
@@ -71,11 +75,9 @@ private fun conditionsMet(
         val task = taskById[taskId] ?: return@map false
         if (task.completedToday) return@map true
 
-        // Time-gated tasks don't trigger blocking until after their end_time
-        if (task.verificationType == "time_gate") {
-            val phase = computeTimeGatePhase(task.verificationConfig, currentTime, timeZone)
-            return@map phase != TimeGatePhase.PAST_END
-        }
+        // If the task has a due_at, it only triggers blocking after that time
+        val phase = computeTaskPhase(task.availableFrom, task.dueAt, currentTime, timeZone)
+        if (phase != null && phase != TimeGatePhase.PAST_DUE) return@map true
 
         false
     }
@@ -84,49 +86,4 @@ private fun conditionsMet(
         "any" -> results.any { it }
         else  -> results.all { it } // "all" is the default
     }
-}
-
-/**
- * Returns true if the current time falls within the rule's active schedule.
- * An empty/null schedule means "always active".
- */
-private fun isWithinSchedule(
-    scheduleJson: String,
-    currentTime: Instant,
-    timeZone: ZoneId,
-): Boolean {
-    if (scheduleJson.isBlank() || scheduleJson == "{}" || scheduleJson == "null") return true
-
-    val schedule = JSONObject(scheduleJson)
-    val zoned = currentTime.atZone(timeZone)
-
-    // Check days
-    if (schedule.has("days")) {
-        val days = schedule.getJSONArray("days")
-        val allowedDays = (0 until days.length()).map { parseDayOfWeek(days.getString(it)) }.toSet()
-        if (zoned.dayOfWeek !in allowedDays) return false
-    }
-
-    // Check time window — support both "start"/"end" and "start_time"/"end_time" keys
-    val startKey = if (schedule.has("start")) "start" else "start_time"
-    val endKey = if (schedule.has("end")) "end" else "end_time"
-    if (schedule.has(startKey) && schedule.has(endKey)) {
-        val start = LocalTime.parse(schedule.getString(startKey))
-        val end = LocalTime.parse(schedule.getString(endKey))
-        val now = zoned.toLocalTime()
-        if (now < start || now >= end) return false
-    }
-
-    return true
-}
-
-private fun parseDayOfWeek(abbrev: String): DayOfWeek = when (abbrev.lowercase()) {
-    "mon" -> DayOfWeek.MONDAY
-    "tue" -> DayOfWeek.TUESDAY
-    "wed" -> DayOfWeek.WEDNESDAY
-    "thu" -> DayOfWeek.THURSDAY
-    "fri" -> DayOfWeek.FRIDAY
-    "sat" -> DayOfWeek.SATURDAY
-    "sun" -> DayOfWeek.SUNDAY
-    else -> error("Unknown day abbreviation: $abbrev")
 }

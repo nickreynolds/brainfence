@@ -14,8 +14,8 @@ import java.time.temporal.TemporalAdjusters
  *
  * @param recurrenceType  null (one-off), "daily", "weekly", "monthly", "interval"
  * @param recurrenceConfig JSON string with type-specific configuration
- * @param verificationType  "manual", "gps", "duration", "meditation", "time_gate"
- * @param verificationConfig JSON string with verification-specific configuration
+ * @param availableFrom    HH:MM string — when the task becomes completable, or null
+ * @param dueAt            HH:MM string — when the task becomes overdue, or null
  * @param lastCompletionAt  the most recent completion timestamp, or null if never completed
  * @param currentTime       the current instant
  * @param timeZone          the device/user timezone for day-boundary calculations
@@ -23,16 +23,17 @@ import java.time.temporal.TemporalAdjusters
 fun computeOccurrenceStatus(
     recurrenceType: String?,
     recurrenceConfig: String,
-    verificationType: String?,
-    verificationConfig: String,
+    availableFrom: String?,
+    dueAt: String?,
     lastCompletionAt: Instant?,
     currentTime: Instant,
     timeZone: ZoneId = ZoneId.systemDefault(),
 ): OccurrenceStatus {
-    // Time gate check: if outside the window, the task is not actionable
-    if (verificationType == "time_gate") {
-        val gateStatus = checkTimeGate(verificationConfig, currentTime, timeZone)
-        if (gateStatus != null) return gateStatus
+    // Availability check: if the task has an available_from and current time is before it,
+    // the task is not yet actionable today.
+    val phase = computeTaskPhase(availableFrom, dueAt, currentTime, timeZone)
+    if (phase == TimeGatePhase.BEFORE_START) {
+        return OccurrenceStatus.NotDue
     }
 
     return when (recurrenceType) {
@@ -42,30 +43,6 @@ fun computeOccurrenceStatus(
         "monthly" -> monthlyStatus(recurrenceConfig, lastCompletionAt, currentTime, timeZone)
         "interval" -> intervalStatus(recurrenceConfig, lastCompletionAt, currentTime, timeZone)
         else -> OccurrenceStatus.NotDue
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Time gate
-// ---------------------------------------------------------------------------
-
-/**
- * Checks the time gate phase and short-circuits the occurrence status when appropriate.
- *
- * - Before start_time → [OccurrenceStatus.NotDue] (task is locked)
- * - During the active window → null (continue with normal recurrence check)
- * - After end_time → null (task remains completable; blocking kicks in if incomplete)
- */
-private fun checkTimeGate(
-    verificationConfig: String,
-    currentTime: Instant,
-    defaultZone: ZoneId,
-): OccurrenceStatus? {
-    val phase = computeTimeGatePhase(verificationConfig, currentTime, defaultZone)
-    return when (phase) {
-        TimeGatePhase.BEFORE_START -> OccurrenceStatus.NotDue
-        TimeGatePhase.ACTIVE -> null
-        TimeGatePhase.PAST_END -> null
     }
 }
 

@@ -44,6 +44,8 @@ val AppSchema = Schema(
             Column.integer("sort_order"),
             Column.integer("is_blocking_condition"),
             Column.text("blocking_rule_ids"),     // UUID[] as JSON array
+            Column.text("available_from"),        // HH:MM — when task becomes completable
+            Column.text("due_at"),                // HH:MM — when task becomes overdue / triggers blocking
             Column.text("created_at"),
             Column.text("updated_at"),
         ),
@@ -92,7 +94,6 @@ val AppSchema = Schema(
             Column.text("blocked_domains"),      // TEXT[] as JSON array
             Column.text("condition_task_ids"),   // UUID[] as JSON array
             Column.text("condition_logic"),
-            Column.text("active_schedule"),      // JSONB
             Column.integer("config_lock_hours"),
             Column.text("pending_changes"),      // JSONB
             Column.text("changes_apply_at"),

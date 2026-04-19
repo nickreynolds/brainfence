@@ -35,6 +35,8 @@
       "recurrence_type": "daily",
       "recurrence_config": {},
       "is_blocking_condition": true,
+      "available_from": "06:00",
+      "due_at": "09:00",
       "group": "Morning",
       "sort_order": 0
     },
@@ -49,6 +51,8 @@
       "recurrence_type": "daily",
       "recurrence_config": {},
       "is_blocking_condition": true,
+      "available_from": "06:00",
+      "due_at": "09:00",
       "group": "Morning",
       "sort_order": 1
     },
@@ -59,6 +63,8 @@
       "recurrence_type": "daily",
       "recurrence_config": {},
       "is_blocking_condition": true,
+      "available_from": "06:00",
+      "due_at": "09:00",
       "group": "Morning",
       "sort_order": 2,
       "steps": [
@@ -96,15 +102,12 @@
     {
       "title": "Take Vitamins",
       "task_type": "simple",
-      "verification_type": "time_gate",
-      "verification_config": {
-        "start_time": "07:00",
-        "end_time": "10:00",
-        "timezone": "America/Los_Angeles"
-      },
+      "verification_type": "manual",
       "recurrence_type": "daily",
       "recurrence_config": {},
       "is_blocking_condition": false,
+      "available_from": "07:00",
+      "due_at": "10:00",
       "group": "Morning",
       "sort_order": 5
     },
@@ -137,6 +140,8 @@
       "recurrence_type": "daily",
       "recurrence_config": {},
       "is_blocking_condition": true,
+      "available_from": "19:00",
+      "due_at": "21:00",
       "group": "Evening",
       "sort_order": 0
     },
@@ -162,12 +167,7 @@
       ],
       "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
       "condition_task_titles": ["Morning Walk", "Morning Meditation", "Morning Routine"],
-      "condition_logic": "all",
-      "active_schedule": {
-        "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-        "start": "06:00",
-        "end": "11:00"
-      }
+      "condition_logic": "all"
     },
     {
       "name": "Night Block",
@@ -180,12 +180,7 @@
       ],
       "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
       "condition_task_titles": ["Night Walk"],
-      "condition_logic": "all",
-      "active_schedule": {
-        "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-        "start": "20:30",
-        "end": "23:59"
-      }
+      "condition_logic": "all"
     },
     {
       "name": "Dev Test Block",
@@ -194,8 +189,7 @@
       ],
       "blocked_domains": ["youtube.com"],
       "condition_task_titles": ["Morning Routine"],
-      "condition_logic": "all",
-      "active_schedule": "auto"
+      "condition_logic": "all"
     }
   ]
 }

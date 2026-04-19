@@ -43,6 +43,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -61,20 +63,23 @@ import androidx.core.content.ContextCompat
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
-import dev.brainfence.domain.recurrence.computeTimeGatePhase
-import org.json.JSONObject
+import dev.brainfence.domain.recurrence.computeTaskPhase
 import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskListScreen(
-    tasks: List<Task>,
+    activeTasks: List<Task>,
+    completedTasks: List<Task>,
+    upcomingTasks: List<Task>,
+    selectedTab: HomeTab,
     activeRules: List<BlockingRule>,
     pendingTask: Task?,
     blockingStatus: BlockingStatusState,
     isAccessibilityEnabled: Boolean,
     hasLocationPermission: Boolean,
     onLocationPermissionResult: (Boolean) -> Unit,
+    onSelectTab: (HomeTab) -> Unit,
     onTaskTap: (Task) -> Unit,
     onConfirmComplete: () -> Unit,
     onDismissComplete: () -> Unit,
@@ -85,32 +90,13 @@ fun TaskListScreen(
 ) {
     val context = LocalContext.current
 
-    // Pre-compute "due by" time for each blocking-condition task (end of blocking window)
-    val dueTimeByTask = remember(activeRules) {
-        buildMap<String, String?> {
-            for (rule in activeRules) {
-                if (!rule.isActive) continue
-                val endTime = try {
-                    val schedule = JSONObject(rule.activeSchedule)
-                    val key = if (schedule.has("end_time")) "end_time" else "end"
-                    if (schedule.has(key)) schedule.getString(key) else null
-                } catch (_: Exception) { null }
-                for (taskId in rule.conditionTaskIds) {
-                    if (taskId !in this) put(taskId, endTime)
-                    else if (endTime == null) put(taskId, null)
-                }
-            }
-        }
-    }
-
     // Foreground location permission launcher
     val fineLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         if (fineGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Fine location granted — now request background separately (Android 10+)
-            onLocationPermissionResult(false) // signal partial grant; background requested below
+            onLocationPermissionResult(false)
         } else {
             onLocationPermissionResult(fineGranted)
         }
@@ -144,53 +130,116 @@ fun TaskListScreen(
             )
         },
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            if (!isAccessibilityEnabled) {
-                item(key = "a11y_banner") {
-                    AccessibilityBanner()
-                }
-            }
-            if (!hasLocationPermission) {
-                item(key = "location_banner") {
-                    val hasFineLocation = ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.ACCESS_FINE_LOCATION,
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    LocationPermissionBanner(
-                        onRequestPermission = {
-                            if (!hasFineLocation) {
-                                fineLocationLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                                    )
-                                )
-                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                backgroundLocationLauncher.launch(
-                                    Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                                )
-                            }
-                        },
-                    )
-                }
-            }
-            if (blockingStatus.hasActiveRules) {
-                item(key = "blocking_status") {
-                    BlockingStatusCard(
-                        blockingStatus = blockingStatus,
-                        onQuickComplete = onTaskTap,
-                    )
-                }
-            }
-            items(tasks, key = { it.id }) { task ->
-                TaskItem(
-                    task    = task,
-                    dueTime = dueTimeByTask[task.id],
-                    onClick = { onTaskTap(task) },
+            // Tab bar
+            TabRow(selectedTabIndex = selectedTab.ordinal) {
+                Tab(
+                    selected = selectedTab == HomeTab.ACTIVE,
+                    onClick = { onSelectTab(HomeTab.ACTIVE) },
+                    text = {
+                        Text(
+                            if (activeTasks.isNotEmpty()) "Active (${activeTasks.size})"
+                            else "Active"
+                        )
+                    },
                 )
+                Tab(
+                    selected = selectedTab == HomeTab.COMPLETED,
+                    onClick = { onSelectTab(HomeTab.COMPLETED) },
+                    text = {
+                        Text(
+                            if (completedTasks.isNotEmpty()) "Done (${completedTasks.size})"
+                            else "Done"
+                        )
+                    },
+                )
+                Tab(
+                    selected = selectedTab == HomeTab.UPCOMING,
+                    onClick = { onSelectTab(HomeTab.UPCOMING) },
+                    text = {
+                        Text(
+                            if (upcomingTasks.isNotEmpty()) "Upcoming (${upcomingTasks.size})"
+                            else "Upcoming"
+                        )
+                    },
+                )
+            }
+
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                // Banners only on the Active tab
+                if (selectedTab == HomeTab.ACTIVE) {
+                    if (!isAccessibilityEnabled) {
+                        item(key = "a11y_banner") {
+                            AccessibilityBanner()
+                        }
+                    }
+                    if (!hasLocationPermission) {
+                        item(key = "location_banner") {
+                            val hasFineLocation = ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.ACCESS_FINE_LOCATION,
+                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            LocationPermissionBanner(
+                                onRequestPermission = {
+                                    if (!hasFineLocation) {
+                                        fineLocationLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                            )
+                                        )
+                                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                        backgroundLocationLauncher.launch(
+                                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    if (blockingStatus.hasActiveRules) {
+                        item(key = "blocking_status") {
+                            BlockingStatusCard(
+                                blockingStatus = blockingStatus,
+                                onQuickComplete = onTaskTap,
+                            )
+                        }
+                    }
+                }
+
+                val displayTasks = when (selectedTab) {
+                    HomeTab.ACTIVE -> activeTasks
+                    HomeTab.COMPLETED -> completedTasks
+                    HomeTab.UPCOMING -> upcomingTasks
+                }
+
+                if (displayTasks.isEmpty()) {
+                    item(key = "empty") {
+                        val message = when (selectedTab) {
+                            HomeTab.ACTIVE -> "All tasks completed or upcoming"
+                            HomeTab.COMPLETED -> "No tasks completed yet today"
+                            HomeTab.UPCOMING -> "No upcoming tasks"
+                        }
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(24.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                items(displayTasks, key = { it.id }) { task ->
+                    TaskItem(
+                        task = task,
+                        showAsCompleted = selectedTab == HomeTab.COMPLETED,
+                        showAsUpcoming = selectedTab == HomeTab.UPCOMING,
+                        onClick = { onTaskTap(task) },
+                    )
+                }
             }
         }
     }
@@ -213,63 +262,70 @@ fun TaskListScreen(
 @Composable
 private fun TaskItem(
     task: Task,
-    dueTime: String?,
+    showAsCompleted: Boolean,
+    showAsUpcoming: Boolean,
     onClick: () -> Unit,
 ) {
-    val timeGatePhase = if (task.verificationType == "time_gate") {
-        computeTimeGatePhase(task.verificationConfig, Instant.now())
-    } else null
+    val phase = computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
 
-    val isLocked = timeGatePhase == TimeGatePhase.BEFORE_START && !task.completedToday
-    val isUrgent = timeGatePhase == TimeGatePhase.PAST_END && !task.completedToday
+    val isLocked = showAsUpcoming || (phase == TimeGatePhase.BEFORE_START && !task.completedToday)
+    val isOverdue = phase == TimeGatePhase.PAST_DUE && !task.completedToday
 
     ListItem(
         modifier = Modifier
-            .clickable(enabled = !task.completedToday && !isLocked, onClick = onClick)
+            .clickable(enabled = !showAsCompleted && !isLocked, onClick = onClick)
             .alpha(when {
-                task.completedToday -> 0.5f
+                showAsCompleted -> 0.5f
                 isLocked -> 0.4f
                 else -> 1f
             }),
         headlineContent = { Text(task.title) },
         supportingContent = {
             when {
-                isLocked -> {
-                    val config = JSONObject(task.verificationConfig)
+                showAsUpcoming && task.availableFrom != null -> {
                     Text(
-                        text = "Available at ${config.getString("start_time")}",
+                        text = "Available at ${task.availableFrom}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                isUrgent && task.isBlockingCondition -> {
+                isOverdue && task.isBlockingCondition -> {
                     Text(
                         text = "Overdue \u2014 blocking apps until completed",
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                isUrgent -> {
+                isOverdue -> {
                     Text(
                         text = "Overdue",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                timeGatePhase == TimeGatePhase.ACTIVE && !task.completedToday -> {
-                    val config = JSONObject(task.verificationConfig)
+                phase == TimeGatePhase.ACTIVE && task.dueAt != null && !task.completedToday -> {
                     Text(
-                        text = "Complete before ${config.getString("end_time")}",
+                        text = "Complete before ${task.dueAt}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                showAsCompleted -> {
+                    val recur = task.recurrenceType
+                    if (recur != null) {
+                        Text(
+                            text = recur.replaceFirstChar { it.uppercase() },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 else -> {
                     val recur = task.recurrenceType
                     if (recur != null) {
                         val label = recur.replaceFirstChar { it.uppercase() }
-                        val blockText = if (task.isBlockingCondition && !task.completedToday) {
-                            if (dueTime != null) " · Due by $dueTime"
-                            else " · Due today"
+                        val dueText = if (task.isBlockingCondition && task.dueAt != null) {
+                            " \u00b7 Due by ${task.dueAt}"
+                        } else if (task.isBlockingCondition) {
+                            " \u00b7 Due today"
                         } else ""
                         Text(
-                            text = "$label$blockText",
+                            text = "$label$dueText",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -278,7 +334,7 @@ private fun TaskItem(
         },
         leadingContent = {
             when {
-                task.completedToday -> Icon(
+                showAsCompleted -> Icon(
                     imageVector        = Icons.Default.CheckCircle,
                     contentDescription = "Completed today",
                     tint               = MaterialTheme.colorScheme.primary,
@@ -288,12 +344,12 @@ private fun TaskItem(
                     contentDescription = "Not yet available",
                     tint               = MaterialTheme.colorScheme.outline,
                 )
-                isUrgent && task.isBlockingCondition -> Icon(
+                isOverdue && task.isBlockingCondition -> Icon(
                     imageVector        = Icons.Default.Warning,
                     contentDescription = "Overdue",
                     tint               = MaterialTheme.colorScheme.error,
                 )
-                isUrgent -> Icon(
+                isOverdue -> Icon(
                     imageVector        = Icons.Default.Warning,
                     contentDescription = "Overdue",
                     tint               = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -442,7 +498,7 @@ private fun BlockingStatusCard(
                                     )
                                 }
                             }
-                            if (task.verificationType == null || task.verificationType == "manual" || task.verificationType == "time_gate") {
+                            if (task.verificationType == null || task.verificationType == "manual") {
                                 TextButton(onClick = { onQuickComplete(task) }) {
                                     Text("Complete", style = MaterialTheme.typography.labelSmall)
                                 }
@@ -461,7 +517,6 @@ private fun blockingVerificationHint(task: Task): String? = when {
     task.verificationType == "gps" -> "Requires GPS verification"
     task.verificationType == "meditation" -> "Requires meditation session"
     task.verificationType == "duration" -> "Requires timed session"
-    task.verificationType == "time_gate" -> "Overdue \u2014 complete now to unblock"
     else -> null
 }
 

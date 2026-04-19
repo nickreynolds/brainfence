@@ -34,6 +34,8 @@ interface Task {
   recurrence_type?: string;
   recurrence_config?: Record<string, unknown>;
   is_blocking_condition?: boolean;
+  available_from?: string;
+  due_at?: string;
   group?: string;
   sort_order?: number;
   steps?: Step[];
@@ -45,24 +47,6 @@ interface BlockingRule {
   blocked_domains: string[];
   condition_task_titles: string[];
   condition_logic: string;
-  active_schedule?: Record<string, unknown> | string;
-}
-
-/**
- * When active_schedule is "auto", compute a time window that includes
- * the current time so at least one blocking rule is always testable.
- */
-function computeAutoSchedule(): Record<string, unknown> {
-  const now = new Date();
-  const hour = now.getHours();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const startHour = Math.max(0, hour - 1);
-  const endHour = Math.min(23, hour + 3);
-  return {
-    days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-    start: `${pad(startHour)}:00`,
-    end: `${pad(endHour)}:59`,
-  };
 }
 
 interface BootstrapData {
@@ -190,12 +174,6 @@ async function main() {
       if (!id) throw new Error(`Blocking rule "${rule.name}" references unknown task: "${title}"`);
       return id;
     });
-
-    // Replace "auto" schedule with a computed window centered on the current time
-    if (ruleFields.active_schedule === "auto") {
-      ruleFields.active_schedule = computeAutoSchedule();
-      console.log(`  Schedule for "${rule.name}" set to:`, JSON.stringify(ruleFields.active_schedule));
-    }
 
     const row = { ...ruleFields, condition_task_ids, user_id: userId };
 

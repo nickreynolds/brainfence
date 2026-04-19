@@ -24,13 +24,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -47,7 +45,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,9 +66,6 @@ fun BlockingRuleEditorScreen(
     onRemoveDomain: (String) -> Unit,
     onToggleConditionTask: (String) -> Unit,
     onSetConditionLogic: (String) -> Unit,
-    onToggleDay: (String) -> Unit,
-    onSetStartTime: (String) -> Unit,
-    onSetEndTime: (String) -> Unit,
     onSave: () -> Unit,
     onCancelPendingChanges: () -> Unit,
     onClearError: () -> Unit,
@@ -347,7 +341,7 @@ fun BlockingRuleEditorScreen(
             item(key = "tasks_header") {
                 SectionHeader("Condition Tasks")
                 Text(
-                    text = "Tasks that must be completed to unblock the apps above.",
+                    text = "Tasks that must be completed to unblock the apps above. Blocking activates when tasks are past their due time.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -423,60 +417,6 @@ fun BlockingRuleEditorScreen(
 
                 item(key = "task_picker_end") {
                     Spacer(Modifier.height(8.dp))
-                }
-            }
-
-            // --- Active Schedule ---
-            item(key = "schedule_header") {
-                SectionHeader("Active Schedule")
-                Text(
-                    text = "When the rule is active. Leave empty for always active.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-            }
-
-            item(key = "schedule_days") {
-                val allDays = listOf("mon" to "M", "tue" to "T", "wed" to "W", "thu" to "T", "fri" to "F", "sat" to "S", "sun" to "S")
-                val dayLabels = listOf("mon" to "Mon", "tue" to "Tue", "wed" to "Wed", "thu" to "Thu", "fri" to "Fri", "sat" to "Sat", "sun" to "Sun")
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    dayLabels.forEach { (key, label) ->
-                        FilterChip(
-                            selected = key in state.scheduleDays,
-                            onClick = { onToggleDay(key) },
-                            label = { Text(label) },
-                        )
-                    }
-                }
-            }
-
-            item(key = "schedule_times") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    OutlinedTextField(
-                        value = state.scheduleStartTime,
-                        onValueChange = onSetStartTime,
-                        label = { Text("Start (HH:mm)") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = state.scheduleEndTime,
-                        onValueChange = onSetEndTime,
-                        label = { Text("End (HH:mm)") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
                 }
             }
 

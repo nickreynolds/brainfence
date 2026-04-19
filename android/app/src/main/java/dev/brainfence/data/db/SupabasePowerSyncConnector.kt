@@ -33,7 +33,7 @@ class SupabasePowerSyncConnector @Inject constructor(
             "routine_steps" to setOf("config"),
             "task_completions" to setOf("verification_data"),
             "step_completions" to setOf("data"),
-            "blocking_rules" to setOf("blocked_apps", "active_schedule", "pending_changes"),
+            "blocking_rules" to setOf("blocked_apps", "pending_changes"),
             "groups" to setOf("visibility_schedule"),
             "notes" to setOf("tags"),
         )

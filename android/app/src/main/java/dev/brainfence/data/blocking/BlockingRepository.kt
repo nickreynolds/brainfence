@@ -23,7 +23,6 @@ private const val RULES_COLUMNS = """
         blocked_domains,
         condition_task_ids,
         condition_logic,
-        active_schedule,
         config_lock_hours,
         pending_changes,
         changes_apply_at,
@@ -83,7 +82,6 @@ class BlockingRepository @Inject constructor(
         blockedDomains: JSONArray,
         conditionTaskIds: JSONArray,
         conditionLogic: String,
-        activeSchedule: JSONObject,
     ): String {
         val id = UUID.randomUUID().toString()
         val now = Instant.now().toString()
@@ -91,14 +89,14 @@ class BlockingRepository @Inject constructor(
             sql = """
                 INSERT INTO blocking_rules
                     (id, user_id, name, blocked_apps, blocked_domains,
-                     condition_task_ids, condition_logic, active_schedule,
+                     condition_task_ids, condition_logic,
                      config_lock_hours, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             parameters = listOf(
                 id, userId, name,
                 blockedApps.toString(), blockedDomains.toString(),
-                conditionTaskIds.toString(), conditionLogic, activeSchedule.toString(),
+                conditionTaskIds.toString(), conditionLogic,
                 24, 1L, now, now,
             ),
         )
@@ -118,14 +116,22 @@ class BlockingRepository @Inject constructor(
     /**
      * Schedule a change to a blocking rule with a time-lock delay.
      *
-     * Instead of applying the change immediately, the new config is stored in
-     * `pending_changes` and will be applied after `config_lock_hours` elapse.
+     * If the change is strictly more restrictive (adds blocked apps/domains,
+     * adds condition tasks, tightens logic, or activates the rule) it is
+     * applied immediately — the time-lock only protects against weakening.
      *
      * @param ruleId     The blocking rule to modify.
      * @param changes    A JSON object describing the new values, e.g.
      *                   {"blocked_apps": [...], "condition_task_ids": [...], "is_active": 0}
      */
     suspend fun scheduleRuleChange(ruleId: String, changes: JSONObject) {
+        val current = getRuleById(ruleId)
+        if (current != null && isMoreRestrictive(current, changes)) {
+            // More restrictive — apply immediately, no time-lock
+            applyPendingToRule(ruleId, changes.toString())
+            return
+        }
+
         val applyAt = Instant.now()
             .plusSeconds(getLockHours(ruleId) * 3600L)
             .toString()
@@ -141,6 +147,56 @@ class BlockingRepository @Inject constructor(
             """.trimIndent(),
             parameters = listOf(changes.toString(), applyAt, now, ruleId),
         )
+    }
+
+    /**
+     * Returns true if the proposed [changes] are strictly more restrictive
+     * than the [current] rule — meaning they only add blocking, never remove it.
+     *
+     * A change is more restrictive when ALL of the following hold for each
+     * field present in changes:
+     * - blocked_apps: new set is a superset of the current set
+     * - blocked_domains: new set is a superset of the current set
+     * - condition_task_ids: new set is a superset of the current set
+     * - condition_logic: "any" → "all" is more restrictive; "all" → "any" is not
+     * - is_active: 0 → 1 is more restrictive; 1 → 0 is not
+     * - name / config_lock_hours: neutral, ignored
+     */
+    private fun isMoreRestrictive(current: BlockingRule, changes: JSONObject): Boolean {
+        if (changes.has("blocked_apps")) {
+            val newApps = parseBlockedApps(changes.get("blocked_apps").let {
+                if (it is JSONArray) it.toString() else it.toString()
+            }).toSet()
+            if (!newApps.containsAll(current.blockedApps.toSet())) return false
+        }
+
+        if (changes.has("blocked_domains")) {
+            val newDomains = parseJsonStringArray(changes.get("blocked_domains").let {
+                if (it is JSONArray) it.toString() else it.toString()
+            }).toSet()
+            if (!newDomains.containsAll(current.blockedDomains.toSet())) return false
+        }
+
+        if (changes.has("condition_task_ids")) {
+            val newIds = parseJsonStringArray(changes.get("condition_task_ids").let {
+                if (it is JSONArray) it.toString() else it.toString()
+            }).toSet()
+            if (!newIds.containsAll(current.conditionTaskIds.toSet())) return false
+        }
+
+        if (changes.has("condition_logic")) {
+            val newLogic = changes.getString("condition_logic")
+            // "any" → "all" is more restrictive; "all" → "any" is less
+            if (current.conditionLogic == "all" && newLogic == "any") return false
+        }
+
+        if (changes.has("is_active")) {
+            val newActive = changes.getInt("is_active") != 0
+            // Deactivating is less restrictive
+            if (current.isActive && !newActive) return false
+        }
+
+        return true
     }
 
     /**
@@ -192,7 +248,12 @@ class BlockingRepository @Inject constructor(
      * and clear the pending state.
      */
     private suspend fun applyPendingToRule(ruleId: String, pendingJson: String) {
-        val changes = JSONObject(pendingJson)
+        // PowerSync can double-encode JSONB: strip surrounding quotes and retry
+        val changes = try {
+            JSONObject(pendingJson)
+        } catch (_: Exception) {
+            JSONObject(pendingJson.trim().removeSurrounding("\""))
+        }
         val setClauses = mutableListOf<String>()
         val params = mutableListOf<Any?>()
 
@@ -203,7 +264,6 @@ class BlockingRepository @Inject constructor(
             "blocked_domains" to "blocked_domains",
             "condition_task_ids" to "condition_task_ids",
             "condition_logic" to "condition_logic",
-            "active_schedule" to "active_schedule",
         )
         val intFields = mapOf(
             "is_active" to "is_active",
@@ -260,11 +320,10 @@ class BlockingRepository @Inject constructor(
         blockedDomains   = parseJsonStringArray(cursor.getString(4)),
         conditionTaskIds = parseJsonStringArray(cursor.getString(5)),
         conditionLogic   = cursor.getString(6) ?: "all",
-        activeSchedule   = cursor.getString(7) ?: "{}",
-        configLockHours  = cursor.getLong(8)?.toInt() ?: 24,
-        pendingChanges   = cursor.getString(9),
-        changesApplyAt   = cursor.getString(10),
-        isActive         = (cursor.getLong(11) ?: 0L) != 0L,
+        configLockHours  = cursor.getLong(7)?.toInt() ?: 24,
+        pendingChanges   = cursor.getString(8),
+        changesApplyAt   = cursor.getString(9),
+        isActive         = (cursor.getLong(10) ?: 0L) != 0L,
     )
 
     /**
