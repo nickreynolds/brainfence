@@ -34,6 +34,10 @@ import dev.brainfence.ui.tasks.RoutineTaskScreen
 import dev.brainfence.ui.tasks.RoutineTaskViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
 import dev.brainfence.ui.tasks.TaskListViewModel
+import dev.brainfence.ui.blocking.BlockingRuleEditorScreen
+import dev.brainfence.ui.blocking.BlockingRuleEditorViewModel
+import dev.brainfence.ui.blocking.BlockingRuleListScreen
+import dev.brainfence.ui.blocking.BlockingRuleListViewModel
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -47,6 +51,8 @@ private object Routes {
     const val MEDITATION_TASK   = "meditation-task/{taskId}"
     const val ROUTINE_TASK      = "routine-task/{taskId}"
     const val DEBUG             = "debug"
+    const val BLOCKING_RULES    = "blocking/rules"
+    const val BLOCKING_RULE_EDITOR = "blocking/editor/{ruleId}"
 }
 
 @Composable
@@ -152,6 +158,7 @@ fun BrainfenceNavGraph(
                 onDismissComplete        = taskViewModel::dismissComplete,
                 onSignOut                = taskViewModel::signOut,
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
+                onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
                 onCreateQuickTimer       = {
                     taskViewModel.createQuickTimer { taskId ->
                         navController.navigate("duration-task/$taskId")
@@ -265,6 +272,48 @@ fun BrainfenceNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+        }
+        composable(Routes.BLOCKING_RULES) {
+            val viewModel: BlockingRuleListViewModel = hiltViewModel()
+            val rules by viewModel.rules.collectAsStateWithLifecycle()
+            BlockingRuleListScreen(
+                rules = rules,
+                onRuleTap = { ruleId ->
+                    navController.navigate("blocking/editor/$ruleId")
+                },
+                onCreateRule = {
+                    navController.navigate("blocking/editor/new")
+                },
+                onDeleteRule = viewModel::deleteRule,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.BLOCKING_RULE_EDITOR,
+            arguments = listOf(navArgument("ruleId") { type = NavType.StringType }),
+        ) {
+            val viewModel: BlockingRuleEditorViewModel = hiltViewModel()
+            val editorState by viewModel.state.collectAsStateWithLifecycle()
+            val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
+            val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+            BlockingRuleEditorScreen(
+                state = editorState,
+                installedApps = installedApps,
+                tasks = tasks,
+                onUpdateName = viewModel::updateName,
+                onToggleApp = viewModel::toggleApp,
+                onAddDomain = viewModel::addDomain,
+                onRemoveDomain = viewModel::removeDomain,
+                onToggleConditionTask = viewModel::toggleConditionTask,
+                onSetConditionLogic = viewModel::setConditionLogic,
+                onToggleDay = viewModel::toggleDay,
+                onSetStartTime = viewModel::setScheduleStartTime,
+                onSetEndTime = viewModel::setScheduleEndTime,
+                onSave = { viewModel.save { navController.popBackStack() } },
+                onCancelPendingChanges = viewModel::cancelPendingChanges,
+                onClearError = viewModel::clearError,
+                onBack = { navController.popBackStack() },
+            )
         }
         composable(Routes.DEBUG) {
             val debugViewModel: DebugViewModel = hiltViewModel()

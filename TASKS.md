@@ -528,7 +528,7 @@ Implement the 24-hour delay on blocking rule modifications.
 
 ### ANDROID-019: Anti-Bypass — Multi-Step Disable
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement the multi-step flow to disable blocking entirely.
@@ -545,7 +545,7 @@ Implement the multi-step flow to disable blocking entirely.
 
 ### ANDROID-020: Blocking Rule Editor & App Picker (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Build a UI for creating and editing blocking rules, including selecting which apps to block.

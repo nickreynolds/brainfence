@@ -11,11 +11,11 @@ import kotlinx.coroutines.flow.onStart
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val ACTIVE_RULES_SQL = """
-    SELECT
+private const val RULES_COLUMNS = """
         id,
         user_id,
         name,
@@ -28,8 +28,18 @@ private const val ACTIVE_RULES_SQL = """
         pending_changes,
         changes_apply_at,
         is_active
+"""
+
+private const val ACTIVE_RULES_SQL = """
+    SELECT $RULES_COLUMNS
     FROM blocking_rules
     WHERE is_active = 1
+"""
+
+private const val ALL_RULES_SQL = """
+    SELECT $RULES_COLUMNS
+    FROM blocking_rules
+    ORDER BY name
 """
 
 @Singleton
@@ -45,6 +55,65 @@ class BlockingRepository @Inject constructor(
                     emit(database.getAll(ACTIVE_RULES_SQL, mapper = ::mapRule))
                 }
             }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun watchAllRules(): Flow<List<BlockingRule>> =
+        database.onChange(tables = setOf("blocking_rules"))
+            .onStart { emit(emptySet()) }
+            .flatMapLatest {
+                flow {
+                    emit(database.getAll(ALL_RULES_SQL, mapper = ::mapRule))
+                }
+            }
+
+    suspend fun getRuleById(ruleId: String): BlockingRule? =
+        database.getOptional(
+            sql = "SELECT $RULES_COLUMNS FROM blocking_rules WHERE id = ?",
+            parameters = listOf(ruleId),
+            mapper = ::mapRule,
+        )
+
+    /**
+     * Create a new blocking rule. New rules are inserted directly (no time-lock).
+     */
+    suspend fun createRule(
+        userId: String,
+        name: String,
+        blockedApps: JSONArray,
+        blockedDomains: JSONArray,
+        conditionTaskIds: JSONArray,
+        conditionLogic: String,
+        activeSchedule: JSONObject,
+    ): String {
+        val id = UUID.randomUUID().toString()
+        val now = Instant.now().toString()
+        database.execute(
+            sql = """
+                INSERT INTO blocking_rules
+                    (id, user_id, name, blocked_apps, blocked_domains,
+                     condition_task_ids, condition_logic, active_schedule,
+                     config_lock_hours, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            parameters = listOf(
+                id, userId, name,
+                blockedApps.toString(), blockedDomains.toString(),
+                conditionTaskIds.toString(), conditionLogic, activeSchedule.toString(),
+                24, 1L, now, now,
+            ),
+        )
+        return id
+    }
+
+    /**
+     * Delete a blocking rule permanently.
+     */
+    suspend fun deleteRule(ruleId: String) {
+        database.execute(
+            sql = "DELETE FROM blocking_rules WHERE id = ?",
+            parameters = listOf(ruleId),
+        )
+    }
 
     /**
      * Schedule a change to a blocking rule with a time-lock delay.

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Warning
@@ -77,6 +78,7 @@ fun TaskListScreen(
     onDismissComplete: () -> Unit,
     onSignOut: () -> Unit,
     onNavigateToDebug: () -> Unit = {},
+    onNavigateToRules: () -> Unit = {},
     onCreateQuickTimer: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -106,6 +108,9 @@ fun TaskListScreen(
             TopAppBar(
                 title = { Text("Tasks") },
                 actions = {
+                    IconButton(onClick = onNavigateToRules) {
+                        Icon(Icons.Default.Edit, contentDescription = "Blocking rules")
+                    }
                     IconButton(onClick = onCreateQuickTimer) {
                         Icon(Icons.Default.Add, contentDescription = "Create task")
                     }
