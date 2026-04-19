@@ -1,10 +1,13 @@
 package dev.brainfence.ui.blocking
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import dev.brainfence.MainActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -83,6 +86,11 @@ class BlockingActivity : ComponentActivity() {
                 BlockingOverlayScreen(
                     state = uiState,
                     onCompleteTask = viewModel::completeTask,
+                    onOpenApp = {
+                        val intent = Intent(this@BlockingActivity, MainActivity::class.java)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        startActivity(intent)
+                    },
                 )
             }
         }
@@ -95,10 +103,17 @@ class BlockingActivity : ComponentActivity() {
     }
 }
 
+/** Whether this task can be completed with a single button press on the overlay. */
+private fun isInlineCompletable(task: Task): Boolean =
+    !task.completedToday &&
+    task.taskType != "routine" && task.taskType != "workout" &&
+    (task.verificationType == null || task.verificationType == "manual")
+
 @Composable
 private fun BlockingOverlayScreen(
     state: BlockingUiState,
     onCompleteTask: (String) -> Unit,
+    onOpenApp: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -149,7 +164,9 @@ private fun BlockingOverlayScreen(
                 items(state.requiredTasks, key = { it.id }) { task ->
                     RequiredTaskCard(
                         task = task,
+                        inlineCompletable = isInlineCompletable(task),
                         onComplete = { onCompleteTask(task.id) },
+                        onOpenApp = onOpenApp,
                     )
                 }
             }
@@ -157,20 +174,28 @@ private fun BlockingOverlayScreen(
     }
 }
 
-private fun verificationHint(task: Task): String = when (task.verificationType) {
-    "gps" -> "Requires GPS verification \u2014 open the app to start"
-    "meditation" -> "Requires meditation session \u2014 open the app to start"
-    "duration" -> "Requires timed session \u2014 open the app to start"
+private fun verificationHint(task: Task): String = when {
+    task.taskType == "routine" -> "Complete all steps in the app"
+    task.taskType == "workout" -> "Log your workout in the app"
+    task.verificationType == "gps" -> "Requires GPS verification \u2014 open the app to start"
+    task.verificationType == "meditation" -> "Requires meditation session \u2014 open the app to start"
+    task.verificationType == "duration" -> "Requires timed session \u2014 open the app to start"
     else -> "Tap Complete to finish"
 }
 
 @Composable
 private fun RequiredTaskCard(
     task: Task,
+    inlineCompletable: Boolean,
     onComplete: () -> Unit,
+    onOpenApp: () -> Unit,
 ) {
+    val needsApp = !task.completedToday && !inlineCompletable
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (needsApp) Modifier.clickable(onClick = onOpenApp) else Modifier),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
@@ -214,7 +239,7 @@ private fun RequiredTaskCard(
                 }
             }
 
-            if (!task.completedToday && (task.verificationType == null || task.verificationType == "manual")) {
+            if (inlineCompletable) {
                 Button(onClick = onComplete) {
                     Text("Complete")
                 }
