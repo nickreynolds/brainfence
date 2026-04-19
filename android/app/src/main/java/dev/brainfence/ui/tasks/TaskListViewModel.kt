@@ -8,15 +8,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import com.powersync.PowerSyncDatabase
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.completion.CompletionRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
 import dev.brainfence.service.BrainfenceService
-import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,7 +41,6 @@ class TaskListViewModel @Inject constructor(
     private val completionRepository: CompletionRepository,
     private val sessionRepository: SessionRepository,
     private val blockingRepository: BlockingRepository,
-    private val database: PowerSyncDatabase,
 ) : ViewModel() {
 
     val tasks = taskRepository.watchActiveTasks()
@@ -52,6 +48,13 @@ class TaskListViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList<Task>(),
+        )
+
+    val activeRules = blockingRepository.watchActiveRules()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
         )
 
     val blockingStatus = combine(
@@ -137,30 +140,6 @@ class TaskListViewModel @Inject constructor(
 
     fun dismissComplete() {
         _pendingTask.value = null
-    }
-
-    /** Create a one-off 30-second duration task for testing. */
-    fun createQuickTimer(onCreated: (String) -> Unit) {
-        val userId = sessionRepository.currentUser?.id ?: return
-        val taskId = UUID.randomUUID().toString()
-        val now = Instant.now().toString()
-        viewModelScope.launch {
-            database.execute(
-                sql = """
-                    INSERT INTO tasks
-                        (id, user_id, title, task_type, status, verification_type,
-                         verification_config, recurrence_config, tags, sort_order,
-                         is_blocking_condition, blocking_rule_ids, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """.trimIndent(),
-                parameters = listOf(
-                    taskId, userId, "Quick Timer (30s)", "timed", "active", "duration",
-                    """{"duration_seconds":30}""", "{}", "{}", 99,
-                    0, "{}", now, now,
-                ),
-            )
-            onCreated(taskId)
-        }
     }
 
     fun signOut() {

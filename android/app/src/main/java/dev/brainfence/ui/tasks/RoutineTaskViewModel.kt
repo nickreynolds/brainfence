@@ -31,6 +31,15 @@ data class StepSetEntry(
 data class StepUiState(
     val step: RoutineStep,
     val sets: List<StepSetEntry>,
+    val activeSetIndex: Int = 0,
+)
+
+/** Tracks round progress for a superset group. */
+data class SupersetRoundState(
+    val groupId: String,
+    val stepIds: List<String>,
+    val totalRounds: Int,
+    val currentRound: Int = 1,
 )
 
 @HiltViewModel
@@ -52,6 +61,9 @@ class RoutineTaskViewModel @Inject constructor(
     private val _stepStates = MutableStateFlow<Map<String, StepUiState>>(emptyMap())
     val stepStates: StateFlow<Map<String, StepUiState>> = _stepStates.asStateFlow()
 
+    private val _supersetRounds = MutableStateFlow<Map<String, SupersetRoundState>>(emptyMap())
+    val supersetRounds: StateFlow<Map<String, SupersetRoundState>> = _supersetRounds.asStateFlow()
+
     private val _isCompleting = MutableStateFlow(false)
     val isCompleting: StateFlow<Boolean> = _isCompleting.asStateFlow()
 
@@ -64,6 +76,28 @@ class RoutineTaskViewModel @Inject constructor(
                 if (stepList.isNotEmpty() && !prefilled) {
                     prefilled = true
                     initStepStates(stepList)
+                } else if (prefilled && stepList.isNotEmpty()) {
+                    // Handle newly added steps after initial load
+                    val currentIds = _stepStates.value.keys
+                    val newSteps = stepList.filter { it.id !in currentIds }
+                    if (newSteps.isNotEmpty()) {
+                        val newStates = newSteps.associate { step ->
+                            val config = JSONObject(step.config)
+                            val defaultSets = when (step.stepType) {
+                                "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
+                                else -> 1
+                            }
+                            val sets = (1..defaultSets).map { StepSetEntry() }
+                            step.id to StepUiState(step = step, sets = sets)
+                        }
+                        _stepStates.value = _stepStates.value + newStates
+                    }
+                    // Remove states for deleted steps
+                    val activeIds = stepList.map { it.id }.toSet()
+                    val removed = currentIds - activeIds
+                    if (removed.isNotEmpty()) {
+                        _stepStates.value = _stepStates.value.filterKeys { it in activeIds }
+                    }
                 }
             }
         }
@@ -80,9 +114,18 @@ class RoutineTaskViewModel @Inject constructor(
                 "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
                 else -> 1
             }
-            val previous = byStep[step.id]
-            val numSets = previous?.size?.coerceAtLeast(defaultSets) ?: defaultSets
 
+            // For superset steps, sets represent rounds (1 set per round)
+            val inSuperset = step.supersetGroup != null
+            val numSets = if (inSuperset) {
+                // Round count comes from the default_sets of the step
+                defaultSets
+            } else {
+                val previous = byStep[step.id]
+                previous?.size?.coerceAtLeast(defaultSets) ?: defaultSets
+            }
+
+            val previous = byStep[step.id]
             val sets = (1..numSets).map { setNum ->
                 val prev = previous?.find { it.setNumber == setNum }
                 val prevData = prev?.let { JSONObject(it.data) }
@@ -94,6 +137,28 @@ class RoutineTaskViewModel @Inject constructor(
             step.id to StepUiState(step = step, sets = sets)
         }
         _stepStates.value = states
+
+        // Initialize superset round tracking
+        val supersetGroups = stepList
+            .filter { it.supersetGroup != null }
+            .groupBy { it.supersetGroup!! }
+
+        val rounds = supersetGroups.map { (groupId, groupSteps) ->
+            // Use the max default_sets among the group's steps as the round count
+            val totalRounds = groupSteps.maxOf { step ->
+                val config = JSONObject(step.config)
+                when (step.stepType) {
+                    "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
+                    else -> 1
+                }
+            }
+            groupId to SupersetRoundState(
+                groupId = groupId,
+                stepIds = groupSteps.map { it.id },
+                totalRounds = totalRounds,
+            )
+        }.toMap()
+        _supersetRounds.value = rounds
     }
 
     fun updateSet(stepId: String, setIndex: Int, entry: StepSetEntry) {
@@ -117,8 +182,10 @@ class RoutineTaskViewModel @Inject constructor(
         _stepStates.value = _stepStates.value.toMutableMap().apply {
             val state = this[stepId] ?: return
             val lastSet = state.sets.lastOrNull() ?: StepSetEntry()
-            // Copy weight/reps from last set as a convenience
-            this[stepId] = state.copy(sets = state.sets + lastSet.copy(completed = false))
+            val newSets = state.sets + lastSet.copy(completed = false)
+            // If all previous sets were completed, move to the new set
+            val newActiveIndex = if (state.sets.all { it.completed }) newSets.size - 1 else state.activeSetIndex
+            this[stepId] = state.copy(sets = newSets, activeSetIndex = newActiveIndex)
         }
     }
 
@@ -126,7 +193,81 @@ class RoutineTaskViewModel @Inject constructor(
         _stepStates.value = _stepStates.value.toMutableMap().apply {
             val state = this[stepId] ?: return
             if (state.sets.size > 1) {
-                this[stepId] = state.copy(sets = state.sets.dropLast(1))
+                val newSets = state.sets.dropLast(1)
+                val newActiveIndex = state.activeSetIndex.coerceAtMost(newSets.size - 1)
+                this[stepId] = state.copy(sets = newSets, activeSetIndex = newActiveIndex)
+            }
+        }
+    }
+
+    fun completeCurrentSet(stepId: String) {
+        _stepStates.value = _stepStates.value.toMutableMap().apply {
+            val state = this[stepId] ?: return
+            val idx = state.activeSetIndex
+            val entry = state.sets.getOrNull(idx) ?: return
+            val newSets = state.sets.toMutableList()
+            newSets[idx] = entry.copy(completed = true)
+            val nextIdx = if (idx + 1 < newSets.size) idx + 1 else idx
+            this[stepId] = state.copy(sets = newSets, activeSetIndex = nextIdx)
+        }
+    }
+
+    fun goToSet(stepId: String, setIndex: Int) {
+        _stepStates.value = _stepStates.value.toMutableMap().apply {
+            val state = this[stepId] ?: return
+            if (setIndex in state.sets.indices) {
+                this[stepId] = state.copy(activeSetIndex = setIndex)
+            }
+        }
+    }
+
+    fun addStep(title: String, stepType: String, defaultSets: Int, durationSeconds: Int) {
+        viewModelScope.launch {
+            val currentSteps = steps.value
+            val nextOrder = (currentSteps.maxOfOrNull { it.stepOrder } ?: -1) + 1
+            val config = JSONObject()
+            when (stepType) {
+                "weight_reps", "just_reps" -> config.put("default_sets", defaultSets)
+                "timed" -> config.put("duration_seconds", durationSeconds)
+            }
+            routineRepository.insertSingleStep(
+                taskId = taskId,
+                step = dev.brainfence.data.routine.NewRoutineStep(
+                    title = title,
+                    stepType = stepType,
+                    config = config.toString(),
+                    supersetGroup = null,
+                ),
+                stepOrder = nextOrder,
+            )
+        }
+    }
+
+    fun advanceRound(groupId: String) {
+        _supersetRounds.value = _supersetRounds.value.toMutableMap().apply {
+            val state = this[groupId] ?: return
+            if (state.currentRound < state.totalRounds) {
+                // Mark current round's sets as completed for all steps in the group
+                for (stepId in state.stepIds) {
+                    val stepState = _stepStates.value[stepId] ?: continue
+                    val setIndex = state.currentRound - 1
+                    if (setIndex in stepState.sets.indices) {
+                        val entry = stepState.sets[setIndex]
+                        if (!entry.completed) {
+                            updateSet(stepId, setIndex, entry.copy(completed = true))
+                        }
+                    }
+                }
+                this[groupId] = state.copy(currentRound = state.currentRound + 1)
+            }
+        }
+    }
+
+    fun goToRound(groupId: String, round: Int) {
+        _supersetRounds.value = _supersetRounds.value.toMutableMap().apply {
+            val state = this[groupId] ?: return
+            if (round in 1..state.totalRounds) {
+                this[groupId] = state.copy(currentRound = round)
             }
         }
     }

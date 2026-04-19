@@ -125,6 +125,8 @@ class BlockingRuleEditorViewModel @Inject constructor(
                 val arr = schedule.getJSONArray("days")
                 for (i in 0 until arr.length()) days.add(arr.getString(i))
             }
+            val startKey = if (schedule.has("start_time")) "start_time" else "start"
+            val endKey = if (schedule.has("end_time")) "end_time" else "end"
             _state.value = EditorUiState(
                 isNew = false,
                 name = rule.name,
@@ -133,8 +135,8 @@ class BlockingRuleEditorViewModel @Inject constructor(
                 conditionTaskIds = rule.conditionTaskIds.toSet(),
                 conditionLogic = rule.conditionLogic,
                 scheduleDays = days,
-                scheduleStartTime = schedule.optString("start_time", ""),
-                scheduleEndTime = schedule.optString("end_time", ""),
+                scheduleStartTime = schedule.optString(startKey, ""),
+                scheduleEndTime = schedule.optString(endKey, ""),
                 isActive = rule.isActive,
                 hasPendingChanges = rule.pendingChanges != null,
                 changesApplyAt = rule.changesApplyAt,

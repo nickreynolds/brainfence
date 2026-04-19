@@ -15,6 +15,13 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class NewRoutineStep(
+    val title: String,
+    val stepType: String,
+    val config: String,
+    val supersetGroup: String?,
+)
+
 @Singleton
 class RoutineRepository @Inject constructor(
     private val database: PowerSyncDatabase,
@@ -30,7 +37,7 @@ class RoutineRepository @Inject constructor(
                     emit(
                         database.getAll(
                             sql = """
-                                SELECT id, task_id, title, step_order, step_type, config, created_at
+                                SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at
                                 FROM routine_steps
                                 WHERE task_id = ?
                                 ORDER BY step_order
@@ -105,10 +112,10 @@ class RoutineRepository @Inject constructor(
                 database.execute(
                     sql = """
                         INSERT INTO step_completions
-                            (id, task_completion_id, routine_step_id, set_number, data, completed_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                            (id, user_id, task_completion_id, routine_step_id, set_number, data, completed_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent(),
-                    parameters = listOf(scId, taskCompletionId, stepId, index + 1, data, now),
+                    parameters = listOf(scId, userId, taskCompletionId, stepId, index + 1, data, now),
                 )
             }
         }
@@ -116,14 +123,63 @@ class RoutineRepository @Inject constructor(
         return taskCompletionId
     }
 
+    /**
+     * Insert a single routine step into an existing routine task.
+     */
+    suspend fun insertSingleStep(taskId: String, step: NewRoutineStep, stepOrder: Int): String {
+        val userId = sessionRepository.currentUser?.id
+            ?: error("insertSingleStep called while not authenticated")
+        val now = Instant.now().toString()
+        val stepId = UUID.randomUUID().toString()
+        database.execute(
+            sql = """
+                INSERT INTO routine_steps
+                    (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
+            parameters = listOf(
+                stepId, userId, taskId, step.title, stepOrder, step.stepType,
+                step.config, step.supersetGroup, now,
+            ),
+        )
+        return stepId
+    }
+
+    /**
+     * Batch-insert routine steps for a newly created task.
+     */
+    suspend fun insertRoutineSteps(
+        taskId: String,
+        steps: List<NewRoutineStep>,
+    ) {
+        val userId = sessionRepository.currentUser?.id
+            ?: error("insertRoutineSteps called while not authenticated")
+        val now = Instant.now().toString()
+        for ((index, step) in steps.withIndex()) {
+            val stepId = UUID.randomUUID().toString()
+            database.execute(
+                sql = """
+                    INSERT INTO routine_steps
+                        (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                parameters = listOf(
+                    stepId, userId, taskId, step.title, index, step.stepType,
+                    step.config, step.supersetGroup, now,
+                ),
+            )
+        }
+    }
+
     private fun mapRoutineStep(cursor: SqlCursor): RoutineStep = RoutineStep(
-        id        = cursor.getString(0)!!,
-        taskId    = cursor.getString(1)!!,
-        title     = cursor.getString(2)!!,
-        stepOrder = (cursor.getLong(3) ?: 0L).toInt(),
-        stepType  = cursor.getString(4) ?: "checkbox",
-        config    = cursor.getString(5) ?: "{}",
-        createdAt = cursor.getString(6)!!,
+        id             = cursor.getString(0)!!,
+        taskId         = cursor.getString(1)!!,
+        title          = cursor.getString(2)!!,
+        stepOrder      = (cursor.getLong(3) ?: 0L).toInt(),
+        stepType       = cursor.getString(4) ?: "checkbox",
+        config         = cursor.getString(5) ?: "{}",
+        supersetGroup  = cursor.getString(6),
+        createdAt      = cursor.getString(7)!!,
     )
 
     private fun mapStepCompletion(cursor: SqlCursor): StepCompletion = StepCompletion(

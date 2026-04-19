@@ -51,11 +51,13 @@ val AppSchema = Schema(
     Table(
         name = "routine_steps",
         columns = listOf(
+            Column.text("user_id"),
             Column.text("task_id"),
             Column.text("title"),
             Column.integer("step_order"),
             Column.text("step_type"),
             Column.text("config"),               // JSONB
+            Column.text("superset_group"),
             Column.text("created_at"),
         ),
     ),
@@ -73,6 +75,7 @@ val AppSchema = Schema(
     Table(
         name = "step_completions",
         columns = listOf(
+            Column.text("user_id"),
             Column.text("task_completion_id"),
             Column.text("routine_step_id"),
             Column.integer("set_number"),

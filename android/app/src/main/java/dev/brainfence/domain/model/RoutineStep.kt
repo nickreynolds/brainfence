@@ -7,5 +7,6 @@ data class RoutineStep(
     val stepOrder: Int,
     val stepType: String, // "checkbox", "weight_reps", "just_reps", "timed"
     val config: String,   // JSONB as JSON string
+    val supersetGroup: String?, // steps with the same non-null value form a superset
     val createdAt: String,
 )

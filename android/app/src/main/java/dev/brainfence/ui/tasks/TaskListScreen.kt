@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeTimeGatePhase
@@ -68,6 +69,7 @@ import java.time.Instant
 @Composable
 fun TaskListScreen(
     tasks: List<Task>,
+    activeRules: List<BlockingRule>,
     pendingTask: Task?,
     blockingStatus: BlockingStatusState,
     isAccessibilityEnabled: Boolean,
@@ -79,9 +81,27 @@ fun TaskListScreen(
     onSignOut: () -> Unit,
     onNavigateToDebug: () -> Unit = {},
     onNavigateToRules: () -> Unit = {},
-    onCreateQuickTimer: () -> Unit = {},
+    onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
+
+    // Pre-compute "due by" time for each blocking-condition task (end of blocking window)
+    val dueTimeByTask = remember(activeRules) {
+        buildMap<String, String?> {
+            for (rule in activeRules) {
+                if (!rule.isActive) continue
+                val endTime = try {
+                    val schedule = JSONObject(rule.activeSchedule)
+                    val key = if (schedule.has("end_time")) "end_time" else "end"
+                    if (schedule.has(key)) schedule.getString(key) else null
+                } catch (_: Exception) { null }
+                for (taskId in rule.conditionTaskIds) {
+                    if (taskId !in this) put(taskId, endTime)
+                    else if (endTime == null) put(taskId, null)
+                }
+            }
+        }
+    }
 
     // Foreground location permission launcher
     val fineLocationLauncher = rememberLauncherForActivityResult(
@@ -111,7 +131,7 @@ fun TaskListScreen(
                     IconButton(onClick = onNavigateToRules) {
                         Icon(Icons.Default.Edit, contentDescription = "Blocking rules")
                     }
-                    IconButton(onClick = onCreateQuickTimer) {
+                    IconButton(onClick = onCreateTask) {
                         Icon(Icons.Default.Add, contentDescription = "Create task")
                     }
                     IconButton(onClick = onNavigateToDebug) {
@@ -167,8 +187,9 @@ fun TaskListScreen(
             }
             items(tasks, key = { it.id }) { task ->
                 TaskItem(
-                    task     = task,
-                    onClick  = { onTaskTap(task) },
+                    task    = task,
+                    dueTime = dueTimeByTask[task.id],
+                    onClick = { onTaskTap(task) },
                 )
             }
         }
@@ -192,6 +213,7 @@ fun TaskListScreen(
 @Composable
 private fun TaskItem(
     task: Task,
+    dueTime: String?,
     onClick: () -> Unit,
 ) {
     val timeGatePhase = if (task.verificationType == "time_gate") {
@@ -239,9 +261,18 @@ private fun TaskItem(
                     )
                 }
                 else -> {
-                    val verif = task.verificationType ?: "manual"
-                    val recur = task.recurrenceType ?: "one-off"
-                    Text("${task.taskType} \u00b7 $verif \u00b7 $recur")
+                    val recur = task.recurrenceType
+                    if (recur != null) {
+                        val label = recur.replaceFirstChar { it.uppercase() }
+                        val blockText = if (task.isBlockingCondition && !task.completedToday) {
+                            if (dueTime != null) " · Due by $dueTime"
+                            else " · Due today"
+                        } else ""
+                        Text(
+                            text = "$label$blockText",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         },

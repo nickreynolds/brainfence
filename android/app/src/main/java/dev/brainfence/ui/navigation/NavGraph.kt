@@ -32,12 +32,27 @@ import dev.brainfence.ui.tasks.MeditationTaskScreen
 import dev.brainfence.ui.tasks.MeditationTaskViewModel
 import dev.brainfence.ui.tasks.RoutineTaskScreen
 import dev.brainfence.ui.tasks.RoutineTaskViewModel
+import dev.brainfence.ui.tasks.TaskEditorScreen
+import dev.brainfence.ui.tasks.TaskEditorViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
 import dev.brainfence.ui.tasks.TaskListViewModel
 import dev.brainfence.ui.blocking.BlockingRuleEditorScreen
 import dev.brainfence.ui.blocking.BlockingRuleEditorViewModel
 import dev.brainfence.ui.blocking.BlockingRuleListScreen
 import dev.brainfence.ui.blocking.BlockingRuleListViewModel
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -50,6 +65,7 @@ private object Routes {
     const val DURATION_TASK     = "duration-task/{taskId}"
     const val MEDITATION_TASK   = "meditation-task/{taskId}"
     const val ROUTINE_TASK      = "routine-task/{taskId}"
+    const val TASK_EDITOR       = "task/editor"
     const val DEBUG             = "debug"
     const val BLOCKING_RULES    = "blocking/rules"
     const val BLOCKING_RULE_EDITOR = "blocking/editor/{ruleId}"
@@ -136,9 +152,11 @@ fun BrainfenceNavGraph(
             val tasks              by taskViewModel.tasks.collectAsStateWithLifecycle()
             val pendingTask        by taskViewModel.pendingTask.collectAsStateWithLifecycle()
             val blockingStatus     by taskViewModel.blockingStatus.collectAsStateWithLifecycle()
+            val activeRules        by taskViewModel.activeRules.collectAsStateWithLifecycle()
             val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
             TaskListScreen(
                 tasks                    = tasks,
+                activeRules              = activeRules,
                 pendingTask              = pendingTask,
                 blockingStatus           = blockingStatus,
                 isAccessibilityEnabled   = isAccessibilityEnabled,
@@ -159,11 +177,7 @@ fun BrainfenceNavGraph(
                 onSignOut                = taskViewModel::signOut,
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
-                onCreateQuickTimer       = {
-                    taskViewModel.createQuickTimer { taskId ->
-                        navController.navigate("duration-task/$taskId")
-                    }
-                },
+                onCreateTask             = { navController.navigate(Routes.TASK_EDITOR) },
             )
         }
         composable(
@@ -211,6 +225,8 @@ fun BrainfenceNavGraph(
                     },
                     onBack = { navController.popBackStack() },
                 )
+            } else {
+                LoadingScreen(onBack = { navController.popBackStack() })
             }
         }
         composable(
@@ -239,6 +255,8 @@ fun BrainfenceNavGraph(
                     },
                     onBack = { navController.popBackStack() },
                 )
+            } else {
+                LoadingScreen(onBack = { navController.popBackStack() })
             }
         }
         composable(
@@ -249,6 +267,7 @@ fun BrainfenceNavGraph(
             val task       by routineViewModel.task.collectAsStateWithLifecycle()
             val steps      by routineViewModel.steps.collectAsStateWithLifecycle()
             val stepStates by routineViewModel.stepStates.collectAsStateWithLifecycle()
+            val supersetRounds by routineViewModel.supersetRounds.collectAsStateWithLifecycle()
             val isCompleting by routineViewModel.isCompleting.collectAsStateWithLifecycle()
 
             val currentTask = task
@@ -257,13 +276,19 @@ fun BrainfenceNavGraph(
                     task = currentTask,
                     steps = steps,
                     stepStates = stepStates,
+                    supersetRounds = supersetRounds,
                     isCompleting = isCompleting,
                     onToggleCheckbox = routineViewModel::toggleCheckbox,
                     onUpdateSet = routineViewModel::updateSet,
+                    onCompleteCurrentSet = routineViewModel::completeCurrentSet,
+                    onGoToSet = routineViewModel::goToSet,
                     onAddSet = routineViewModel::addSet,
                     onRemoveSet = routineViewModel::removeSet,
                     onStartTimer = routineViewModel::startStepTimer,
                     onStopTimer = routineViewModel::stopStepTimer,
+                    onAdvanceRound = routineViewModel::advanceRound,
+                    onGoToRound = routineViewModel::goToRound,
+                    onAddStep = routineViewModel::addStep,
                     onFinish = {
                         routineViewModel.finishRoutine {
                             navController.popBackStack()
@@ -271,7 +296,41 @@ fun BrainfenceNavGraph(
                     },
                     onBack = { navController.popBackStack() },
                 )
+            } else {
+                LoadingScreen(onBack = { navController.popBackStack() })
             }
+        }
+        composable(Routes.TASK_EDITOR) {
+            val viewModel: TaskEditorViewModel = hiltViewModel()
+            val editorState by viewModel.state.collectAsStateWithLifecycle()
+            TaskEditorScreen(
+                state = editorState,
+                onUpdateTitle = viewModel::updateTitle,
+                onUpdateDescription = viewModel::updateDescription,
+                onSetTaskType = viewModel::setTaskType,
+                onSetVerificationType = viewModel::setVerificationType,
+                onSetDurationSeconds = viewModel::setDurationSeconds,
+                onSetLatitude = viewModel::setLatitude,
+                onSetLongitude = viewModel::setLongitude,
+                onSetRadiusMeters = viewModel::setRadiusMeters,
+                onSetMeditationSeconds = viewModel::setMeditationSeconds,
+                onSetAllowCompanion = viewModel::setAllowCompanion,
+                onSetStartTime = viewModel::setStartTime,
+                onSetEndTime = viewModel::setEndTime,
+                onAddRoutineStep = viewModel::addRoutineStep,
+                onRemoveRoutineStep = viewModel::removeRoutineStep,
+                onUpdateRoutineStep = viewModel::updateRoutineStep,
+                onCreateSupersetGroup = viewModel::createSupersetGroup,
+                onRemoveSupersetGroup = viewModel::removeSupersetGroup,
+                onSetRecurrenceType = viewModel::setRecurrenceType,
+                onToggleWeeklyDay = viewModel::toggleWeeklyDay,
+                onSetBlockingCondition = viewModel::setBlockingCondition,
+                onNextStep = viewModel::nextStep,
+                onPrevStep = viewModel::prevStep,
+                onSave = { viewModel.save { navController.popBackStack() } },
+                onClearError = viewModel::clearError,
+                onBack = { navController.popBackStack() },
+            )
         }
         composable(Routes.BLOCKING_RULES) {
             val viewModel: BlockingRuleListViewModel = hiltViewModel()
@@ -326,6 +385,32 @@ fun BrainfenceNavGraph(
                 onClearLogs = debugViewModel::clearLogs,
                 onBack = { navController.popBackStack() },
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LoadingScreen(onBack: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
         }
     }
 }
