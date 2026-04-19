@@ -139,8 +139,14 @@ CREATE TABLE tasks (
     --             "enter": task completes when user arrives and stays N minutes
     --             "leave": task completes when user departs a location (e.g. must leave home to go to gym)
     -- Duration:   {"duration_seconds": 300}
-    -- Meditation: {"duration_seconds": 600, "allow_pause": false}
+    -- Meditation: {"duration_seconds": 600, "allow_pause": false,
+    --              "companion_apps": [{"platform": "android", "package": "com.calm.android"},
+    --                                 {"platform": "macos", "bundle_id": "com.calm.mac"}]}
+    --             companion_apps: if a listed app is in the foreground for the full duration,
+    --             the task auto-completes without using the in-app timer
     -- Time gate:  {"start_time": "05:00", "end_time": "10:00", "timezone": "America/New_York"}
+    --             start_time = when the task becomes completable
+    --             end_time = when an uncompleted task starts blocking (task remains completable after this)
 
   -- Organization
   tags            TEXT[] DEFAULT '{}',
@@ -455,7 +461,10 @@ User taps "complete." Simplest case. Susceptible to faking, but appropriate for 
 
 ### 6.4 Meditation Timer
 
-- Special case of duration verification
+Two ways to complete a meditation task:
+
+#### Option A: In-App Timer
+
 - Full-screen meditation UI with:
   - Timer countdown
   - Optional interval bells
@@ -465,14 +474,29 @@ User taps "complete." Simplest case. Susceptible to faking, but appropriate for 
 - App must remain in foreground for the full duration
 - On Android: detect if the user switches apps via the accessibility service; pause the meditation
 - Completion only logged when the full duration elapses
-- Stored proof: `{"actual_seconds": 600, "pauses": 0, "completed": true}`
+- Stored proof: `{"actual_seconds": 600, "pauses": 0, "completed": true, "method": "in_app_timer"}`
+
+#### Option B: Companion App Detection
+
+- If `verification_config.companion_apps` lists one or more apps (e.g., Calm), the system monitors whether any of those apps are in the foreground
+- On Android: the AccessibilityService already tracks foreground app changes — accumulate time spent in the companion app
+- On macOS: use `NSWorkspace.shared.frontmostApplication` observation to track foreground time
+- If a companion app is in the foreground for the full required `duration_seconds`, the task auto-completes
+- The user does not need to interact with Brainfence at all — the completion is detected passively
+- Stored proof: `{"actual_seconds": 600, "method": "companion_app", "app": "com.calm.android"}`
+- Time accumulates across brief interruptions (e.g., checking a notification) as long as the total foreground time meets the duration
 
 ### 6.5 Time-of-Day Gates
 
-- Task is only completable during a defined window
-- E.g., "Morning routine" available 5:00 AM – 10:00 AM
-- UI grays out the task outside the window
-- Prevents "completing tomorrow's tasks tonight to avoid blocking"
+- `start_time`: the earliest the task can be completed (before this, the task is greyed out / locked)
+- `end_time`: the time at which an **uncompleted** task starts blocking apps on its blocklist
+- After `end_time`, the task **remains completable** — it is not locked out. The user can (and should) still complete it to unblock their apps.
+- E.g., "Take Vitamins" with `start_time: 07:00, end_time: 10:00`:
+  - Before 7:00 AM: task is greyed out, cannot be completed
+  - 7:00–10:00 AM: task is available to complete, not yet blocking
+  - After 10:00 AM (if not completed): task is now actively blocking designated apps, but can still be completed to remove the block
+- Prevents "completing tomorrow's tasks tonight to avoid blocking" (via `start_time`)
+- Creates urgency to complete tasks before `end_time` when they start blocking
 
 ---
 
@@ -543,7 +567,13 @@ brainfence/
       "title": "Morning Meditation",
       "task_type": "meditation",
       "verification_type": "meditation",
-      "verification_config": { "duration_seconds": 600, "allow_pause": false },
+      "verification_config": {
+        "duration_seconds": 600, "allow_pause": false,
+        "companion_apps": [
+          {"platform": "android", "package": "com.calm.android"},
+          {"platform": "macos", "bundle_id": "com.calm.mac"}
+        ]
+      },
       "recurrence_type": "daily",
       "is_blocking_condition": true
     },

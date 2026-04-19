@@ -449,13 +449,22 @@ Implement duration-based task completion.
 **STATUS**: TODO
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
-Implement the full-screen meditation timer.
+Implement meditation task completion via two methods:
 
+**Method 1: In-App Timer**
 - Full-screen `MeditationActivity` with countdown display
 - Optional interval bells (plays a chime sound at configured intervals)
 - If user navigates away (detected by accessibility service): pause timer and show warning
 - Cannot mark complete until full duration elapses
-- On completion: insert `task_completion` with pause count
+- On completion: insert `task_completion` with `{"method": "in_app_timer", "pauses": N}`
+
+**Method 2: Companion App Detection**
+- If `verification_config.companion_apps` is configured, monitor foreground app via the AccessibilityService
+- Accumulate time spent in any listed companion app (e.g., Calm)
+- If the companion app is in the foreground for the full required `duration_seconds`, auto-complete the task
+- Time accumulates across brief interruptions (e.g., checking a notification)
+- On completion: insert `task_completion` with `{"method": "companion_app", "app": "com.calm.android", "actual_seconds": N}`
+- The user does not need to open Brainfence — completion is detected passively
 
 **Depends on**: ANDROID-014, ANDROID-008
 
@@ -468,9 +477,11 @@ Implement the full-screen meditation timer.
 
 Implement time-of-day gate for task completion.
 
-- Tasks with `verification_type = 'time_gate'` show as greyed out / locked outside their window
-- Inside the window: task is completable as manual
-- Outside the window: show "Available 07:00–10:00" message, disable complete button
+- `start_time`: task becomes completable (before this, greyed out / locked)
+- `end_time`: uncompleted task starts blocking apps on its blocklist (task remains completable after this)
+- Before `start_time`: show "Available at 07:00" message, disable complete button
+- Between `start_time` and `end_time`: task is completable as manual, not yet blocking
+- After `end_time` (if not completed): task is actively blocking designated apps but still completable — show urgency indicator
 - Apply timezone from `verification_config.timezone`
 
 **Depends on**: ANDROID-005
@@ -757,9 +768,10 @@ Implement GPS geofence verification (enter and leave) on macOS.
 Implement timer-based verification on macOS.
 
 - Duration timer: runs in background, completion on elapsed time
-- Meditation timer: full-screen `NSWindow` (level `.floating`) that stays on top
+- Meditation timer (in-app): full-screen `NSWindow` (level `.floating`) that stays on top
 - On `NSApplicationWillResignActiveNotification`: pause meditation timer
-- Same completion logic as Android
+- Meditation timer (companion app): monitor `NSWorkspace.shared.frontmostApplication` to detect if a companion app (e.g., Calm) is in the foreground for the required duration; auto-complete if so
+- Same completion logic as Android (see ANDROID-015 for full details on both methods)
 
 **Depends on**: MACOS-006
 
