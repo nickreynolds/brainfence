@@ -409,11 +409,12 @@ private fun BlockingStatusCard(
 }
 
 /** Human-readable hint for non-trivial verification types shown in the blocking status card. */
-private fun blockingVerificationHint(task: Task): String? = when (task.verificationType) {
-    "gps" -> "Requires GPS verification"
-    "meditation" -> "Requires meditation session"
-    "duration" -> "Requires timed session"
-    "time_gate" -> "Overdue \u2014 complete now to unblock"
+private fun blockingVerificationHint(task: Task): String? = when {
+    task.taskType == "routine" || task.taskType == "workout" -> "Requires routine completion"
+    task.verificationType == "gps" -> "Requires GPS verification"
+    task.verificationType == "meditation" -> "Requires meditation session"
+    task.verificationType == "duration" -> "Requires timed session"
+    task.verificationType == "time_gate" -> "Overdue \u2014 complete now to unblock"
     else -> null
 }
 

@@ -30,6 +30,8 @@ import dev.brainfence.ui.tasks.GpsTaskScreen
 import dev.brainfence.ui.tasks.GpsTaskViewModel
 import dev.brainfence.ui.tasks.MeditationTaskScreen
 import dev.brainfence.ui.tasks.MeditationTaskViewModel
+import dev.brainfence.ui.tasks.RoutineTaskScreen
+import dev.brainfence.ui.tasks.RoutineTaskViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
 import dev.brainfence.ui.tasks.TaskListViewModel
 import androidx.navigation.NavType
@@ -43,6 +45,7 @@ private object Routes {
     const val GPS_TASK          = "task/{taskId}"
     const val DURATION_TASK     = "duration-task/{taskId}"
     const val MEDITATION_TASK   = "meditation-task/{taskId}"
+    const val ROUTINE_TASK      = "routine-task/{taskId}"
     const val DEBUG             = "debug"
 }
 
@@ -136,10 +139,12 @@ fun BrainfenceNavGraph(
                 hasLocationPermission    = hasLocationPerm,
                 onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
                 onTaskTap                = { task ->
-                    when (task.verificationType) {
-                        "gps" -> navController.navigate("task/${task.id}")
-                        "duration" -> navController.navigate("duration-task/${task.id}")
-                        "meditation" -> navController.navigate("meditation-task/${task.id}")
+                    when {
+                        task.verificationType == "gps" -> navController.navigate("task/${task.id}")
+                        task.verificationType == "duration" -> navController.navigate("duration-task/${task.id}")
+                        task.verificationType == "meditation" -> navController.navigate("meditation-task/${task.id}")
+                        task.taskType == "routine" || task.taskType == "workout" ->
+                            navController.navigate("routine-task/${task.id}")
                         else -> taskViewModel.requestComplete(task)
                     }
                 },
@@ -224,6 +229,38 @@ fun BrainfenceNavGraph(
                     onCancel = {
                         meditationViewModel.cancelTimer()
                         navController.popBackStack()
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+        composable(
+            route = Routes.ROUTINE_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val routineViewModel: RoutineTaskViewModel = hiltViewModel()
+            val task       by routineViewModel.task.collectAsStateWithLifecycle()
+            val steps      by routineViewModel.steps.collectAsStateWithLifecycle()
+            val stepStates by routineViewModel.stepStates.collectAsStateWithLifecycle()
+            val isCompleting by routineViewModel.isCompleting.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            if (currentTask != null) {
+                RoutineTaskScreen(
+                    task = currentTask,
+                    steps = steps,
+                    stepStates = stepStates,
+                    isCompleting = isCompleting,
+                    onToggleCheckbox = routineViewModel::toggleCheckbox,
+                    onUpdateSet = routineViewModel::updateSet,
+                    onAddSet = routineViewModel::addSet,
+                    onRemoveSet = routineViewModel::removeSet,
+                    onStartTimer = routineViewModel::startStepTimer,
+                    onStopTimer = routineViewModel::stopStepTimer,
+                    onFinish = {
+                        routineViewModel.finishRoutine {
+                            navController.popBackStack()
+                        }
                     },
                     onBack = { navController.popBackStack() },
                 )

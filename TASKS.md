@@ -490,7 +490,7 @@ Implement time-of-day gate for task completion.
 
 ### ANDROID-017: Routine/Workout UI (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Build the step-by-step routine completion UI.
