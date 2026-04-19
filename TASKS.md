@@ -446,7 +446,7 @@ Implement duration-based task completion.
 
 ### ANDROID-015: Meditation Timer (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement meditation task completion via two methods:

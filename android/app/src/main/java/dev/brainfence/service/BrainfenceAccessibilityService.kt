@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -19,6 +22,10 @@ class BrainfenceAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "BrainfenceA11y"
+
+        private val _foregroundApp = MutableStateFlow<String?>(null)
+        /** The package name of the current foreground app. Used by MeditationTimerManager for companion app detection. */
+        val foregroundApp: StateFlow<String?> = _foregroundApp.asStateFlow()
     }
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -37,11 +44,13 @@ class BrainfenceAccessibilityService : AccessibilityService() {
 
         val packageName = event.packageName?.toString() ?: return
 
-        // Ignore our own app and system UI
-        if (packageName == this.packageName) return
+        // Ignore system UI
         if (packageName == "com.android.systemui") return
 
-        // If this is our blocking activity coming to front, track it
+        // Emit foreground app for companion app detection (before filtering our own package)
+        _foregroundApp.value = packageName
+
+        // Ignore our own app for blocking purposes
         if (packageName == this.packageName) {
             blockingActivityShown = true
             return

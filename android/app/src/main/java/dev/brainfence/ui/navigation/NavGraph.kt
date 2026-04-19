@@ -28,6 +28,8 @@ import dev.brainfence.ui.tasks.DurationTaskScreen
 import dev.brainfence.ui.tasks.DurationTaskViewModel
 import dev.brainfence.ui.tasks.GpsTaskScreen
 import dev.brainfence.ui.tasks.GpsTaskViewModel
+import dev.brainfence.ui.tasks.MeditationTaskScreen
+import dev.brainfence.ui.tasks.MeditationTaskViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
 import dev.brainfence.ui.tasks.TaskListViewModel
 import androidx.navigation.NavType
@@ -40,6 +42,7 @@ private object Routes {
     const val HOME              = "home"
     const val GPS_TASK          = "task/{taskId}"
     const val DURATION_TASK     = "duration-task/{taskId}"
+    const val MEDITATION_TASK   = "meditation-task/{taskId}"
     const val DEBUG             = "debug"
 }
 
@@ -136,6 +139,7 @@ fun BrainfenceNavGraph(
                     when (task.verificationType) {
                         "gps" -> navController.navigate("task/${task.id}")
                         "duration" -> navController.navigate("duration-task/${task.id}")
+                        "meditation" -> navController.navigate("meditation-task/${task.id}")
                         else -> taskViewModel.requestComplete(task)
                     }
                 },
@@ -191,6 +195,34 @@ fun BrainfenceNavGraph(
                     onResume = durationViewModel::resumeTimer,
                     onCancel = {
                         durationViewModel.cancelTimer()
+                        navController.popBackStack()
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+        composable(
+            route = Routes.MEDITATION_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val meditationViewModel: MeditationTaskViewModel = hiltViewModel()
+            val task             by meditationViewModel.task.collectAsStateWithLifecycle()
+            val meditationConfig by meditationViewModel.meditationConfig.collectAsStateWithLifecycle()
+            val timerState       by meditationViewModel.timerState.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            val currentConfig = meditationConfig
+            if (currentTask != null && currentConfig != null) {
+                MeditationTaskScreen(
+                    task = currentTask,
+                    meditationConfig = currentConfig,
+                    timerState = timerState,
+                    onStartInApp = meditationViewModel::startInAppTimer,
+                    onStartCompanion = meditationViewModel::startCompanionTracking,
+                    onPause = meditationViewModel::pauseTimer,
+                    onResume = meditationViewModel::resumeTimer,
+                    onCancel = {
+                        meditationViewModel.cancelTimer()
                         navController.popBackStack()
                     },
                     onBack = { navController.popBackStack() },
