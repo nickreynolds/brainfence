@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Circle
@@ -57,6 +58,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import dev.brainfence.domain.model.Task
+import dev.brainfence.domain.recurrence.TimeGatePhase
+import dev.brainfence.domain.recurrence.computeTimeGatePhase
+import org.json.JSONObject
+import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -184,25 +189,69 @@ private fun TaskItem(
     task: Task,
     onClick: () -> Unit,
 ) {
+    val timeGatePhase = if (task.verificationType == "time_gate") {
+        computeTimeGatePhase(task.verificationConfig, Instant.now())
+    } else null
+
+    val isLocked = timeGatePhase == TimeGatePhase.BEFORE_START && !task.completedToday
+    val isUrgent = timeGatePhase == TimeGatePhase.PAST_END && !task.completedToday
+
     ListItem(
         modifier = Modifier
-            .clickable(enabled = !task.completedToday, onClick = onClick)
-            .alpha(if (task.completedToday) 0.5f else 1f),
+            .clickable(enabled = !task.completedToday && !isLocked, onClick = onClick)
+            .alpha(when {
+                task.completedToday -> 0.5f
+                isLocked -> 0.4f
+                else -> 1f
+            }),
         headlineContent = { Text(task.title) },
         supportingContent = {
-            val verif = task.verificationType ?: "manual"
-            val recur = task.recurrenceType ?: "one-off"
-            Text("${task.taskType} · $verif · $recur")
+            when {
+                isLocked -> {
+                    val config = JSONObject(task.verificationConfig)
+                    Text(
+                        text = "Available at ${config.getString("start_time")}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                isUrgent -> {
+                    Text(
+                        text = "Overdue \u2014 blocking apps until completed",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                timeGatePhase == TimeGatePhase.ACTIVE && !task.completedToday -> {
+                    val config = JSONObject(task.verificationConfig)
+                    Text(
+                        text = "Complete before ${config.getString("end_time")}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> {
+                    val verif = task.verificationType ?: "manual"
+                    val recur = task.recurrenceType ?: "one-off"
+                    Text("${task.taskType} \u00b7 $verif \u00b7 $recur")
+                }
+            }
         },
         leadingContent = {
-            if (task.completedToday) {
-                Icon(
+            when {
+                task.completedToday -> Icon(
                     imageVector        = Icons.Default.CheckCircle,
                     contentDescription = "Completed today",
                     tint               = MaterialTheme.colorScheme.primary,
                 )
-            } else {
-                Icon(
+                isLocked -> Icon(
+                    imageVector        = Icons.Default.Lock,
+                    contentDescription = "Not yet available",
+                    tint               = MaterialTheme.colorScheme.outline,
+                )
+                isUrgent -> Icon(
+                    imageVector        = Icons.Default.Warning,
+                    contentDescription = "Overdue",
+                    tint               = MaterialTheme.colorScheme.error,
+                )
+                else -> Icon(
                     imageVector        = Icons.Outlined.Circle,
                     contentDescription = "Not completed",
                     tint               = MaterialTheme.colorScheme.outline,
@@ -346,7 +395,7 @@ private fun BlockingStatusCard(
                                     )
                                 }
                             }
-                            if (task.verificationType == null || task.verificationType == "manual") {
+                            if (task.verificationType == null || task.verificationType == "manual" || task.verificationType == "time_gate") {
                                 TextButton(onClick = { onQuickComplete(task) }) {
                                     Text("Complete", style = MaterialTheme.typography.labelSmall)
                                 }
@@ -364,7 +413,7 @@ private fun blockingVerificationHint(task: Task): String? = when (task.verificat
     "gps" -> "Requires GPS verification"
     "meditation" -> "Requires meditation session"
     "duration" -> "Requires timed session"
-    "time_gate" -> "Available during scheduled window only"
+    "time_gate" -> "Overdue \u2014 complete now to unblock"
     else -> null
 }
 

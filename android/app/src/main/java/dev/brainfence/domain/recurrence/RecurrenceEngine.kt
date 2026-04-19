@@ -50,20 +50,23 @@ fun computeOccurrenceStatus(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns [OccurrenceStatus.NotDue] if outside the gate window, or null if inside
- * (so the caller continues with the normal recurrence check).
+ * Checks the time gate phase and short-circuits the occurrence status when appropriate.
+ *
+ * - Before start_time → [OccurrenceStatus.NotDue] (task is locked)
+ * - During the active window → null (continue with normal recurrence check)
+ * - After end_time → null (task remains completable; blocking kicks in if incomplete)
  */
 private fun checkTimeGate(
     verificationConfig: String,
     currentTime: Instant,
     defaultZone: ZoneId,
 ): OccurrenceStatus? {
-    val config = JSONObject(verificationConfig)
-    val start = LocalTime.parse(config.getString("start_time"))
-    val end = LocalTime.parse(config.getString("end_time"))
-    val zone = if (config.has("timezone")) ZoneId.of(config.getString("timezone")) else defaultZone
-    val now = currentTime.atZone(zone).toLocalTime()
-    return if (now < start || now >= end) OccurrenceStatus.NotDue else null
+    val phase = computeTimeGatePhase(verificationConfig, currentTime, defaultZone)
+    return when (phase) {
+        TimeGatePhase.BEFORE_START -> OccurrenceStatus.NotDue
+        TimeGatePhase.ACTIVE -> null
+        TimeGatePhase.PAST_END -> null
+    }
 }
 
 // ---------------------------------------------------------------------------

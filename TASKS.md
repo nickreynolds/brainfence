@@ -472,7 +472,7 @@ Implement meditation task completion via two methods:
 
 ### ANDROID-016: Time Gate Verification (Android)
 
-**STATUS**: TODO
+**STATUS**: DONE
 **CAN_BE_DONE_BY_CLAUDE**: YES
 
 Implement time-of-day gate for task completion.

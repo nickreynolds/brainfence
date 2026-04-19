@@ -2,6 +2,8 @@ package dev.brainfence.domain.blocking
 
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
+import dev.brainfence.domain.recurrence.TimeGatePhase
+import dev.brainfence.domain.recurrence.computeTimeGatePhase
 import org.json.JSONObject
 import java.time.DayOfWeek
 import java.time.Instant
@@ -38,7 +40,7 @@ fun evaluateBlocking(
     for (rule in rules) {
         if (!rule.isActive) continue
         if (!isWithinSchedule(rule.activeSchedule, currentTime, timeZone)) continue
-        if (conditionsMet(rule, taskById)) continue
+        if (conditionsMet(rule, taskById, currentTime, timeZone)) continue
 
         // Rule is active, within schedule, and conditions NOT met → block
         blockedApps.addAll(rule.blockedApps)
@@ -53,12 +55,29 @@ fun evaluateBlocking(
 
 /**
  * Returns true if the rule's conditions are satisfied (i.e. blocking should be lifted).
+ *
+ * For time_gate condition tasks, the condition is considered "met" (non-blocking)
+ * until the task's end_time has passed. After end_time, normal completion logic applies.
  */
-private fun conditionsMet(rule: BlockingRule, taskById: Map<String, Task>): Boolean {
+private fun conditionsMet(
+    rule: BlockingRule,
+    taskById: Map<String, Task>,
+    currentTime: Instant,
+    timeZone: ZoneId,
+): Boolean {
     if (rule.conditionTaskIds.isEmpty()) return false
 
     val results = rule.conditionTaskIds.map { taskId ->
-        taskById[taskId]?.completedToday == true
+        val task = taskById[taskId] ?: return@map false
+        if (task.completedToday) return@map true
+
+        // Time-gated tasks don't trigger blocking until after their end_time
+        if (task.verificationType == "time_gate") {
+            val phase = computeTimeGatePhase(task.verificationConfig, currentTime, timeZone)
+            return@map phase != TimeGatePhase.PAST_END
+        }
+
+        false
     }
 
     return when (rule.conditionLogic) {

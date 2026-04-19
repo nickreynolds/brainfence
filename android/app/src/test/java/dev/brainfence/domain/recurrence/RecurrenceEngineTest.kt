@@ -347,17 +347,31 @@ class RecurrenceEngineTest {
     }
 
     @Test
-    fun `time gate - outside window is not due`() {
+    fun `time gate - before start is not due`() {
         val result = computeOccurrenceStatus(
             recurrenceType = "daily",
             recurrenceConfig = "{}",
             verificationType = "time_gate",
             verificationConfig = """{"start_time": "07:00", "end_time": "10:00", "timezone": "America/Los_Angeles"}""",
             lastCompletionAt = null,
-            currentTime = instant("2026-04-16", 18), // 6 PM ET = 3 PM PT
+            currentTime = instant("2026-04-16", 9), // 9 AM ET = 6 AM PT (before 7 AM start)
             timeZone = zone,
         )
         assertEquals(OccurrenceStatus.NotDue, result)
+    }
+
+    @Test
+    fun `time gate - after end is still due (completable)`() {
+        val result = computeOccurrenceStatus(
+            recurrenceType = "daily",
+            recurrenceConfig = "{}",
+            verificationType = "time_gate",
+            verificationConfig = """{"start_time": "07:00", "end_time": "10:00", "timezone": "America/Los_Angeles"}""",
+            lastCompletionAt = null,
+            currentTime = instant("2026-04-16", 18), // 6 PM ET = 3 PM PT (after 10 AM end)
+            timeZone = zone,
+        )
+        assertEquals(OccurrenceStatus.Due, result)
     }
 
     @Test
