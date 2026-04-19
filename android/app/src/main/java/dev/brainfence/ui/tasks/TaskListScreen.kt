@@ -214,10 +214,16 @@ private fun TaskItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                isUrgent -> {
+                isUrgent && task.isBlockingCondition -> {
                     Text(
                         text = "Overdue \u2014 blocking apps until completed",
                         color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                isUrgent -> {
+                    Text(
+                        text = "Overdue",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 timeGatePhase == TimeGatePhase.ACTIVE && !task.completedToday -> {
@@ -246,10 +252,15 @@ private fun TaskItem(
                     contentDescription = "Not yet available",
                     tint               = MaterialTheme.colorScheme.outline,
                 )
-                isUrgent -> Icon(
+                isUrgent && task.isBlockingCondition -> Icon(
                     imageVector        = Icons.Default.Warning,
                     contentDescription = "Overdue",
                     tint               = MaterialTheme.colorScheme.error,
+                )
+                isUrgent -> Icon(
+                    imageVector        = Icons.Default.Warning,
+                    contentDescription = "Overdue",
+                    tint               = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 else -> Icon(
                     imageVector        = Icons.Outlined.Circle,
