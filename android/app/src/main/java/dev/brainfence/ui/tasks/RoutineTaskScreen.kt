@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.AlertDialog
@@ -44,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +72,7 @@ fun RoutineTaskScreen(
     stepStates: Map<String, StepUiState>,
     supersetRounds: Map<String, SupersetRoundState> = emptyMap(),
     isCompleting: Boolean,
+    allStepsCompleted: Boolean = false,
     onToggleCheckbox: (stepId: String) -> Unit,
     onUpdateSet: (stepId: String, setIndex: Int, entry: StepSetEntry) -> Unit,
     onCompleteCurrentSet: (stepId: String) -> Unit,
@@ -81,9 +84,21 @@ fun RoutineTaskScreen(
     onAdvanceRound: (groupId: String) -> Unit = {},
     onGoToRound: (groupId: String, round: Int) -> Unit = { _, _ -> },
     onAddStep: (title: String, stepType: String, defaultSets: Int, durationSeconds: Int) -> Unit,
+    onRemoveStep: (stepId: String) -> Unit,
     onFinish: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val isRoutine = task.taskType == "routine"
+
+    // Auto-complete routine tasks when all steps are done
+    if (isRoutine) {
+        LaunchedEffect(allStepsCompleted) {
+            if (allStepsCompleted && !isCompleting) {
+                onFinish()
+            }
+        }
+    }
+
     var showAddStepDialog by remember { mutableStateOf(false) }
 
     if (showAddStepDialog) {
@@ -174,6 +189,7 @@ fun RoutineTaskScreen(
                                 onRemoveSet = { onRemoveSet(item.id) },
                                 onStartTimer = { idx -> onStartTimer(item.id, idx) },
                                 onStopTimer = { idx -> onStopTimer(item.id, idx) },
+                                onRemoveStep = { onRemoveStep(item.id) },
                             )
                         }
                         is SupersetGroup -> {
@@ -205,16 +221,20 @@ fun RoutineTaskScreen(
                     }
                 }
 
-                item {
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = onFinish,
-                        enabled = !isCompleting,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(if (isCompleting) "Saving..." else "Finish Routine")
+                if (!isRoutine) {
+                    item {
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = onFinish,
+                            enabled = !isCompleting,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (isCompleting) "Saving..." else "Finish Workout")
+                        }
+                        Spacer(Modifier.height(24.dp))
                     }
-                    Spacer(Modifier.height(24.dp))
+                } else {
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
@@ -232,6 +252,7 @@ private fun StepCard(
     onRemoveSet: () -> Unit,
     onStartTimer: (setIndex: Int) -> Unit,
     onStopTimer: (setIndex: Int) -> Unit,
+    onRemoveStep: () -> Unit,
 ) {
     val step = state.step
     val allSetsCompleted = state.sets.all { it.completed }
@@ -260,7 +281,19 @@ private fun StepCard(
                     text = step.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
                 )
+                IconButton(
+                    onClick = onRemoveStep,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Remove step",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Spacer(Modifier.height(12.dp))

@@ -68,9 +68,9 @@
       "group": "Morning",
       "sort_order": 2,
       "steps": [
-        { "title": "Brush teeth", "step_type": "checkbox", "step_order": 0, "config": {} },
-        { "title": "Cold shower", "step_type": "timed", "step_order": 1, "config": { "duration_seconds": 120 } },
-        { "title": "Journaling", "step_type": "timed", "step_order": 2, "config": { "duration_seconds": 300 } }
+        { "title": "Take Vitamins", "step_type": "checkbox", "step_order": 0, "config": {} },
+        { "title": "Make Bed", "step_type": "checkbox", "step_order": 1, "config": {} },
+        { "title": "30s L Sit", "step_type": "timed", "step_order": 2, "config": { "duration_seconds": 30 } }
       ]
     },
     {

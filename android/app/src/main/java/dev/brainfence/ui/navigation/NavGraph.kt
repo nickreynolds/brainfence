@@ -276,6 +276,7 @@ fun BrainfenceNavGraph(
             val stepStates by routineViewModel.stepStates.collectAsStateWithLifecycle()
             val supersetRounds by routineViewModel.supersetRounds.collectAsStateWithLifecycle()
             val isCompleting by routineViewModel.isCompleting.collectAsStateWithLifecycle()
+            val allStepsCompleted by routineViewModel.allStepsCompleted.collectAsStateWithLifecycle()
 
             val currentTask = task
             if (currentTask != null) {
@@ -285,6 +286,7 @@ fun BrainfenceNavGraph(
                     stepStates = stepStates,
                     supersetRounds = supersetRounds,
                     isCompleting = isCompleting,
+                    allStepsCompleted = allStepsCompleted,
                     onToggleCheckbox = routineViewModel::toggleCheckbox,
                     onUpdateSet = routineViewModel::updateSet,
                     onCompleteCurrentSet = routineViewModel::completeCurrentSet,
@@ -296,6 +298,7 @@ fun BrainfenceNavGraph(
                     onAdvanceRound = routineViewModel::advanceRound,
                     onGoToRound = routineViewModel::goToRound,
                     onAddStep = routineViewModel::addStep,
+                    onRemoveStep = routineViewModel::removeStep,
                     onFinish = {
                         routineViewModel.finishRoutine {
                             navController.popBackStack()

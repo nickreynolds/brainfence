@@ -146,6 +146,16 @@ class RoutineRepository @Inject constructor(
     }
 
     /**
+     * Delete a single routine step by ID.
+     */
+    suspend fun deleteStep(stepId: String) {
+        database.execute(
+            sql = "DELETE FROM routine_steps WHERE id = ?",
+            parameters = listOf(stepId),
+        )
+    }
+
+    /**
      * Batch-insert routine steps for a newly created task.
      */
     suspend fun insertRoutineSteps(

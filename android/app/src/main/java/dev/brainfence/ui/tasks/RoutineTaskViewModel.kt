@@ -67,6 +67,10 @@ class RoutineTaskViewModel @Inject constructor(
     private val _isCompleting = MutableStateFlow(false)
     val isCompleting: StateFlow<Boolean> = _isCompleting.asStateFlow()
 
+    val allStepsCompleted: StateFlow<Boolean> = _stepStates
+        .map { states -> states.isNotEmpty() && states.values.all { s -> s.sets.all { it.completed } } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private var prefilled = false
 
     init {
@@ -218,6 +222,12 @@ class RoutineTaskViewModel @Inject constructor(
             if (setIndex in state.sets.indices) {
                 this[stepId] = state.copy(activeSetIndex = setIndex)
             }
+        }
+    }
+
+    fun removeStep(stepId: String) {
+        viewModelScope.launch {
+            routineRepository.deleteStep(stepId)
         }
     }
 
