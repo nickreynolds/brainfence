@@ -116,6 +116,7 @@ class BrainfenceService : Service() {
             taskRepository.watchActiveTasks().collect { tasks ->
                 currentTasks = tasks
                 runEvaluation()
+                autoStartCompanionTracking(tasks)
             }
         }
         scope.launch {
@@ -159,6 +160,53 @@ class BrainfenceService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error applying pending config changes", e)
+        }
+    }
+
+    /**
+     * Automatically start companion app tracking for any active meditation task
+     * that has companion apps configured and isn't already being tracked.
+     */
+    private fun autoStartCompanionTracking(tasks: List<Task>) {
+        val activeTimers = meditationTimerManager.timerStates.value
+        for (task in tasks) {
+            if (task.taskType != "meditation") continue
+            if (task.completedToday) continue
+
+            val config = task.verificationConfig?.let(MeditationTimerManager::parseMeditationConfig)
+            if (config == null || config.companionApps.isEmpty()) continue
+
+            // If already tracking, verify companion apps match the current config.
+            // A stale restored session may have wrong data — cancel and re-start.
+            if (activeTimers.containsKey(task.id)) {
+                val persisted = meditationTimerManager.getPersistedCompanionApps(task.id)
+                if (persisted != null && persisted.toSet() == config.companionApps.toSet()) continue
+                Log.w(TAG, "Companion apps mismatch for '${task.title}': persisted=$persisted, config=${config.companionApps} — restarting")
+                scope.launch {
+                    debugLog.log(
+                        "companion",
+                        "Restarting tracking for '${task.title}' — stale companion apps detected",
+                        data = """{"persisted":"${persisted?.joinToString()}","config":"${config.companionApps.joinToString()}"}""",
+                    )
+                }
+                meditationTimerManager.cancelTimer(task.id)
+            }
+
+            meditationTimerManager.persistCompanionApps(task.id, config.companionApps)
+            meditationTimerManager.startCompanionTracking(
+                taskId = task.id,
+                taskTitle = task.title,
+                targetSeconds = config.durationSeconds,
+                companionApps = config.companionApps,
+            )
+            Log.i(TAG, "Auto-started companion tracking for '${task.title}' (apps=${config.companionApps})")
+            scope.launch {
+                debugLog.log(
+                    "companion",
+                    "Auto-started companion tracking for '${task.title}'",
+                    data = config.companionApps.joinToString(),
+                )
+            }
         }
     }
 

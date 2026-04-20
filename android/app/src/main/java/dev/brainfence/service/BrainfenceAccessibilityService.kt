@@ -48,6 +48,7 @@ class BrainfenceAccessibilityService : AccessibilityService() {
         if (packageName == "com.android.systemui") return
 
         // Emit foreground app for companion app detection (before filtering our own package)
+        Log.d(TAG, "Foreground app changed: $packageName")
         _foregroundApp.value = packageName
 
         // Ignore our own app for blocking purposes

@@ -84,11 +84,21 @@ class MeditationTimerManager @Inject constructor(
                 val appsArray = obj.optJSONArray("companion_apps")
                 if (appsArray != null) {
                     for (i in 0 until appsArray.length()) {
-                        appsArray.optString(i)?.takeIf { it.isNotBlank() }?.let {
-                            companionApps.add(it)
+                        val entry = appsArray.get(i)
+                        val pkg: String? = when (entry) {
+                            is JSONObject -> {
+                                // Only include apps for the current platform
+                                val platform = entry.optString("platform", "")
+                                if (platform == "android") entry.optString("package", null)
+                                else null
+                            }
+                            is String -> entry.takeIf { it.isNotBlank() }
+                            else -> null
                         }
+                        pkg?.let { companionApps.add(it) }
                     }
                 }
+                Log.d(TAG, "Parsed meditation config: duration=${durationSeconds}s, companionApps=$companionApps")
                 MeditationConfig(
                     durationSeconds = durationSeconds,
                     allowPause = obj.optBoolean("allow_pause", false),
@@ -298,13 +308,38 @@ class MeditationTimerManager @Inject constructor(
 
     private fun launchCompanionTrackingJob(taskId: String, companionApps: List<String>) {
         companionJobs[taskId]?.cancel()
+        Log.d(TAG, "Launching companion tracking job for task $taskId, watching for: $companionApps")
+        scope.launch {
+            debugLog.log(
+                "companion",
+                "Started watching for companion apps (task=$taskId)",
+                data = companionApps.joinToString(),
+            )
+        }
         companionJobs[taskId] = scope.launch {
             BrainfenceAccessibilityService.foregroundApp.collect { foregroundPkg ->
-                val state = _timerStates.value[taskId] ?: return@collect
+                if (foregroundPkg == null) {
+                    Log.d(TAG, "Foreground app is null (no app detected yet)")
+                    return@collect
+                }
+                val state = _timerStates.value[taskId] ?: run {
+                    Log.w(TAG, "No timer state for task $taskId — tracking job orphaned?")
+                    return@collect
+                }
                 val isCompanionInForeground = foregroundPkg in companionApps
+
+                Log.d(TAG, "Foreground: $foregroundPkg | companion=$isCompanionInForeground | running=${state.running} | elapsed=${state.elapsedSeconds}s/${state.targetSeconds}s")
 
                 if (isCompanionInForeground && !state.running) {
                     // Companion app came to foreground — start accumulating
+                    Log.i(TAG, "Companion app opened: $foregroundPkg — starting accumulation")
+                    scope.launch {
+                        debugLog.log(
+                            "companion",
+                            "Companion app opened: $foregroundPkg",
+                            data = """{"taskId":"$taskId","elapsed":${state.elapsedSeconds},"target":${state.targetSeconds}}""",
+                        )
+                    }
                     val resumedState = state.copy(
                         startedAtMillis = System.currentTimeMillis(),
                         running = true,
@@ -317,11 +352,28 @@ class MeditationTimerManager @Inject constructor(
                     timerJobs[taskId]?.cancel()
                     timerJobs.remove(taskId)
                     val elapsed = computeCurrentElapsed(state)
+                    Log.i(TAG, "Companion app lost foreground — paused at ${elapsed}s")
+                    scope.launch {
+                        debugLog.log(
+                            "companion",
+                            "Companion app left foreground — paused at ${elapsed}s",
+                            data = """{"taskId":"$taskId","elapsed":$elapsed,"lastApp":"${state.companionApp}"}""",
+                        )
+                    }
                     updateState(taskId, state.copy(
                         elapsedSeconds = elapsed,
                         running = false,
                     ))
                     persistTimer(taskId, state.copy(elapsedSeconds = elapsed))
+                } else if (!isCompanionInForeground && !state.running) {
+                    // Non-companion app in foreground, not running — just log for visibility
+                    scope.launch {
+                        debugLog.log(
+                            "companion",
+                            "App in foreground (not companion): $foregroundPkg",
+                            data = """{"watching_for":${companionApps.joinToString(prefix="[\"", postfix="\"]", separator="\",\"")}}""",
+                        )
+                    }
                 }
             }
         }
@@ -337,6 +389,14 @@ class MeditationTimerManager @Inject constructor(
 
                 val elapsed = computeCurrentElapsed(state)
                 if (elapsed >= state.targetSeconds) {
+                    Log.i(TAG, "Companion meditation complete for '${state.taskTitle}' (${elapsed}s)")
+                    scope.launch {
+                        debugLog.log(
+                            "companion",
+                            "Meditation complete via companion app (${elapsed}s / ${state.targetSeconds}s)",
+                            data = """{"taskId":"$taskId","app":"${state.companionApp}"}""",
+                        )
+                    }
                     completeTimer(taskId, elapsed)
                     // Also cancel the companion tracking job
                     companionJobs[taskId]?.cancel()
@@ -350,6 +410,16 @@ class MeditationTimerManager @Inject constructor(
                 ))
                 if (elapsed % 10 == 0) {
                     persistTimer(taskId, state.copy(elapsedSeconds = elapsed))
+                }
+                // Log progress every 30 seconds
+                if (elapsed % 30 == 0 && elapsed > 0) {
+                    Log.d(TAG, "Companion accumulation: ${elapsed}s / ${state.targetSeconds}s (${state.companionApp})")
+                    scope.launch {
+                        debugLog.log(
+                            "companion",
+                            "Progress: ${elapsed}s / ${state.targetSeconds}s (${state.companionApp})",
+                        )
+                    }
                 }
             }
         }
@@ -396,10 +466,19 @@ class MeditationTimerManager @Inject constructor(
             // For companion app method, re-launch tracking
             if (method == "companion_app") {
                 val appsJson = prefs.getString("companion_apps_$taskId", null)
+                Log.d(TAG, "Restoring companion tracking for '$title': raw companion_apps=$appsJson")
                 if (appsJson != null) {
                     try {
                         val arr = JSONArray(appsJson)
                         val apps = (0 until arr.length()).map { arr.getString(it) }
+                        Log.d(TAG, "Restored companion apps list: $apps")
+                        scope.launch {
+                            debugLog.log(
+                                "companion",
+                                "Restored companion tracking for '$title'",
+                                data = apps.joinToString(),
+                            )
+                        }
                         launchCompanionTrackingJob(taskId, apps)
                     } catch (_: Exception) {}
                 }
@@ -520,6 +599,14 @@ class MeditationTimerManager @Inject constructor(
             .putString("method_$taskId", state.method)
             .putString("companion_app_$taskId", state.companionApp)
             .apply()
+    }
+
+    fun getPersistedCompanionApps(taskId: String): List<String>? {
+        val json = prefs.getString("companion_apps_$taskId", null) ?: return null
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (_: Exception) { null }
     }
 
     fun persistCompanionApps(taskId: String, companionApps: List<String>) {
