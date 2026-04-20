@@ -5,4 +5,12 @@
     <string name="service_notification_title">Brainfence is active</string>
     <string name="service_notification_text">Monitoring blocking rules</string>
     <string name="accessibility_service_description">Brainfence monitors which app is in the foreground to enforce blocking rules. When you open a blocked app, an overlay appears until the required tasks are completed.</string>
+    <string name="task_alerts_channel">Task Alerts</string>
+    <string name="task_alerts_channel_description">Notifications when tasks become available or are about to start blocking</string>
+    <string name="notif_task_ready_title_single">%1$s is ready</string>
+    <string name="notif_task_ready_title_multiple">%1$d tasks are ready</string>
+    <string name="notif_task_ready_body_single">Available since %1$s</string>
+    <string name="notif_blocking_soon_title_single">%1$s will block in 1 hour</string>
+    <string name="notif_blocking_soon_title_multiple">%1$d tasks will block in 1 hour</string>
+    <string name="notif_blocking_soon_body_single">Due at %1$s — complete it to avoid blocking</string>
 </resources>

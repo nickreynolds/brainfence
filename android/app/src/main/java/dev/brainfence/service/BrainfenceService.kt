@@ -62,6 +62,7 @@ class BrainfenceService : Service() {
     @Inject lateinit var gpsVerificationManager: GpsVerificationManager
     @Inject lateinit var durationTimerManager: DurationTimerManager
     @Inject lateinit var meditationTimerManager: MeditationTimerManager
+    @Inject lateinit var taskNotificationManager: TaskNotificationManager
     @Inject lateinit var debugLog: DebugLogRepository
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -138,6 +139,7 @@ class BrainfenceService : Service() {
                 delay(EVAL_INTERVAL_MS)
                 applyExpiredConfigChanges()
                 runEvaluation()
+                taskNotificationManager.evaluate(currentTasks)
                 breadcrumbCounter++
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()
