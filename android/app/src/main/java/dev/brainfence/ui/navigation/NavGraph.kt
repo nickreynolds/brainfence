@@ -157,6 +157,7 @@ fun BrainfenceNavGraph(
             val blockingStatus     by taskViewModel.blockingStatus.collectAsStateWithLifecycle()
             val activeRules        by taskViewModel.activeRules.collectAsStateWithLifecycle()
             val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
+            val needsUsageStats   by taskViewModel.needsUsageStatsPermission.collectAsStateWithLifecycle()
             TaskListScreen(
                 activeTasks              = activeTasks,
                 completedTasks           = completedTasks,
@@ -167,7 +168,9 @@ fun BrainfenceNavGraph(
                 blockingStatus           = blockingStatus,
                 isAccessibilityEnabled   = isAccessibilityEnabled,
                 hasLocationPermission    = hasLocationPerm,
+                needsUsageStatsPermission = needsUsageStats,
                 onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
+                onUsageStatsPermissionResult = taskViewModel::onUsageStatsPermissionResult,
                 onSelectTab              = taskViewModel::selectTab,
                 onTaskTap                = { task ->
                     when {

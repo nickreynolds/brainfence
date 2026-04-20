@@ -16,10 +16,12 @@ import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeTaskPhase
 import dev.brainfence.service.BrainfenceService
+import dev.brainfence.service.CompanionUsageVerifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -48,7 +50,44 @@ class TaskListViewModel @Inject constructor(
     private val completionRepository: CompletionRepository,
     private val sessionRepository: SessionRepository,
     private val blockingRepository: BlockingRepository,
+    private val companionUsageVerifier: CompanionUsageVerifier,
 ) : ViewModel() {
+
+    private val _needsUsageStatsPermission = MutableStateFlow(false)
+    val needsUsageStatsPermission = _needsUsageStatsPermission.asStateFlow()
+
+    init {
+        runCompanionReconciliation()
+    }
+
+    private fun runCompanionReconciliation() {
+        viewModelScope.launch {
+            // Check if any meditation tasks have companion apps configured
+            val tasks = taskRepository.watchActiveTasks().first()
+            val hasMeditationWithCompanion = tasks.any { task ->
+                task.taskType == "meditation" && !task.completedToday &&
+                    task.verificationConfig?.let(
+                        dev.brainfence.service.MeditationTimerManager::parseMeditationConfig
+                    )?.companionApps?.isNotEmpty() == true
+            }
+
+            if (!hasMeditationWithCompanion) return@launch
+
+            if (!companionUsageVerifier.hasUsageStatsPermission()) {
+                _needsUsageStatsPermission.value = true
+                return@launch
+            }
+
+            companionUsageVerifier.reconcile()
+        }
+    }
+
+    fun onUsageStatsPermissionResult() {
+        if (companionUsageVerifier.hasUsageStatsPermission()) {
+            _needsUsageStatsPermission.value = false
+            viewModelScope.launch { companionUsageVerifier.reconcile() }
+        }
+    }
 
     val tasks = taskRepository.watchActiveTasks()
         .stateIn(

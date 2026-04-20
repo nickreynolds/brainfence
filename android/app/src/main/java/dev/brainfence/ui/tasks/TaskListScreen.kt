@@ -78,7 +78,9 @@ fun TaskListScreen(
     blockingStatus: BlockingStatusState,
     isAccessibilityEnabled: Boolean,
     hasLocationPermission: Boolean,
+    needsUsageStatsPermission: Boolean,
     onLocationPermissionResult: (Boolean) -> Unit,
+    onUsageStatsPermissionResult: () -> Unit,
     onSelectTab: (HomeTab) -> Unit,
     onTaskTap: (Task) -> Unit,
     onConfirmComplete: () -> Unit,
@@ -197,6 +199,13 @@ fun TaskListScreen(
                                         )
                                     }
                                 },
+                            )
+                        }
+                    }
+                    if (needsUsageStatsPermission) {
+                        item(key = "usage_stats_banner") {
+                            UsageStatsBanner(
+                                onResult = onUsageStatsPermissionResult,
                             )
                         }
                     }
@@ -568,6 +577,55 @@ private fun LocationPermissionBanner(onRequestPermission: () -> Unit) {
                 text = "Location permission needed for GPS tasks. Tap to grant.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun UsageStatsBanner(
+    onResult: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+
+    // Re-check permission when the user returns from settings
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                onResult()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Card(
+        onClick = {
+            context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "Usage access needed to detect meditation app usage. Tap to grant.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }
