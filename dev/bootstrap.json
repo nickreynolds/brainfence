@@ -36,12 +36,12 @@
       "recurrence_config": {},
       "is_blocking_condition": true,
       "available_from": "06:00",
-      "due_at": "09:00",
+      "due_at": "11:00",
       "group": "Morning",
       "sort_order": 0
     },
     {
-      "title": "Morning Meditation",
+      "title": "Meditation",
       "task_type": "meditation",
       "verification_type": "meditation",
       "verification_config": {
@@ -58,8 +58,8 @@
       "recurrence_config": {},
       "is_blocking_condition": true,
       "available_from": "06:00",
-      "due_at": "09:00",
-      "group": "Morning",
+      "due_at": "19:00",
+      "group": "Evening",
       "sort_order": 1
     },
     {
@@ -80,56 +80,19 @@
       ]
     },
     {
-      "title": "Read 30 Minutes",
-      "task_type": "timed",
-      "verification_type": "duration",
-      "verification_config": {
-        "duration_seconds": 1800
-      },
-      "recurrence_type": "daily",
-      "recurrence_config": {},
-      "is_blocking_condition": false,
-      "group": "Morning",
-      "sort_order": 3
-    },
-    {
-      "title": "Quick Timer (30s Test)",
-      "task_type": "timed",
-      "verification_type": "duration",
-      "verification_config": {
-        "duration_seconds": 30
-      },
-      "recurrence_type": "daily",
-      "recurrence_config": {},
-      "is_blocking_condition": false,
-      "group": "Morning",
-      "sort_order": 4
-    },
-    {
-      "title": "Take Vitamins",
-      "task_type": "simple",
-      "verification_type": "manual",
-      "recurrence_type": "daily",
-      "recurrence_config": {},
-      "is_blocking_condition": false,
-      "available_from": "07:00",
-      "due_at": "10:00",
-      "group": "Morning",
-      "sort_order": 5
-    },
-    {
       "title": "Gym — Push Day",
       "task_type": "workout",
       "verification_type": "manual",
       "recurrence_type": "daily",
-      "recurrence_config": { "days": ["mon", "wed", "fri"] },
+      "recurrence_config": { "days": ["mon"] },
       "is_blocking_condition": false,
       "group": "Fitness",
       "sort_order": 0,
       "steps": [
         { "title": "Bench Press", "step_type": "weight_reps", "step_order": 0, "config": { "default_sets": 3 } },
         { "title": "Overhead Press", "step_type": "weight_reps", "step_order": 1, "config": { "default_sets": 3 } },
-        { "title": "Tricep Dips", "step_type": "just_reps", "step_order": 2, "config": {} }
+        { "title": "Squats", "step_type": "weight_reps", "step_order": 2, "config": { "default_sets": 3 } },
+        { "title": "Lateral Raises", "step_type": "weight_reps", "step_order": 2, "config": { "default_sets": 3 } }
       ]
     },
     {
@@ -150,20 +113,11 @@
       "due_at": "21:00",
       "group": "Evening",
       "sort_order": 0
-    },
-    {
-      "title": "Weekly Review",
-      "task_type": "simple",
-      "verification_type": "manual",
-      "recurrence_type": "weekly",
-      "recurrence_config": { "day": "sun" },
-      "is_blocking_condition": false,
-      "sort_order": 0
     }
   ],
   "blocking_rules": [
     {
-      "name": "Morning Block",
+      "name": "Block",
       "blocked_apps": [
         { "platform": "android", "package": "com.twitter.android" },
         { "platform": "android", "package": "com.instagram.android" },
@@ -172,7 +126,7 @@
         { "platform": "macos", "bundle_id": "com.burbn.instagram" }
       ],
       "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
-      "condition_task_titles": ["Morning Walk", "Morning Meditation", "Morning Routine"],
+      "condition_task_titles": ["Morning Walk", "Meditation", "Morning Routine"],
       "condition_logic": "all"
     },
     {
@@ -186,15 +140,6 @@
       ],
       "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
       "condition_task_titles": ["Night Walk"],
-      "condition_logic": "all"
-    },
-    {
-      "name": "Dev Test Block",
-      "blocked_apps": [
-        { "platform": "android", "package": "com.google.android.youtube" }
-      ],
-      "blocked_domains": ["youtube.com"],
-      "condition_task_titles": ["Morning Routine"],
       "condition_logic": "all"
     }
   ]
