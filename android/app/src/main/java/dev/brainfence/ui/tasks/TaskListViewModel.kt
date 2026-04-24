@@ -120,11 +120,14 @@ class TaskListViewModel @Inject constructor(
         initialValue = emptyList(),
     )
 
-    /** Tasks not yet available (before their available_from time). */
+    /** Tasks not yet available: before available_from time, or completed recurring tasks awaiting next occurrence. */
     val upcomingTasks = tasks.map { allTasks ->
         val now = Instant.now()
         val zone = ZoneId.systemDefault()
         allTasks.filter { task ->
+            // Completed recurring tasks — next occurrence is upcoming
+            if (task.completedToday && task.recurrenceType != null) return@filter true
+            // Not-yet-available tasks (before their available_from window)
             if (task.completedToday) return@filter false
             val phase = computeTaskPhase(task.availableFrom, task.dueAt, now, zone)
             phase == TimeGatePhase.BEFORE_START

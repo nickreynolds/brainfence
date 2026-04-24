@@ -63,8 +63,14 @@ import androidx.core.content.ContextCompat
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
+import dev.brainfence.domain.recurrence.computeNextOccurrence
 import dev.brainfence.domain.recurrence.computeTaskPhase
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -277,20 +283,36 @@ private fun TaskItem(
 ) {
     val phase = computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
 
-    val isLocked = showAsUpcoming || (phase == TimeGatePhase.BEFORE_START && !task.completedToday)
+    val isCompletedRecurring = showAsUpcoming && task.completedToday && task.recurrenceType != null
+    val isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase == TimeGatePhase.BEFORE_START && !task.completedToday)
     val isOverdue = phase == TimeGatePhase.PAST_DUE && !task.completedToday
 
     ListItem(
         modifier = Modifier
-            .clickable(enabled = !showAsCompleted && !isLocked, onClick = onClick)
+            .clickable(enabled = !showAsCompleted && !isLocked && !isCompletedRecurring, onClick = onClick)
             .alpha(when {
-                showAsCompleted -> 0.5f
+                showAsCompleted || isCompletedRecurring -> 0.5f
                 isLocked -> 0.4f
                 else -> 1f
             }),
         headlineContent = { Text(task.title) },
         supportingContent = {
             when {
+                isCompletedRecurring -> {
+                    val zone = ZoneId.systemDefault()
+                    val now = Instant.now()
+                    val lastCompletion = task.lastCompletionAt?.let {
+                        try { Instant.parse(it) } catch (_: Exception) { null }
+                    }
+                    val nextDue = computeNextOccurrence(
+                        task.recurrenceType, task.recurrenceConfig,
+                        lastCompletion, now, zone,
+                    )
+                    Text(
+                        text = if (nextDue != null) "Next: ${formatNextDue(nextDue, zone)}" else "Completed",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 showAsUpcoming && task.availableFrom != null -> {
                     Text(
                         text = "Available at ${task.availableFrom}",
@@ -343,7 +365,7 @@ private fun TaskItem(
         },
         leadingContent = {
             when {
-                showAsCompleted -> Icon(
+                showAsCompleted || isCompletedRecurring -> Icon(
                     imageVector        = Icons.Default.CheckCircle,
                     contentDescription = "Completed today",
                     tint               = MaterialTheme.colorScheme.primary,
@@ -517,6 +539,20 @@ private fun BlockingStatusCard(
                 }
             }
         }
+    }
+}
+
+/** Formats a future instant as a human-readable relative date, e.g. "Tomorrow", "Thursday", "Apr 30". */
+private fun formatNextDue(nextDue: Instant, timeZone: ZoneId): String {
+    val today = Instant.now().atZone(timeZone).toLocalDate()
+    val nextDate = nextDue.atZone(timeZone).toLocalDate()
+    val daysUntil = ChronoUnit.DAYS.between(today, nextDate)
+
+    return when {
+        daysUntil <= 0L -> "Later today"
+        daysUntil == 1L -> "Tomorrow"
+        daysUntil <= 6L -> nextDate.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+        else -> nextDate.format(DateTimeFormatter.ofPattern("MMM d"))
     }
 }
 

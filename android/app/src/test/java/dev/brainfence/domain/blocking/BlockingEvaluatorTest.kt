@@ -41,6 +41,7 @@ class BlockingEvaluatorTest {
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
+        lastCompletionAt = null,
     )
 
     private fun manualTask(
@@ -67,6 +68,7 @@ class BlockingEvaluatorTest {
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
+        lastCompletionAt = null,
     )
 
     private fun rule(

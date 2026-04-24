@@ -229,6 +229,67 @@ private fun inActiveWindow(config: JSONObject, currentTime: Instant, timeZone: Z
 }
 
 // ---------------------------------------------------------------------------
+// Next occurrence (for completed recurring tasks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the next occurrence instant for a recurring task that has been completed
+ * in the current window. Returns null for one-off tasks.
+ */
+fun computeNextOccurrence(
+    recurrenceType: String?,
+    recurrenceConfig: String,
+    lastCompletionAt: Instant?,
+    currentTime: Instant,
+    timeZone: ZoneId = ZoneId.systemDefault(),
+): Instant? {
+    if (recurrenceType == null) return null
+
+    val today = currentTime.atZone(timeZone).toLocalDate()
+
+    return when (recurrenceType) {
+        "daily" -> {
+            val config = JSONObject(recurrenceConfig)
+            if (config.has("days")) {
+                val days = config.getJSONArray("days")
+                val allowedDays = (0 until days.length()).map { parseDayOfWeek(days.getString(it)) }.toSet()
+                (1..7).firstNotNullOfOrNull { offset ->
+                    val candidate = today.plusDays(offset.toLong())
+                    if (candidate.dayOfWeek in allowedDays) candidate.atStartOfDay(timeZone).toInstant() else null
+                }
+            } else {
+                today.plusDays(1).atStartOfDay(timeZone).toInstant()
+            }
+        }
+        "weekly" -> {
+            val config = JSONObject(recurrenceConfig)
+            val targetDay = parseDayOfWeek(config.getString("day"))
+            val interval = if (config.has("interval")) config.getInt("interval") else 1
+            val tomorrow = today.plusDays(1)
+            findWeeklyDueDate(tomorrow, targetDay, interval).atStartOfDay(timeZone).toInstant()
+        }
+        "monthly" -> {
+            val config = JSONObject(recurrenceConfig)
+            val targetWeek = config.getInt("week")
+            val targetDay = parseDayOfWeek(config.getString("day"))
+            val dueThisMonth = nthDayOfWeekInMonth(today.year, today.monthValue, targetWeek, targetDay)
+            val nextDue = if (today < dueThisMonth) dueThisMonth else {
+                val nextMonth = today.plusMonths(1)
+                nthDayOfWeekInMonth(nextMonth.year, nextMonth.monthValue, targetWeek, targetDay)
+            }
+            nextDue.atStartOfDay(timeZone).toInstant()
+        }
+        "interval" -> {
+            if (lastCompletionAt == null) return currentTime
+            val config = JSONObject(recurrenceConfig)
+            val intervalMinutes = config.getLong("minutes")
+            lastCompletionAt.plusSeconds(intervalMinutes * 60)
+        }
+        else -> null
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

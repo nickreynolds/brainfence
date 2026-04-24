@@ -22,4 +22,5 @@ data class Task(
     val updatedAt: String,
     // Derived from join with task_completions — not a stored column
     val completedToday: Boolean,
+    val lastCompletionAt: String?,  // ISO timestamp of most recent completion
 )
