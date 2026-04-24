@@ -1,9 +1,12 @@
 package dev.brainfence.ui.tasks
 
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.brainfence.data.routine.RoutineRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.RoutineStep
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
 
@@ -47,9 +51,12 @@ class RoutineTaskViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     taskRepository: TaskRepository,
     private val routineRepository: RoutineRepository,
+    @ApplicationContext context: Context,
 ) : ViewModel() {
 
     private val taskId: String = checkNotNull(savedStateHandle["taskId"])
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("routine_progress", Context.MODE_PRIVATE)
 
     val task: StateFlow<Task?> = taskRepository.watchActiveTasks()
         .map { tasks -> tasks.find { it.id == taskId } }
@@ -95,12 +102,14 @@ class RoutineTaskViewModel @Inject constructor(
                             step.id to StepUiState(step = step, sets = sets)
                         }
                         _stepStates.value = _stepStates.value + newStates
+                        saveProgress()
                     }
                     // Remove states for deleted steps
                     val activeIds = stepList.map { it.id }.toSet()
                     val removed = currentIds - activeIds
                     if (removed.isNotEmpty()) {
                         _stepStates.value = _stepStates.value.filterKeys { it in activeIds }
+                        saveProgress()
                     }
                 }
             }
@@ -108,6 +117,9 @@ class RoutineTaskViewModel @Inject constructor(
     }
 
     private suspend fun initStepStates(stepList: List<RoutineStep>) {
+        // Try to restore in-progress session first
+        if (restoreSavedProgress(stepList)) return
+
         val lastCompletions = routineRepository.getLastStepCompletions(taskId)
         // Group last completions by step id
         val byStep = lastCompletions.groupBy { it.routineStepId }
@@ -174,6 +186,7 @@ class RoutineTaskViewModel @Inject constructor(
             }
             this[stepId] = state.copy(sets = newSets)
         }
+        saveProgress()
     }
 
     fun toggleCheckbox(stepId: String) {
@@ -191,6 +204,7 @@ class RoutineTaskViewModel @Inject constructor(
             val newActiveIndex = if (state.sets.all { it.completed }) newSets.size - 1 else state.activeSetIndex
             this[stepId] = state.copy(sets = newSets, activeSetIndex = newActiveIndex)
         }
+        saveProgress()
     }
 
     fun removeSet(stepId: String) {
@@ -202,6 +216,7 @@ class RoutineTaskViewModel @Inject constructor(
                 this[stepId] = state.copy(sets = newSets, activeSetIndex = newActiveIndex)
             }
         }
+        saveProgress()
     }
 
     fun completeCurrentSet(stepId: String) {
@@ -214,6 +229,7 @@ class RoutineTaskViewModel @Inject constructor(
             val nextIdx = if (idx + 1 < newSets.size) idx + 1 else idx
             this[stepId] = state.copy(sets = newSets, activeSetIndex = nextIdx)
         }
+        saveProgress()
     }
 
     fun goToSet(stepId: String, setIndex: Int) {
@@ -223,6 +239,7 @@ class RoutineTaskViewModel @Inject constructor(
                 this[stepId] = state.copy(activeSetIndex = setIndex)
             }
         }
+        saveProgress()
     }
 
     fun removeStep(stepId: String) {
@@ -271,6 +288,7 @@ class RoutineTaskViewModel @Inject constructor(
                 this[groupId] = state.copy(currentRound = state.currentRound + 1)
             }
         }
+        saveProgress()
     }
 
     fun goToRound(groupId: String, round: Int) {
@@ -280,6 +298,7 @@ class RoutineTaskViewModel @Inject constructor(
                 this[groupId] = state.copy(currentRound = round)
             }
         }
+        saveProgress()
     }
 
     fun startStepTimer(stepId: String, setIndex: Int = 0) {
@@ -341,8 +360,143 @@ class RoutineTaskViewModel @Inject constructor(
             }
 
             routineRepository.completeRoutine(taskId, stepData)
+            clearSavedProgress()
             _isCompleting.value = false
             onDone()
         }
+    }
+
+    // ── Progress persistence ─────────────────────────────────────────
+
+    private val prefsKey get() = "progress_$taskId"
+
+    private fun saveProgress() {
+        val states = _stepStates.value
+        if (states.isEmpty()) return
+
+        val root = JSONObject()
+
+        val stepsJson = JSONObject()
+        for ((stepId, state) in states) {
+            val stepObj = JSONObject()
+            stepObj.put("activeSetIndex", state.activeSetIndex)
+            val setsArr = JSONArray()
+            for (entry in state.sets) {
+                val setObj = JSONObject()
+                setObj.put("completed", entry.completed)
+                setObj.put("timerElapsed", entry.timerElapsed)
+                entry.weight?.let { setObj.put("weight", it) }
+                entry.reps?.let { setObj.put("reps", it) }
+                setsArr.put(setObj)
+            }
+            stepObj.put("sets", setsArr)
+            stepsJson.put(stepId, stepObj)
+        }
+        root.put("steps", stepsJson)
+
+        val rounds = _supersetRounds.value
+        if (rounds.isNotEmpty()) {
+            val roundsJson = JSONObject()
+            for ((groupId, state) in rounds) {
+                val obj = JSONObject()
+                obj.put("currentRound", state.currentRound)
+                obj.put("totalRounds", state.totalRounds)
+                val ids = JSONArray()
+                state.stepIds.forEach { ids.put(it) }
+                obj.put("stepIds", ids)
+                roundsJson.put(groupId, obj)
+            }
+            root.put("supersetRounds", roundsJson)
+        }
+
+        prefs.edit().putString(prefsKey, root.toString()).apply()
+    }
+
+    /**
+     * Try to restore in-progress routine state from SharedPreferences.
+     * Returns true if progress was restored, false otherwise.
+     */
+    private fun restoreSavedProgress(stepList: List<RoutineStep>): Boolean {
+        val json = prefs.getString(prefsKey, null) ?: return false
+        val root = try { JSONObject(json) } catch (_: Exception) { return false }
+        val stepsJson = root.optJSONObject("steps") ?: return false
+
+        val stepMap = stepList.associateBy { it.id }
+
+        // Only restore if the saved step IDs are a reasonable match for the current steps
+        val savedIds = mutableSetOf<String>()
+        val iter = stepsJson.keys()
+        while (iter.hasNext()) savedIds.add(iter.next())
+
+        // If none of the saved IDs match current steps, saved data is stale
+        if (savedIds.none { it in stepMap }) {
+            clearSavedProgress()
+            return false
+        }
+
+        val states = stepList.associate { step ->
+            val savedStep = stepsJson.optJSONObject(step.id)
+            if (savedStep != null) {
+                val setsArr = savedStep.optJSONArray("sets")
+                val sets = if (setsArr != null) {
+                    (0 until setsArr.length()).map { i ->
+                        val s = setsArr.getJSONObject(i)
+                        StepSetEntry(
+                            weight = s.optDouble("weight").takeIf { !it.isNaN() },
+                            reps = s.optInt("reps", 0).takeIf { it > 0 },
+                            completed = s.optBoolean("completed", false),
+                            timerElapsed = s.optInt("timerElapsed", 0),
+                        )
+                    }
+                } else {
+                    // Fallback: create default sets
+                    val config = JSONObject(step.config)
+                    val defaultSets = when (step.stepType) {
+                        "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
+                        else -> 1
+                    }
+                    (1..defaultSets).map { StepSetEntry() }
+                }
+                val activeSetIndex = savedStep.optInt("activeSetIndex", 0)
+                step.id to StepUiState(step = step, sets = sets, activeSetIndex = activeSetIndex)
+            } else {
+                // New step added since last save — use defaults
+                val config = JSONObject(step.config)
+                val defaultSets = when (step.stepType) {
+                    "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
+                    else -> 1
+                }
+                step.id to StepUiState(step = step, sets = (1..defaultSets).map { StepSetEntry() })
+            }
+        }
+        _stepStates.value = states
+
+        // Restore superset rounds
+        val roundsJson = root.optJSONObject("supersetRounds")
+        if (roundsJson != null) {
+            val rounds = mutableMapOf<String, SupersetRoundState>()
+            val rIter = roundsJson.keys()
+            while (rIter.hasNext()) {
+                val groupId = rIter.next()
+                val obj = roundsJson.getJSONObject(groupId)
+                val idsArr = obj.optJSONArray("stepIds")
+                val stepIds = if (idsArr != null) {
+                    (0 until idsArr.length()).map { idsArr.getString(it) }
+                } else emptyList()
+                rounds[groupId] = SupersetRoundState(
+                    groupId = groupId,
+                    stepIds = stepIds,
+                    totalRounds = obj.optInt("totalRounds", 1),
+                    currentRound = obj.optInt("currentRound", 1),
+                )
+            }
+            _supersetRounds.value = rounds
+        }
+
+        return true
+    }
+
+    private fun clearSavedProgress() {
+        prefs.edit().remove(prefsKey).apply()
     }
 }
