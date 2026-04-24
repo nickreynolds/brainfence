@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.brainfence.MainActivity
 import dev.brainfence.R
+import dev.brainfence.domain.blocking.BlockingState
 import dev.brainfence.domain.model.Task
 import java.time.LocalDate
 import java.time.LocalTime
@@ -30,6 +31,7 @@ class TaskNotificationManager @Inject constructor(
         private const val TAG = "TaskNotificationMgr"
         private const val NOTIF_ID_TASK_READY = 100
         private const val NOTIF_ID_BLOCKING_SOON = 200
+        private const val NOTIF_ID_BLOCKING_ACTIVE = 300
     }
 
     // Track which notifications we've already sent today to avoid repeats.
@@ -175,6 +177,36 @@ class TaskNotificationManager @Inject constructor(
             context, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    /**
+     * Show a persistent notification while apps are actively blocked.
+     * Dismissed automatically when blocking clears.
+     */
+    fun updateBlockingNotification(state: BlockingState) {
+        val nm = notificationManager()
+        if (state.blockedApps.isEmpty()) {
+            nm.cancel(NOTIF_ID_BLOCKING_ACTIVE)
+            return
+        }
+
+        val count = state.blockedApps.size
+        val title = context.getString(R.string.notif_blocking_active_title)
+        val body = context.resources.getQuantityString(
+            R.plurals.notif_blocking_active_body, count, count,
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setContentIntent(openAppIntent())
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        nm.notify(NOTIF_ID_BLOCKING_ACTIVE, notification)
     }
 
     private fun notificationManager(): NotificationManager =

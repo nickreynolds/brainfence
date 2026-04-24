@@ -215,6 +215,7 @@ class BrainfenceService : Service() {
     private fun runEvaluation() {
         val state = evaluateBlocking(currentRules, currentTasks)
         _blockingState.value = state
+        taskNotificationManager.updateBlockingNotification(state)
         Log.d(TAG, "Evaluated: ${state.blockedApps.size} apps blocked")
     }
 
