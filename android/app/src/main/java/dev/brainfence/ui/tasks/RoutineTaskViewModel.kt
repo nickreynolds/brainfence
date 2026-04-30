@@ -2,6 +2,8 @@ package dev.brainfence.ui.tasks
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +13,8 @@ import dev.brainfence.data.routine.RoutineRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.RoutineStep
 import dev.brainfence.domain.model.Task
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +50,17 @@ data class SupersetRoundState(
     val currentRound: Int = 1,
 )
 
+/** Phase of an automatic routine's timer. */
+enum class AutoPhase { IDLE, COUNTDOWN, WORK, REST, COMPLETED }
+
+/** Observable progress for an automatic routine. */
+data class AutoRoutineProgress(
+    val phase: AutoPhase = AutoPhase.IDLE,
+    val exerciseIndex: Int = 0,
+    val rep: Int = 0,
+    val secondsRemaining: Int = 0,
+)
+
 @HiltViewModel
 class RoutineTaskViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -74,6 +89,21 @@ class RoutineTaskViewModel @Inject constructor(
     private val _isCompleting = MutableStateFlow(false)
     val isCompleting: StateFlow<Boolean> = _isCompleting.asStateFlow()
 
+    private val _autoProgress = MutableStateFlow(AutoRoutineProgress())
+    val autoProgress: StateFlow<AutoRoutineProgress> = _autoProgress.asStateFlow()
+
+    val isAutoRoutine: StateFlow<Boolean> = task
+        .map { t ->
+            if (t == null) return@map false
+            try {
+                JSONObject(t.verificationConfig).optString("execution_mode") == "automatic"
+            } catch (_: Exception) { false }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private var autoRoutineJob: Job? = null
+    private var toneGenerator: ToneGenerator? = null
+
     val allStepsCompleted: StateFlow<Boolean> = _stepStates
         .map { states -> states.isNotEmpty() && states.values.all { s -> s.sets.all { it.completed } } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
@@ -93,12 +123,7 @@ class RoutineTaskViewModel @Inject constructor(
                     val newSteps = stepList.filter { it.id !in currentIds }
                     if (newSteps.isNotEmpty()) {
                         val newStates = newSteps.associate { step ->
-                            val config = JSONObject(step.config)
-                            val defaultSets = when (step.stepType) {
-                                "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
-                                else -> 1
-                            }
-                            val sets = (1..defaultSets).map { StepSetEntry() }
+                            val sets = (1..defaultSetCount(step)).map { StepSetEntry() }
                             step.id to StepUiState(step = step, sets = sets)
                         }
                         _stepStates.value = _stepStates.value + newStates
@@ -125,20 +150,16 @@ class RoutineTaskViewModel @Inject constructor(
         val byStep = lastCompletions.groupBy { it.routineStepId }
 
         val states = stepList.associate { step ->
-            val config = JSONObject(step.config)
-            val defaultSets = when (step.stepType) {
-                "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
-                else -> 1
-            }
+            val setCount = defaultSetCount(step)
 
             // For superset steps, sets represent rounds (1 set per round)
             val inSuperset = step.supersetGroup != null
             val numSets = if (inSuperset) {
                 // Round count comes from the default_sets of the step
-                defaultSets
+                setCount
             } else {
                 val previous = byStep[step.id]
-                previous?.size?.coerceAtLeast(defaultSets) ?: defaultSets
+                previous?.size?.coerceAtLeast(setCount) ?: setCount
             }
 
             val previous = byStep[step.id]
@@ -161,13 +182,7 @@ class RoutineTaskViewModel @Inject constructor(
 
         val rounds = supersetGroups.map { (groupId, groupSteps) ->
             // Use the max default_sets among the group's steps as the round count
-            val totalRounds = groupSteps.maxOf { step ->
-                val config = JSONObject(step.config)
-                when (step.stepType) {
-                    "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
-                    else -> 1
-                }
-            }
+            val totalRounds = groupSteps.maxOf { step -> defaultSetCount(step) }
             groupId to SupersetRoundState(
                 groupId = groupId,
                 stepIds = groupSteps.map { it.id },
@@ -256,6 +271,11 @@ class RoutineTaskViewModel @Inject constructor(
             when (stepType) {
                 "weight_reps", "just_reps" -> config.put("default_sets", defaultSets)
                 "timed" -> config.put("duration_seconds", durationSeconds)
+                "timed_sets" -> {
+                    config.put("reps", defaultSets)
+                    config.put("work_seconds", durationSeconds)
+                    config.put("rest_seconds", 20)
+                }
             }
             routineRepository.insertSingleStep(
                 taskId = taskId,
@@ -354,6 +374,11 @@ class RoutineTaskViewModel @Inject constructor(
                             json.put("completed", entry.completed)
                             json.put("actual_seconds", entry.timerElapsed)
                         }
+                        "timed_sets" -> {
+                            json.put("completed", entry.completed)
+                            val stepConfig = JSONObject(state.step.config)
+                            json.put("work_seconds", stepConfig.optInt("work_seconds", 0))
+                        }
                     }
                     json.toString()
                 }
@@ -363,6 +388,126 @@ class RoutineTaskViewModel @Inject constructor(
             clearSavedProgress()
             _isCompleting.value = false
             onDone()
+        }
+    }
+
+    // ── Auto routine ─────────────────────────────────────────────────
+
+    fun startAutoRoutine() {
+        if (autoRoutineJob?.isActive == true) return
+        val stepList = steps.value
+        if (stepList.isEmpty()) return
+
+        autoRoutineJob = viewModelScope.launch {
+            val taskConfig = try {
+                JSONObject(task.value?.verificationConfig ?: "{}")
+            } catch (_: Exception) { JSONObject() }
+            val countdownSeconds = taskConfig.optInt("countdown_seconds", 3)
+
+            for ((exerciseIndex, step) in stepList.withIndex()) {
+                val stepConfig = JSONObject(step.config)
+                val reps = stepConfig.optInt("reps", 1)
+                val workSeconds = stepConfig.optInt("work_seconds", 10)
+                val restSeconds = stepConfig.optInt("rest_seconds", 20)
+
+                for (rep in 0 until reps) {
+                    // Countdown phase
+                    for (s in countdownSeconds downTo 1) {
+                        _autoProgress.value = AutoRoutineProgress(
+                            phase = AutoPhase.COUNTDOWN,
+                            exerciseIndex = exerciseIndex,
+                            rep = rep,
+                            secondsRemaining = s,
+                        )
+                        if (s <= 2) playTick()
+                        delay(1_000)
+                    }
+                    playBeep()
+
+                    // Work phase
+                    for (s in workSeconds downTo 1) {
+                        _autoProgress.value = AutoRoutineProgress(
+                            phase = AutoPhase.WORK,
+                            exerciseIndex = exerciseIndex,
+                            rep = rep,
+                            secondsRemaining = s,
+                        )
+                        delay(1_000)
+                    }
+
+                    // Mark this rep as completed
+                    markAutoRepCompleted(step.id, rep, workSeconds)
+
+                    // Rest phase (skip after last rep of last exercise)
+                    val isLastRep = rep == reps - 1
+                    val isLastExercise = exerciseIndex == stepList.size - 1
+                    if (!(isLastRep && isLastExercise)) {
+                        for (s in restSeconds downTo 1) {
+                            _autoProgress.value = AutoRoutineProgress(
+                                phase = AutoPhase.REST,
+                                exerciseIndex = exerciseIndex,
+                                rep = rep,
+                                secondsRemaining = s,
+                            )
+                            delay(1_000)
+                        }
+                    }
+                }
+            }
+
+            _autoProgress.value = AutoRoutineProgress(phase = AutoPhase.COMPLETED)
+            playBeep()
+        }
+    }
+
+    fun stopAutoRoutine() {
+        autoRoutineJob?.cancel()
+        autoRoutineJob = null
+        _autoProgress.value = AutoRoutineProgress()
+    }
+
+    private fun markAutoRepCompleted(stepId: String, rep: Int, workSeconds: Int) {
+        _stepStates.value = _stepStates.value.toMutableMap().apply {
+            val state = this[stepId] ?: return
+            val newSets = state.sets.toMutableList()
+            if (rep in newSets.indices) {
+                newSets[rep] = newSets[rep].copy(completed = true, timerElapsed = workSeconds)
+            }
+            this[stepId] = state.copy(sets = newSets, activeSetIndex = (rep + 1).coerceAtMost(newSets.size - 1))
+        }
+        saveProgress()
+    }
+
+    private fun ensureToneGenerator() {
+        if (toneGenerator == null) {
+            toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 50)
+        }
+    }
+
+    private fun playTick() {
+        ensureToneGenerator()
+        toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+    }
+
+    private fun playBeep() {
+        ensureToneGenerator()
+        toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 200)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        toneGenerator?.release()
+        toneGenerator = null
+    }
+
+    // ── Helpers ─────────────────────��────────────────────────────────
+
+    private fun defaultSetCount(step: RoutineStep): Int {
+        val config = JSONObject(step.config)
+        return when (step.stepType) {
+            "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
+            "timed_sets" -> config.optInt("reps", 1)
+            else -> 1
         }
     }
 
@@ -450,23 +595,13 @@ class RoutineTaskViewModel @Inject constructor(
                     }
                 } else {
                     // Fallback: create default sets
-                    val config = JSONObject(step.config)
-                    val defaultSets = when (step.stepType) {
-                        "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
-                        else -> 1
-                    }
-                    (1..defaultSets).map { StepSetEntry() }
+                    (1..defaultSetCount(step)).map { StepSetEntry() }
                 }
                 val activeSetIndex = savedStep.optInt("activeSetIndex", 0)
                 step.id to StepUiState(step = step, sets = sets, activeSetIndex = activeSetIndex)
             } else {
                 // New step added since last save — use defaults
-                val config = JSONObject(step.config)
-                val defaultSets = when (step.stepType) {
-                    "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
-                    else -> 1
-                }
-                step.id to StepUiState(step = step, sets = (1..defaultSets).map { StepSetEntry() })
+                step.id to StepUiState(step = step, sets = (1..defaultSetCount(step)).map { StepSetEntry() })
             }
         }
         _stepStates.value = states

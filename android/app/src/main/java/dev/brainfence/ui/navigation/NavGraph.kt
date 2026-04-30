@@ -30,6 +30,7 @@ import dev.brainfence.ui.tasks.GpsTaskScreen
 import dev.brainfence.ui.tasks.GpsTaskViewModel
 import dev.brainfence.ui.tasks.MeditationTaskScreen
 import dev.brainfence.ui.tasks.MeditationTaskViewModel
+import dev.brainfence.ui.tasks.AutoRoutineProgress
 import dev.brainfence.ui.tasks.RoutineTaskScreen
 import dev.brainfence.ui.tasks.RoutineTaskViewModel
 import dev.brainfence.ui.tasks.TaskEditorScreen
@@ -280,6 +281,8 @@ fun BrainfenceNavGraph(
             val supersetRounds by routineViewModel.supersetRounds.collectAsStateWithLifecycle()
             val isCompleting by routineViewModel.isCompleting.collectAsStateWithLifecycle()
             val allStepsCompleted by routineViewModel.allStepsCompleted.collectAsStateWithLifecycle()
+            val isAutoRoutine by routineViewModel.isAutoRoutine.collectAsStateWithLifecycle()
+            val autoProgress by routineViewModel.autoProgress.collectAsStateWithLifecycle()
 
             val currentTask = task
             if (currentTask != null) {
@@ -290,6 +293,8 @@ fun BrainfenceNavGraph(
                     supersetRounds = supersetRounds,
                     isCompleting = isCompleting,
                     allStepsCompleted = allStepsCompleted,
+                    isAutoRoutine = isAutoRoutine,
+                    autoProgress = autoProgress,
                     onToggleCheckbox = routineViewModel::toggleCheckbox,
                     onUpdateSet = routineViewModel::updateSet,
                     onCompleteCurrentSet = routineViewModel::completeCurrentSet,
@@ -302,6 +307,8 @@ fun BrainfenceNavGraph(
                     onGoToRound = routineViewModel::goToRound,
                     onAddStep = routineViewModel::addStep,
                     onRemoveStep = routineViewModel::removeStep,
+                    onStartAutoRoutine = routineViewModel::startAutoRoutine,
+                    onStopAutoRoutine = routineViewModel::stopAutoRoutine,
                     onFinish = {
                         routineViewModel.finishRoutine {
                             navController.popBackStack()

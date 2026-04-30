@@ -80,6 +80,60 @@
       ]
     },
     {
+      "title": "Hangboard",
+      "task_type": "workout",
+      "verification_type": "manual",
+      "verification_config": {
+        "execution_mode": "automatic",
+        "countdown_seconds": 3
+      },
+      "recurrence_type": "daily",
+      "recurrence_config": { "days": ["mon", "tue", "wed", "thu"] },
+      "is_blocking_condition": true,
+      "available_from": "00:01",
+      "due_at": "09:00",
+      "group": "Fitness",
+      "sort_order": 0,
+      "steps": [
+        {
+          "title": "4-Finger Open",
+          "step_type": "timed_sets",
+          "step_order": 0,
+          "config": { "reps": 6, "work_seconds": 10, "rest_seconds": 20 }
+        },
+        {
+          "title": "Front 3 Open",
+          "step_type": "timed_sets",
+          "step_order": 1,
+          "config": { "reps": 6, "work_seconds": 10, "rest_seconds": 20 }
+        },
+        {
+          "title": "Front 2 Open",
+          "step_type": "timed_sets",
+          "step_order": 2,
+          "config": { "reps": 2, "work_seconds": 10, "rest_seconds": 20 }
+        },
+        {
+          "title": "Middle 2 Open",
+          "step_type": "timed_sets",
+          "step_order": 3,
+          "config": { "reps": 2, "work_seconds": 10, "rest_seconds": 20 }
+        },
+        {
+          "title": "Front 2 Half Crimp",
+          "step_type": "timed_sets",
+          "step_order": 4,
+          "config": { "reps": 2, "work_seconds": 10, "rest_seconds": 20 }
+        },
+        {
+          "title": "Middle 2 Half Crimp",
+          "step_type": "timed_sets",
+          "step_order": 5,
+          "config": { "reps": 2, "work_seconds": 10, "rest_seconds": 20 }
+        }
+      ]
+    },
+    {
       "title": "PUSH",
       "task_type": "workout",
       "verification_type": "manual",
@@ -142,7 +196,7 @@
         { "platform": "macos", "bundle_id": "com.burbn.instagram" }
       ],
       "blocked_domains": ["twitter.com", "x.com", "instagram.com", "reddit.com", "youtube.com"],
-      "condition_task_titles": ["Morning Walk", "Meditation", "Morning Routine"],
+      "condition_task_titles": ["Morning Walk", "Meditation", "Morning Routine", "Hangboard"],
       "condition_logic": "all"
     },
     {
