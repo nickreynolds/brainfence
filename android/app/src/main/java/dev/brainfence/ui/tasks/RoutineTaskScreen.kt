@@ -356,6 +356,17 @@ private fun AutoRoutineContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(4.dp))
+                // Show "UP NEXT" label during rest when transitioning between exercises
+                if (phase == AutoPhase.REST && autoProgress.rep == 0) {
+                    Text(
+                        text = "UP NEXT",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        letterSpacing = 2.sp,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
                 Text(
                     text = currentStep?.title ?: "",
                     style = MaterialTheme.typography.headlineSmall,
@@ -375,7 +386,7 @@ private fun AutoRoutineContent(
                 Text(
                     text = when (phase) {
                         AutoPhase.COUNTDOWN -> "GET READY"
-                        AutoPhase.WORK -> "HANG"
+                        AutoPhase.WORK -> "GO"
                         AutoPhase.REST -> "REST"
                         else -> ""
                     },

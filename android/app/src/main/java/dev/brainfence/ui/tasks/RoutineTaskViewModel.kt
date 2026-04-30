@@ -411,18 +411,20 @@ class RoutineTaskViewModel @Inject constructor(
                 val restSeconds = stepConfig.optInt("rest_seconds", 20)
 
                 for (rep in 0 until reps) {
-                    // Countdown phase
-                    for (s in countdownSeconds downTo 1) {
-                        _autoProgress.value = AutoRoutineProgress(
-                            phase = AutoPhase.COUNTDOWN,
-                            exerciseIndex = exerciseIndex,
-                            rep = rep,
-                            secondsRemaining = s,
-                        )
-                        if (s <= 2) playTick()
-                        delay(1_000)
+                    // Standalone countdown only before the very first work period
+                    if (exerciseIndex == 0 && rep == 0) {
+                        for (s in countdownSeconds downTo 1) {
+                            _autoProgress.value = AutoRoutineProgress(
+                                phase = AutoPhase.COUNTDOWN,
+                                exerciseIndex = 0,
+                                rep = 0,
+                                secondsRemaining = s,
+                            )
+                            if (s <= 2) playTick()
+                            delay(1_000)
+                        }
+                        playBeep()
                     }
-                    playBeep()
 
                     // Work phase
                     for (s in workSeconds downTo 1) {
@@ -435,22 +437,29 @@ class RoutineTaskViewModel @Inject constructor(
                         delay(1_000)
                     }
 
-                    // Mark this rep as completed
                     markAutoRepCompleted(step.id, rep, workSeconds)
 
                     // Rest phase (skip after last rep of last exercise)
                     val isLastRep = rep == reps - 1
                     val isLastExercise = exerciseIndex == stepList.size - 1
                     if (!(isLastRep && isLastExercise)) {
+                        // Point to what's coming next during rest
+                        val nextExIdx = if (isLastRep) exerciseIndex + 1 else exerciseIndex
+                        val nextRep = if (isLastRep) 0 else rep + 1
+
+                        // Rest period with countdown embedded in last N seconds
                         for (s in restSeconds downTo 1) {
+                            val inCountdown = s <= countdownSeconds
                             _autoProgress.value = AutoRoutineProgress(
-                                phase = AutoPhase.REST,
-                                exerciseIndex = exerciseIndex,
-                                rep = rep,
+                                phase = if (inCountdown) AutoPhase.COUNTDOWN else AutoPhase.REST,
+                                exerciseIndex = nextExIdx,
+                                rep = nextRep,
                                 secondsRemaining = s,
                             )
+                            if (inCountdown && s <= 2) playTick()
                             delay(1_000)
                         }
+                        playBeep()
                     }
                 }
             }
@@ -480,18 +489,20 @@ class RoutineTaskViewModel @Inject constructor(
 
     private fun ensureToneGenerator() {
         if (toneGenerator == null) {
-            toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 50)
+            toneGenerator = try {
+                ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+            } catch (_: Exception) { null }
         }
     }
 
     private fun playTick() {
         ensureToneGenerator()
-        toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+        toneGenerator?.startTone(ToneGenerator.TONE_DTMF_1, 150)
     }
 
     private fun playBeep() {
         ensureToneGenerator()
-        toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 200)
+        toneGenerator?.startTone(ToneGenerator.TONE_DTMF_9, 300)
     }
 
     override fun onCleared() {
