@@ -51,7 +51,7 @@ data class SupersetRoundState(
 )
 
 /** Phase of an automatic routine's timer. */
-enum class AutoPhase { IDLE, COUNTDOWN, WORK, REST, COMPLETED }
+enum class AutoPhase { IDLE, COUNTDOWN, WORK, REST, PAUSED, COMPLETED }
 
 /** Observable progress for an automatic routine. */
 data class AutoRoutineProgress(
@@ -398,26 +398,51 @@ class RoutineTaskViewModel @Inject constructor(
         val stepList = steps.value
         if (stepList.isEmpty()) return
 
+        // Find resume point from completed step states
+        var startExercise = 0
+        var startRep = 0
+        val states = _stepStates.value
+        var allDone = true
+        for ((idx, step) in stepList.withIndex()) {
+            val state = states[step.id] ?: continue
+            val firstIncomplete = state.sets.indexOfFirst { !it.completed }
+            if (firstIncomplete >= 0) {
+                startExercise = idx
+                startRep = firstIncomplete
+                allDone = false
+                break
+            }
+        }
+        if (allDone && states.isNotEmpty()) {
+            _autoProgress.value = AutoRoutineProgress(phase = AutoPhase.COMPLETED)
+            return
+        }
+
         autoRoutineJob = viewModelScope.launch {
             val taskConfig = try {
                 JSONObject(task.value?.verificationConfig ?: "{}")
             } catch (_: Exception) { JSONObject() }
             val countdownSeconds = taskConfig.optInt("countdown_seconds", 3)
 
+            var isFirstWorkPeriod = true
             for ((exerciseIndex, step) in stepList.withIndex()) {
+                if (exerciseIndex < startExercise) continue
                 val stepConfig = JSONObject(step.config)
                 val reps = stepConfig.optInt("reps", 1)
                 val workSeconds = stepConfig.optInt("work_seconds", 10)
                 val restSeconds = stepConfig.optInt("rest_seconds", 20)
 
                 for (rep in 0 until reps) {
-                    // Standalone countdown only before the very first work period
-                    if (exerciseIndex == 0 && rep == 0) {
+                    if (exerciseIndex == startExercise && rep < startRep) continue
+
+                    // Countdown before the first work period we run
+                    if (isFirstWorkPeriod) {
+                        isFirstWorkPeriod = false
                         for (s in countdownSeconds downTo 1) {
                             _autoProgress.value = AutoRoutineProgress(
                                 phase = AutoPhase.COUNTDOWN,
-                                exerciseIndex = 0,
-                                rep = 0,
+                                exerciseIndex = exerciseIndex,
+                                rep = rep,
                                 secondsRemaining = s,
                             )
                             if (s <= 2) playTick()
@@ -472,7 +497,8 @@ class RoutineTaskViewModel @Inject constructor(
     fun stopAutoRoutine() {
         autoRoutineJob?.cancel()
         autoRoutineJob = null
-        _autoProgress.value = AutoRoutineProgress()
+        _autoProgress.value = _autoProgress.value.copy(phase = AutoPhase.PAUSED)
+        saveProgress()
     }
 
     private fun markAutoRepCompleted(stepId: String, rep: Int, workSeconds: Int) {
@@ -507,6 +533,12 @@ class RoutineTaskViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        // Save progress if auto routine was running when ViewModel is cleared
+        val phase = _autoProgress.value.phase
+        if (phase != AutoPhase.IDLE && phase != AutoPhase.COMPLETED) {
+            _autoProgress.value = _autoProgress.value.copy(phase = AutoPhase.PAUSED)
+            saveProgress()
+        }
         toneGenerator?.release()
         toneGenerator = null
     }
@@ -563,6 +595,15 @@ class RoutineTaskViewModel @Inject constructor(
                 roundsJson.put(groupId, obj)
             }
             root.put("supersetRounds", roundsJson)
+        }
+
+        val autoState = _autoProgress.value
+        if (autoState.phase != AutoPhase.IDLE && autoState.phase != AutoPhase.COMPLETED) {
+            val autoJson = JSONObject()
+            autoJson.put("active", true)
+            autoJson.put("exerciseIndex", autoState.exerciseIndex)
+            autoJson.put("rep", autoState.rep)
+            root.put("autoRoutine", autoJson)
         }
 
         prefs.edit().putString(prefsKey, root.toString()).apply()
@@ -637,6 +678,16 @@ class RoutineTaskViewModel @Inject constructor(
                 )
             }
             _supersetRounds.value = rounds
+        }
+
+        // Restore auto routine paused state
+        val autoJson = root.optJSONObject("autoRoutine")
+        if (autoJson != null && autoJson.optBoolean("active", false)) {
+            _autoProgress.value = AutoRoutineProgress(
+                phase = AutoPhase.PAUSED,
+                exerciseIndex = autoJson.optInt("exerciseIndex", 0),
+                rep = autoJson.optInt("rep", 0),
+            )
         }
 
         return true

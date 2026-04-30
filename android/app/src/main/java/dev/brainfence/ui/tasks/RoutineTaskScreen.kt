@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.AlertDialog
@@ -49,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.brainfence.domain.model.RoutineStep
@@ -99,6 +102,15 @@ fun RoutineTaskScreen(
     onBack: () -> Unit,
 ) {
     val isRoutine = task.taskType == "routine"
+
+    // Keep screen on while routine is in progress
+    if (!task.completedToday) {
+        val view = LocalView.current
+        DisposableEffect(Unit) {
+            view.keepScreenOn = true
+            onDispose { view.keepScreenOn = false }
+        }
+    }
 
     // Auto-complete routine tasks when all steps are done
     if (isRoutine) {
@@ -415,14 +427,64 @@ private fun AutoRoutineContent(
                 )
                 Spacer(Modifier.height(16.dp))
 
-                // Stop button
+                // Pause button
                 OutlinedButton(
                     onClick = onStop,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Stop")
+                    Text("Pause")
+                }
+            }
+
+            AutoPhase.PAUSED -> {
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    text = "Exercise ${autoProgress.exerciseIndex + 1} of ${steps.size}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = currentStep?.title ?: "",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Rep ${autoProgress.rep + 1} of $totalReps",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                Text(
+                    text = "PAUSED",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    letterSpacing = 2.sp,
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                // Overall progress
+                LinearProgressIndicator(
+                    progress = { overallProgress },
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                )
+                Spacer(Modifier.height(16.dp))
+
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Resume Routine", style = MaterialTheme.typography.titleMedium)
                 }
             }
 

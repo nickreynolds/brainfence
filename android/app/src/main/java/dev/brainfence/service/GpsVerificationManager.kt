@@ -8,10 +8,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.brainfence.data.auth.AuthState
 import dev.brainfence.data.auth.SessionRepository
@@ -106,6 +108,14 @@ class GpsVerificationManager @Inject constructor(
     private val _trackedTaskIds = MutableStateFlow<Set<String>>(emptySet())
     val trackedTaskIds: StateFlow<Set<String>> = _trackedTaskIds.asStateFlow()
 
+    /** Completions queued because auth was not available; drained when auth restores. */
+    private data class PendingCompletion(
+        val taskId: String,
+        val taskTitle: String,
+        val verificationData: String,
+    )
+    private val pendingCompletions = mutableListOf<PendingCompletion>()
+
     private val geofencePendingIntent: PendingIntent by lazy {
         val intent = Intent(context, GeofenceBroadcastReceiver::class.java).apply {
             action = ACTION_GEOFENCE_EVENT
@@ -123,6 +133,13 @@ class GpsVerificationManager @Inject constructor(
      * Called from BrainfenceService.onCreate().
      */
     fun startWatching() {
+        scope.launch {
+            sessionRepository.authState.collect { state ->
+                if (state is AuthState.SignedIn) {
+                    drainPendingCompletions()
+                }
+            }
+        }
         scope.launch {
             debugLog.log("service", "GpsVerificationManager started watching")
             taskRepository.watchActiveTasks().collect { tasks ->
@@ -338,6 +355,61 @@ class GpsVerificationManager @Inject constructor(
         }
     }
 
+    /**
+     * Periodically request a fresh location fix and check it against all tracked
+     * leave-mode geofences. This compensates for Android geofencing being unreliable
+     * during Doze mode — the passive lastLocation API often returns stale data, so
+     * we use getCurrentLocation() for an actual GPS fix.
+     *
+     * Called from BrainfenceService on the breadcrumb interval (~5 min).
+     */
+    @SuppressLint("MissingPermission")
+    fun periodicLeaveCheck() {
+        val leaveStates = trackingStates.values.filter { it.config.mode == "leave" }
+        if (leaveStates.isEmpty() || !hasLocationPermission()) return
+
+        val locationClient = LocationServices.getFusedLocationProviderClient(context)
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setMaxUpdateAgeMillis(60_000L)
+            .build()
+        locationClient.getCurrentLocation(request, null)
+            .addOnSuccessListener { location ->
+                if (location == null) {
+                    scope.launch {
+                        debugLog.log("geofence", "Periodic leave check: no location available")
+                    }
+                    return@addOnSuccessListener
+                }
+                for (state in leaveStates) {
+                    val distance = FloatArray(1)
+                    android.location.Location.distanceBetween(
+                        location.latitude, location.longitude,
+                        state.config.lat, state.config.lng,
+                        distance,
+                    )
+                    if (distance[0] > state.config.radiusM) {
+                        scope.launch {
+                            debugLog.log(
+                                category = "geofence",
+                                message = "Periodic check: outside geofence for '${state.taskTitle}' (${distance[0].toInt()}m away), completing",
+                                lat = location.latitude,
+                                lng = location.longitude,
+                                accuracyM = location.accuracy,
+                            )
+                            completeGpsLeaveTask(state.taskId, location.latitude, location.longitude, location.accuracy)
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Periodic leave check: location request failed", e)
+                scope.launch {
+                    debugLog.log("error", "Periodic leave check failed: ${e.message}")
+                }
+            }
+    }
+
     private fun removeGeofences(taskIds: Set<String>) {
         taskIds.forEach { taskId ->
             trackingStates[taskId]?.durationJob?.cancel()
@@ -447,6 +519,32 @@ class GpsVerificationManager @Inject constructor(
         return result != null
     }
 
+    private suspend fun drainPendingCompletions() {
+        val pending = synchronized(pendingCompletions) {
+            val copy = pendingCompletions.toList()
+            pendingCompletions.clear()
+            copy
+        }
+        if (pending.isEmpty()) return
+
+        for (item in pending) {
+            try {
+                debugLog.log("geofence", "Retrying queued completion for '${item.taskTitle}'")
+                completionRepository.completeTask(
+                    taskId = item.taskId,
+                    verificationData = item.verificationData,
+                )
+                debugLog.log("geofence", "Successfully completed queued task '${item.taskTitle}'")
+                trackingStates[item.taskId]?.durationJob?.cancel()
+            } catch (e: Exception) {
+                debugLog.log("error", "Failed to complete queued task '${item.taskTitle}': ${e.message}")
+                synchronized(pendingCompletions) {
+                    pendingCompletions.add(item)
+                }
+            }
+        }
+    }
+
     private suspend fun completeGpsTask(
         taskId: String,
         lat: Double?,
@@ -454,10 +552,6 @@ class GpsVerificationManager @Inject constructor(
         accuracyM: Float?,
     ) {
         val state = trackingStates[taskId] ?: return
-        if (!awaitAuth()) {
-            debugLog.log("error", "Cannot complete '${state.taskTitle}': auth session not available")
-            return
-        }
         val arrivedAt = state.enteredAt ?: Instant.now()
 
         val verificationData = JSONObject().apply {
@@ -477,6 +571,15 @@ class GpsVerificationManager @Inject constructor(
             lng = lng,
             accuracyM = accuracyM,
         )
+
+        if (!awaitAuth()) {
+            debugLog.log("geofence", "Auth not available for '${state.taskTitle}', queuing for retry when auth restores")
+            synchronized(pendingCompletions) {
+                pendingCompletions.add(PendingCompletion(taskId, state.taskTitle, verificationData))
+            }
+            return
+        }
+
         completionRepository.completeTask(
             taskId = taskId,
             verificationData = verificationData,
@@ -495,10 +598,6 @@ class GpsVerificationManager @Inject constructor(
         accuracyM: Float?,
     ) {
         val state = trackingStates[taskId] ?: return
-        if (!awaitAuth()) {
-            debugLog.log("error", "Cannot complete '${state.taskTitle}': auth session not available")
-            return
-        }
 
         val verificationData = JSONObject().apply {
             put("departed_at", Instant.now().toString())
@@ -516,6 +615,15 @@ class GpsVerificationManager @Inject constructor(
             lng = lng,
             accuracyM = accuracyM,
         )
+
+        if (!awaitAuth()) {
+            debugLog.log("geofence", "Auth not available for '${state.taskTitle}', queuing for retry when auth restores")
+            synchronized(pendingCompletions) {
+                pendingCompletions.add(PendingCompletion(taskId, state.taskTitle, verificationData))
+            }
+            return
+        }
+
         completionRepository.completeTask(
             taskId = taskId,
             verificationData = verificationData,

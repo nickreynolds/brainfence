@@ -143,6 +143,7 @@ class BrainfenceService : Service() {
                 breadcrumbCounter++
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()
+                    gpsVerificationManager.periodicLeaveCheck()
                 }
             }
         }
