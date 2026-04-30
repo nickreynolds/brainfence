@@ -13,6 +13,8 @@ import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.brainfence.data.auth.AuthState
+import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.completion.CompletionRepository
 import dev.brainfence.data.debug.DebugLogRepository
 import dev.brainfence.data.task.TaskRepository
@@ -26,7 +28,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.time.Instant
 import javax.inject.Inject
@@ -68,6 +72,7 @@ class GpsVerificationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val taskRepository: TaskRepository,
     private val completionRepository: CompletionRepository,
+    private val sessionRepository: SessionRepository,
     private val debugLog: DebugLogRepository,
 ) {
     companion object {
@@ -430,6 +435,18 @@ class GpsVerificationManager @Inject constructor(
         trackingStates[taskId] = state.copy(enteredAt = null, durationJob = null)
     }
 
+    /**
+     * Wait up to 15 seconds for the auth session to be restored.
+     * Returns true if authenticated, false on timeout.
+     */
+    private suspend fun awaitAuth(): Boolean {
+        if (sessionRepository.currentUser != null) return true
+        val result = withTimeoutOrNull(15_000L) {
+            sessionRepository.authState.first { it is AuthState.SignedIn }
+        }
+        return result != null
+    }
+
     private suspend fun completeGpsTask(
         taskId: String,
         lat: Double?,
@@ -437,6 +454,10 @@ class GpsVerificationManager @Inject constructor(
         accuracyM: Float?,
     ) {
         val state = trackingStates[taskId] ?: return
+        if (!awaitAuth()) {
+            debugLog.log("error", "Cannot complete '${state.taskTitle}': auth session not available")
+            return
+        }
         val arrivedAt = state.enteredAt ?: Instant.now()
 
         val verificationData = JSONObject().apply {
@@ -474,6 +495,10 @@ class GpsVerificationManager @Inject constructor(
         accuracyM: Float?,
     ) {
         val state = trackingStates[taskId] ?: return
+        if (!awaitAuth()) {
+            debugLog.log("error", "Cannot complete '${state.taskTitle}': auth session not available")
+            return
+        }
 
         val verificationData = JSONObject().apply {
             put("departed_at", Instant.now().toString())

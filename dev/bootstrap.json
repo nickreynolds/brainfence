@@ -80,11 +80,11 @@
       ]
     },
     {
-      "title": "Gym — Push Day",
+      "title": "PUSH",
       "task_type": "workout",
       "verification_type": "manual",
-      "recurrence_type": "daily",
-      "recurrence_config": { "days": ["mon"] },
+      "recurrence_type": "weekly",
+      "recurrence_config": { "day": "mon" },
       "is_blocking_condition": false,
       "group": "Fitness",
       "sort_order": 0,
@@ -93,6 +93,22 @@
         { "title": "Overhead Press", "step_type": "weight_reps", "step_order": 1, "config": { "default_sets": 3 } },
         { "title": "Squats", "step_type": "weight_reps", "step_order": 2, "config": { "default_sets": 3 } },
         { "title": "Lateral Raises", "step_type": "weight_reps", "step_order": 2, "config": { "default_sets": 3 } }
+      ]
+    },
+    {
+      "title": "PULL",
+      "task_type": "workout",
+      "verification_type": "manual",
+      "recurrence_type": "weekly",
+      "recurrence_config": { "day": "thu" },
+      "is_blocking_condition": false,
+      "group": "Fitness",
+      "sort_order": 0,
+      "steps": [
+        { "title": "Pull-Ups", "step_type": "weight_reps", "step_order": 0, "config": { "default_sets": 5 } },
+        { "title": "Deadlifts", "step_type": "weight_reps", "step_order": 1, "config": { "default_sets": 3 } },
+        { "title": "Bent Over Rows", "step_type": "weight_reps", "step_order": 2, "config": { "default_sets": 3 } },
+        { "title": "Barbell Curls", "step_type": "weight_reps", "step_order": 2, "config": { "default_sets": 3 } }
       ]
     },
     {
@@ -109,7 +125,7 @@
       "recurrence_type": "daily",
       "recurrence_config": {},
       "is_blocking_condition": true,
-      "available_from": "19:00",
+      "available_from": "17:00",
       "due_at": "21:00",
       "group": "Evening",
       "sort_order": 0

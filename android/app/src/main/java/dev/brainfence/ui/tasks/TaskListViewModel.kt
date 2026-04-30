@@ -96,15 +96,36 @@ class TaskListViewModel @Inject constructor(
             initialValue = emptyList<Task>(),
         )
 
-    /** Tasks that are available now and not yet completed. */
+    /** Tasks that are available now and not yet completed, sorted by blocking urgency. */
     val activeTasks = tasks.map { allTasks ->
         val now = Instant.now()
         val zone = ZoneId.systemDefault()
-        allTasks.filter { task ->
-            if (task.completedToday) return@filter false
-            val phase = computeTaskPhase(task.availableFrom, task.dueAt, now, zone)
-            phase != TimeGatePhase.BEFORE_START
-        }
+        allTasks
+            .map { task -> task to computeTaskPhase(task.availableFrom, task.dueAt, now, zone) }
+            .filter { (task, phase) ->
+                !task.completedToday && phase != TimeGatePhase.BEFORE_START
+            }
+            .sortedWith(
+                compareBy<Pair<Task, TimeGatePhase?>> { (task, phase) ->
+                    when {
+                        // Already blocking: past due, or no due_at (blocks immediately)
+                        task.isBlockingCondition &&
+                            (phase == TimeGatePhase.PAST_DUE || task.dueAt == null) -> 0
+                        // Will block soon: blocking condition with a due_at not yet reached
+                        task.isBlockingCondition -> 1
+                        // Non-blocking with a due time
+                        task.dueAt != null -> 2
+                        // Non-blocking, no due time
+                        else -> 3
+                    }
+                }.thenBy { (task, _) ->
+                    // Earlier due_at = higher priority; tasks without go last
+                    task.dueAt ?: "\uFFFF"
+                }.thenBy { (task, _) ->
+                    task.sortOrder
+                }
+            )
+            .map { (task, _) -> task }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
