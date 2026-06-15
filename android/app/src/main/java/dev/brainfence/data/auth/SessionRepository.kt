@@ -50,4 +50,14 @@ class SessionRepository @Inject constructor(
     suspend fun signOut() {
         supabase.auth.signOut()
     }
+
+    /**
+     * Nudge the auth module to retry session restoration.
+     * Useful when the token expired during Doze and the initial refresh failed
+     * due to network restrictions — by the time a geofence wakes us, network
+     * is likely available again.
+     */
+    suspend fun refreshSession() {
+        supabase.auth.refreshCurrentSession()
+    }
 }

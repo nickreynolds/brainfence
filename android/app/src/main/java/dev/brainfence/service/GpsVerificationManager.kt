@@ -508,11 +508,26 @@ class GpsVerificationManager @Inject constructor(
     }
 
     /**
-     * Wait up to 15 seconds for the auth session to be restored.
-     * Returns true if authenticated, false on timeout.
+     * Wait for the auth session to be available.
+     *
+     * If auth already resolved to SignedOut (e.g. token expired during Doze
+     * and the automatic refresh failed due to network restrictions), nudge
+     * the SDK to retry — by the time a geofence wakes us, network is
+     * typically available again.
      */
     private suspend fun awaitAuth(): Boolean {
         if (sessionRepository.currentUser != null) return true
+
+        // If auth already gave up, nudge it to retry the refresh.
+        if (sessionRepository.authState.value is AuthState.SignedOut) {
+            try {
+                debugLog.log("geofence", "Auth is signed-out, nudging session refresh")
+                sessionRepository.refreshSession()
+            } catch (e: Exception) {
+                debugLog.log("error", "Session refresh failed: ${e.message}")
+            }
+        }
+
         val result = withTimeoutOrNull(15_000L) {
             sessionRepository.authState.first { it is AuthState.SignedIn }
         }

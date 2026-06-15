@@ -95,23 +95,41 @@ fun BrainfenceNavGraph(
         }
     }
 
-    LaunchedEffect(authState, isAccessibilityEnabled, setupSkipped) {
-        when (authState) {
-            is AuthState.SignedIn -> {
-                if (!isAccessibilityEnabled && !setupSkipped) {
+    // Key on the coarse signed-in/out state, not the full AuthState object, so
+    // that token refreshes (which emit a new SignedIn value) don't re-trigger
+    // navigation and pop the user out of whatever screen they're on.
+    val isSignedIn = authState is AuthState.SignedIn
+    val isSignedOut = authState is AuthState.SignedOut
+    LaunchedEffect(isSignedIn, isSignedOut, isAccessibilityEnabled, setupSkipped) {
+        val current = navController.currentDestination?.route
+        when {
+            isSignedIn && !isAccessibilityEnabled && !setupSkipped -> {
+                if (current != Routes.ACCESSIBILITY_SETUP) {
                     navController.navigate(Routes.ACCESSIBILITY_SETUP) {
                         popUpTo(Routes.SIGN_IN) { inclusive = true }
                     }
-                } else {
+                }
+            }
+            isSignedIn -> {
+                // Only force-route to HOME from the auth/setup screens. Once
+                // the user is past those, never blow away the back stack on
+                // an auth-state re-emission.
+                if (current == Routes.SIGN_IN ||
+                    current == Routes.SIGN_UP ||
+                    current == Routes.ACCESSIBILITY_SETUP
+                ) {
                     navController.navigate(Routes.HOME) {
                         popUpTo(0) { inclusive = true }
                     }
                 }
             }
-            is AuthState.SignedOut -> navController.navigate(Routes.SIGN_IN) {
-                popUpTo(0) { inclusive = true }
+            isSignedOut -> {
+                if (current != Routes.SIGN_IN) {
+                    navController.navigate(Routes.SIGN_IN) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
             }
-            is AuthState.Loading -> Unit
         }
     }
 
