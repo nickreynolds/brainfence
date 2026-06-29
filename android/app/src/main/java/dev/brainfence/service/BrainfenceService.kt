@@ -68,6 +68,7 @@ class BrainfenceService : Service() {
     @Inject lateinit var meditationTimerManager: MeditationTimerManager
     @Inject lateinit var taskNotificationManager: TaskNotificationManager
     @Inject lateinit var homeLocationRepository: HomeLocationRepository
+    @Inject lateinit var companionUsageVerifier: CompanionUsageVerifier
     @Inject lateinit var debugLog: DebugLogRepository
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -158,6 +159,14 @@ class BrainfenceService : Service() {
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()
                     gpsVerificationManager.periodicLeaveCheck()
+                    // Pull companion-app foreground time from Android's usage
+                    // stats so the meditation tally stays accurate even when
+                    // accessibility events were missed (service restart, etc.).
+                    try {
+                        companionUsageVerifier.reconcile()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Companion usage reconciliation failed", e)
+                    }
                 }
             }
         }
@@ -187,7 +196,7 @@ class BrainfenceService : Service() {
     private fun autoStartCompanionTracking(tasks: List<Task>) {
         val activeTimers = meditationTimerManager.timerStates.value
         for (task in tasks) {
-            if (task.taskType != "meditation") continue
+            if (task.verificationType != "meditation") continue
             if (task.completedToday) continue
 
             val config = task.verificationConfig?.let(MeditationTimerManager::parseMeditationConfig)

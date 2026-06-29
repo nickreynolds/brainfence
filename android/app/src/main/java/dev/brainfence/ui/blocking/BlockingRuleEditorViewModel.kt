@@ -1,39 +1,24 @@
 package dev.brainfence.ui.blocking
 
-import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.Drawable
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.brainfence.data.apps.InstalledApp
+import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
-
-data class InstalledApp(
-    val packageName: String,
-    val label: String,
-    val icon: ImageBitmap?,
-)
 
 data class EditorUiState(
     val isNew: Boolean = true,
@@ -53,10 +38,10 @@ data class EditorUiState(
 @HiltViewModel
 class BlockingRuleEditorViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    @ApplicationContext private val context: Context,
     private val blockingRepository: BlockingRepository,
     private val taskRepository: TaskRepository,
     private val sessionRepository: SessionRepository,
+    private val installedAppsProvider: InstalledAppsProvider,
 ) : ViewModel() {
 
     private val ruleId: String? = savedStateHandle.get<String>("ruleId")
@@ -78,35 +63,8 @@ class BlockingRuleEditorViewModel @Inject constructor(
 
     private fun loadInstalledApps() {
         viewModelScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                val pm = context.packageManager
-                pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                    .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 || pm.getLaunchIntentForPackage(it.packageName) != null }
-                    .filter { it.packageName != context.packageName }
-                    .map { appInfo ->
-                        InstalledApp(
-                            packageName = appInfo.packageName,
-                            label = pm.getApplicationLabel(appInfo).toString(),
-                            icon = loadAppIcon(pm, appInfo),
-                        )
-                    }
-                    .sortedBy { it.label.lowercase() }
-            }
-            _installedApps.value = apps
+            _installedApps.value = installedAppsProvider.load()
         }
-    }
-
-    private fun loadAppIcon(pm: PackageManager, appInfo: ApplicationInfo): ImageBitmap? = try {
-        val drawable: Drawable = pm.getApplicationIcon(appInfo)
-        val w = drawable.intrinsicWidth.coerceAtLeast(1)
-        val h = drawable.intrinsicHeight.coerceAtLeast(1)
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        drawable.setBounds(0, 0, w, h)
-        drawable.draw(canvas)
-        bmp.asImageBitmap()
-    } catch (_: Exception) {
-        null
     }
 
     private fun loadExistingRule() {

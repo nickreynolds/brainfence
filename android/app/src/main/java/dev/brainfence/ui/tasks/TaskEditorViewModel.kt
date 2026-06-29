@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.powersync.PowerSyncDatabase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.brainfence.data.apps.InstalledApp
+import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.routine.NewRoutineStep
 import dev.brainfence.data.routine.RoutineRepository
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.util.UUID
@@ -43,7 +46,8 @@ data class TaskEditorState(
     val radiusMeters: Int = 100,
     // -- meditation config --
     val meditationSeconds: Int = 300,
-    val allowCompanion: Boolean = true,
+    /** Package names of companion apps that can record meditation time externally. */
+    val companionApps: Set<String> = emptySet(),
     // -- routine steps (sub-tasks) --
     val routineSteps: List<EditableStep> = emptyList(),
     // Step 2: Recurrence + Blocking + Availability
@@ -66,13 +70,18 @@ class TaskEditorViewModel @Inject constructor(
     private val database: PowerSyncDatabase,
     private val sessionRepository: SessionRepository,
     private val routineRepository: RoutineRepository,
+    private val installedAppsProvider: InstalledAppsProvider,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TaskEditorState())
     val state: StateFlow<TaskEditorState> = _state.asStateFlow()
 
+    private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
+    val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
+
     init {
+        viewModelScope.launch { _installedApps.value = installedAppsProvider.load() }
         val taskId: String? = savedStateHandle["taskId"]
         if (!taskId.isNullOrBlank()) loadExistingTask(taskId)
     }
@@ -140,7 +149,7 @@ class TaskEditorViewModel @Inject constructor(
                     longitude = if (task.verificationType == "gps") vConfig.optDouble("longitude", 0.0).toString() else "",
                     radiusMeters = if (task.verificationType == "gps") vConfig.optInt("radius_meters", 100) else 100,
                     meditationSeconds = if (task.verificationType == "meditation") vConfig.optInt("duration_seconds", 300) else 300,
-                    allowCompanion = if (task.verificationType == "meditation") vConfig.optBoolean("allow_companion", true) else true,
+                    companionApps = if (task.verificationType == "meditation") parseCompanionApps(vConfig) else emptySet(),
                     routineSteps = steps,
                     recurrenceType = recurrenceTypeUi,
                     weeklyDays = weeklyDays,
@@ -153,6 +162,28 @@ class TaskEditorViewModel @Inject constructor(
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
         }
+    }
+
+    /**
+     * Parse companion app packages from `verification_config`. Accepts both the
+     * typed form ({"platform":"android","package":"..."}) and bare-string form,
+     * matching [dev.brainfence.service.MeditationTimerManager.parseMeditationConfig].
+     */
+    private fun parseCompanionApps(vConfig: JSONObject): Set<String> {
+        val arr = vConfig.optJSONArray("companion_apps") ?: return emptySet()
+        val out = mutableSetOf<String>()
+        for (i in 0 until arr.length()) {
+            val entry = arr.opt(i)
+            when (entry) {
+                is JSONObject -> {
+                    if (entry.optString("platform", "") == "android") {
+                        entry.optString("package", "").takeIf { it.isNotBlank() }?.let(out::add)
+                    }
+                }
+                is String -> entry.takeIf { it.isNotBlank() }?.let(out::add)
+            }
+        }
+        return out
     }
 
     /**
@@ -260,8 +291,13 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(meditationSeconds = seconds.coerceAtLeast(1))
     }
 
-    fun setAllowCompanion(allow: Boolean) {
-        _state.value = _state.value.copy(allowCompanion = allow)
+    fun toggleCompanionApp(packageName: String) {
+        _state.value = _state.value.let { s ->
+            s.copy(
+                companionApps = if (packageName in s.companionApps) s.companionApps - packageName
+                                else s.companionApps + packageName,
+            )
+        }
     }
 
     fun setAvailableFrom(time: String) {
@@ -522,7 +558,14 @@ class TaskEditorViewModel @Inject constructor(
             }
             s.verificationType == "meditation" -> {
                 config.put("duration_seconds", s.meditationSeconds)
-                config.put("allow_companion", s.allowCompanion)
+                val apps = JSONArray()
+                for (pkg in s.companionApps) {
+                    apps.put(JSONObject().apply {
+                        put("platform", "android")
+                        put("package", pkg)
+                    })
+                }
+                config.put("companion_apps", apps)
             }
         }
         return config.toString()

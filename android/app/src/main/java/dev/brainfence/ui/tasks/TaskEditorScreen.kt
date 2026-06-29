@@ -4,8 +4,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +33,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +68,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun TaskEditorScreen(
     state: TaskEditorState,
+    installedApps: List<dev.brainfence.data.apps.InstalledApp>,
     onUpdateTitle: (String) -> Unit,
     onUpdateDescription: (String) -> Unit,
     onSetTaskType: (String) -> Unit,
@@ -69,7 +78,7 @@ fun TaskEditorScreen(
     onSetLongitude: (String) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
-    onSetAllowCompanion: (Boolean) -> Unit,
+    onToggleCompanionApp: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
@@ -174,13 +183,14 @@ fun TaskEditorScreen(
                     )
                     1 -> ConfigStep(
                         state = state,
+                        installedApps = installedApps,
                         onSetVerificationType = onSetVerificationType,
                         onSetDurationSeconds = onSetDurationSeconds,
                         onSetLatitude = onSetLatitude,
                         onSetLongitude = onSetLongitude,
                         onSetRadiusMeters = onSetRadiusMeters,
                         onSetMeditationSeconds = onSetMeditationSeconds,
-                        onSetAllowCompanion = onSetAllowCompanion,
+                        onToggleCompanionApp = onToggleCompanionApp,
                         onAddRoutineStep = onAddRoutineStep,
                         onRemoveRoutineStep = onRemoveRoutineStep,
                         onUpdateRoutineStep = onUpdateRoutineStep,
@@ -404,13 +414,14 @@ private fun taskTypeDescription(type: String): String = when (type) {
 @Composable
 private fun ConfigStep(
     state: TaskEditorState,
+    installedApps: List<dev.brainfence.data.apps.InstalledApp>,
     onSetVerificationType: (String) -> Unit,
     onSetDurationSeconds: (Int) -> Unit,
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
-    onSetAllowCompanion: (Boolean) -> Unit,
+    onToggleCompanionApp: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
@@ -420,12 +431,13 @@ private fun ConfigStep(
     when (state.taskType) {
         "simple" -> SimpleConfigContent(
             state = state,
+            installedApps = installedApps,
             onSetVerificationType = onSetVerificationType,
             onSetLatitude = onSetLatitude,
             onSetLongitude = onSetLongitude,
             onSetRadiusMeters = onSetRadiusMeters,
             onSetMeditationSeconds = onSetMeditationSeconds,
-            onSetAllowCompanion = onSetAllowCompanion,
+            onToggleCompanionApp = onToggleCompanionApp,
         )
         "timed" -> TimedConfigContent(
             durationSeconds = state.durationSeconds,
@@ -445,12 +457,13 @@ private fun ConfigStep(
 @Composable
 private fun SimpleConfigContent(
     state: TaskEditorState,
+    installedApps: List<dev.brainfence.data.apps.InstalledApp>,
     onSetVerificationType: (String) -> Unit,
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
-    onSetAllowCompanion: (Boolean) -> Unit,
+    onToggleCompanionApp: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -535,19 +548,12 @@ private fun SimpleConfigContent(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text("Allow companion app")
-                        Switch(
-                            checked = state.allowCompanion,
-                            onCheckedChange = onSetAllowCompanion,
-                        )
-                    }
                 }
+                companionAppPickerSection(
+                    selected = state.companionApps,
+                    installedApps = installedApps,
+                    onToggle = onToggleCompanionApp,
+                )
             }
         }
 
@@ -999,5 +1005,95 @@ private fun ScheduleStep(
         }
 
         item { Spacer(Modifier.height(48.dp)) }
+    }
+}
+
+// ==================== Companion App Picker ====================
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+private fun LazyListScope.companionAppPickerSection(
+    selected: Set<String>,
+    installedApps: List<dev.brainfence.data.apps.InstalledApp>,
+    onToggle: (String) -> Unit,
+) {
+    item(key = "companion_header") {
+        Spacer(Modifier.height(12.dp))
+        Text("Companion apps", style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = "Time spent in these apps will count toward the meditation duration. Leave empty for in-app timer only.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (selected.isNotEmpty()) {
+        item(key = "companion_selected") {
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                selected.forEach { pkg ->
+                    val app = installedApps.find { it.packageName == pkg }
+                    InputChip(
+                        selected = true,
+                        onClick = { onToggle(pkg) },
+                        label = { Text(app?.label ?: pkg.substringAfterLast('.')) },
+                        leadingIcon = {
+                            app?.icon?.let {
+                                Image(bitmap = it, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        },
+                        trailingIcon = {
+                            Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp))
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    item(key = "companion_picker_search") {
+        Spacer(Modifier.height(8.dp))
+        var query by remember { mutableStateOf("") }
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text("Search apps") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        val filtered = installedApps.filter { app ->
+            query.isBlank() ||
+                app.label.contains(query, ignoreCase = true) ||
+                app.packageName.contains(query, ignoreCase = true)
+        }
+        Column {
+            filtered.forEach { app ->
+                ListItem(
+                    modifier = Modifier.clickable { onToggle(app.packageName) },
+                    headlineContent = { Text(app.label) },
+                    supportingContent = {
+                        Text(
+                            text = app.packageName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    leadingContent = {
+                        app.icon?.let {
+                            Image(bitmap = it, contentDescription = null, modifier = Modifier.size(32.dp))
+                        }
+                    },
+                    trailingContent = {
+                        Checkbox(
+                            checked = app.packageName in selected,
+                            onCheckedChange = { onToggle(app.packageName) },
+                        )
+                    },
+                )
+            }
+        }
     }
 }

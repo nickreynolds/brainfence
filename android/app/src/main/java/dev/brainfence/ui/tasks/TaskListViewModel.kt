@@ -17,6 +17,8 @@ import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeTaskPhase
 import dev.brainfence.service.BrainfenceService
 import dev.brainfence.service.CompanionUsageVerifier
+import dev.brainfence.service.MeditationTimerManager
+import dev.brainfence.service.MeditationTimerState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,7 +53,12 @@ class TaskListViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val blockingRepository: BlockingRepository,
     private val companionUsageVerifier: CompanionUsageVerifier,
+    meditationTimerManager: MeditationTimerManager,
 ) : ViewModel() {
+
+    /** Live snapshot of every running meditation timer (in-app or companion). */
+    val meditationTimerStates: kotlinx.coroutines.flow.StateFlow<Map<String, MeditationTimerState>> =
+        meditationTimerManager.timerStates
 
     private val _needsUsageStatsPermission = MutableStateFlow(false)
     val needsUsageStatsPermission = _needsUsageStatsPermission.asStateFlow()
@@ -65,7 +72,7 @@ class TaskListViewModel @Inject constructor(
             // Check if any meditation tasks have companion apps configured
             val tasks = taskRepository.watchActiveTasks().first()
             val hasMeditationWithCompanion = tasks.any { task ->
-                task.taskType == "meditation" && !task.completedToday &&
+                task.verificationType == "meditation" && !task.completedToday &&
                     task.verificationConfig?.let(
                         dev.brainfence.service.MeditationTimerManager::parseMeditationConfig
                     )?.companionApps?.isNotEmpty() == true

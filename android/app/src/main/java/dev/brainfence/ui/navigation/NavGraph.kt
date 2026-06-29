@@ -180,6 +180,7 @@ fun BrainfenceNavGraph(
             val activeRules        by taskViewModel.activeRules.collectAsStateWithLifecycle()
             val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
             val needsUsageStats   by taskViewModel.needsUsageStatsPermission.collectAsStateWithLifecycle()
+            val meditationTimerStates by taskViewModel.meditationTimerStates.collectAsStateWithLifecycle()
             TaskListScreen(
                 activeTasks              = activeTasks,
                 completedTasks           = completedTasks,
@@ -188,6 +189,7 @@ fun BrainfenceNavGraph(
                 activeRules              = activeRules,
                 pendingTask              = pendingTask,
                 blockingStatus           = blockingStatus,
+                meditationTimerStates    = meditationTimerStates,
                 isAccessibilityEnabled   = isAccessibilityEnabled,
                 hasLocationPermission    = hasLocationPerm,
                 needsUsageStatsPermission = needsUsageStats,
@@ -355,8 +357,10 @@ fun BrainfenceNavGraph(
         ) {
             val viewModel: TaskEditorViewModel = hiltViewModel()
             val editorState by viewModel.state.collectAsStateWithLifecycle()
+            val editorInstalledApps by viewModel.installedApps.collectAsStateWithLifecycle()
             TaskEditorScreen(
                 state = editorState,
+                installedApps = editorInstalledApps,
                 onUpdateTitle = viewModel::updateTitle,
                 onUpdateDescription = viewModel::updateDescription,
                 onSetTaskType = viewModel::setTaskType,
@@ -366,7 +370,7 @@ fun BrainfenceNavGraph(
                 onSetLongitude = viewModel::setLongitude,
                 onSetRadiusMeters = viewModel::setRadiusMeters,
                 onSetMeditationSeconds = viewModel::setMeditationSeconds,
-                onSetAllowCompanion = viewModel::setAllowCompanion,
+                onToggleCompanionApp = viewModel::toggleCompanionApp,
                 onAddRoutineStep = viewModel::addRoutineStep,
                 onRemoveRoutineStep = viewModel::removeRoutineStep,
                 onUpdateRoutineStep = viewModel::updateRoutineStep,

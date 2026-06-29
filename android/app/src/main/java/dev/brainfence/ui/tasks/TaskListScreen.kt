@@ -40,6 +40,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +84,7 @@ fun TaskListScreen(
     activeRules: List<BlockingRule>,
     pendingTask: Task?,
     blockingStatus: BlockingStatusState,
+    meditationTimerStates: Map<String, dev.brainfence.service.MeditationTimerState>,
     isAccessibilityEnabled: Boolean,
     hasLocationPermission: Boolean,
     needsUsageStatsPermission: Boolean,
@@ -258,6 +260,7 @@ fun TaskListScreen(
                         task = task,
                         showAsCompleted = selectedTab == HomeTab.COMPLETED,
                         showAsUpcoming = selectedTab == HomeTab.UPCOMING,
+                        meditationTimer = meditationTimerStates[task.id],
                         onClick = {
                             if (selectedTab == HomeTab.UPCOMING) onEditTask(task)
                             else onTaskTap(task)
@@ -288,6 +291,7 @@ private fun TaskItem(
     task: Task,
     showAsCompleted: Boolean,
     showAsUpcoming: Boolean,
+    meditationTimer: dev.brainfence.service.MeditationTimerState?,
     onClick: () -> Unit,
 ) {
     val phase = computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
@@ -295,6 +299,8 @@ private fun TaskItem(
     val isCompletedRecurring = showAsUpcoming && task.completedToday && task.recurrenceType != null
     val isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase == TimeGatePhase.BEFORE_START && !task.completedToday)
     val isOverdue = phase == TimeGatePhase.PAST_DUE && !task.completedToday
+    val showMeditationProgress = meditationTimer != null && meditationTimer.targetSeconds > 0 &&
+        !showAsCompleted && !isCompletedRecurring
 
     // Upcoming items are visually "locked" but should still be tappable so the
     // user can open the editor and adjust the task.
@@ -310,6 +316,10 @@ private fun TaskItem(
             }),
         headlineContent = { Text(task.title) },
         supportingContent = {
+          Column {
+            if (showMeditationProgress) {
+                MeditationProgressRow(meditationTimer!!)
+            }
             when {
                 isCompletedRecurring -> {
                     val zone = ZoneId.systemDefault()
@@ -375,6 +385,7 @@ private fun TaskItem(
                     }
                 }
             }
+          }
         },
         leadingContent = {
             when {
@@ -418,6 +429,32 @@ private fun TaskItem(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
     )
+}
+
+@Composable
+private fun MeditationProgressRow(state: dev.brainfence.service.MeditationTimerState) {
+    val target = state.targetSeconds.coerceAtLeast(1)
+    val elapsed = state.elapsedSeconds.coerceAtMost(target)
+    val progress = elapsed.toFloat() / target.toFloat()
+    val elapsedMin = elapsed / 60
+    val targetMin = target / 60
+    val activeNow = state.running
+    Column(modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)) {
+        Text(
+            text = buildString {
+                append("$elapsedMin / $targetMin min today")
+                if (activeNow) append(" · counting in ${state.companionApp?.substringAfterLast('.') ?: "app"}")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (activeNow) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

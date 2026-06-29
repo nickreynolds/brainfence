@@ -261,6 +261,53 @@ class MeditationTimerManager @Inject constructor(
         return computeCurrentElapsed(state)
     }
 
+    /**
+     * Merge an externally-measured foreground duration (e.g. from Android
+     * UsageStatsManager) into the running tally for [taskId]. The merge only
+     * raises the elapsed value — if the in-app accessibility tracker has
+     * counted more, that wins. Returns the resulting elapsed value, which the
+     * caller can compare to target to decide whether to mark the task complete.
+     *
+     * Seeds a new (non-running) timer state if none exists yet — this lets the
+     * list-view progress bar appear even before the user opens the detail screen.
+     */
+    fun mergeUsageStatsAccumulation(
+        taskId: String,
+        taskTitle: String,
+        targetSeconds: Int,
+        companionApps: List<String>,
+        usageSeconds: Int,
+    ): Int {
+        val existing = _timerStates.value[taskId]
+        val existingElapsed = if (existing != null) computeCurrentElapsed(existing)
+                              else readTodaysElapsed(taskId)
+        val merged = maxOf(existingElapsed, usageSeconds)
+        if (merged <= existingElapsed && existing != null) return existingElapsed
+
+        val base = existing ?: MeditationTimerState(
+            taskId = taskId,
+            taskTitle = taskTitle,
+            targetSeconds = targetSeconds,
+            elapsedSeconds = merged,
+            startedAtMillis = System.currentTimeMillis(),
+            running = false,
+            pauses = 0,
+            method = "companion_app",
+            companionApp = null,
+            navigatedAway = false,
+        )
+        val updated = base.copy(
+            elapsedSeconds = merged,
+            // Reset the run-time anchor so computeCurrentElapsed doesn't
+            // double-count if the timer is still ticking.
+            startedAtMillis = System.currentTimeMillis(),
+        )
+        updateState(taskId, updated)
+        persistTimer(taskId, updated)
+        if (existing == null) persistCompanionApps(taskId, companionApps)
+        return merged
+    }
+
     // ── Companion App Detection ──────────────────────────────────────
 
     /**
@@ -278,7 +325,7 @@ class MeditationTimerManager @Inject constructor(
             return
         }
 
-        val savedElapsed = prefs.getInt("elapsed_$taskId", 0)
+        val savedElapsed = readTodaysElapsed(taskId)
 
         val state = MeditationTimerState(
             taskId = taskId,
@@ -434,7 +481,7 @@ class MeditationTimerManager @Inject constructor(
         for (taskId in taskIds) {
             val title = prefs.getString("title_$taskId", "") ?: ""
             val target = prefs.getInt("target_$taskId", 0)
-            val elapsed = prefs.getInt("elapsed_$taskId", 0)
+            val elapsed = readTodaysElapsed(taskId)
             val pauses = prefs.getInt("pauses_$taskId", 0)
             val method = prefs.getString("method_$taskId", "in_app_timer") ?: "in_app_timer"
             val companionApp = prefs.getString("companion_app_$taskId", null)
@@ -598,7 +645,21 @@ class MeditationTimerManager @Inject constructor(
             .putInt("pauses_$taskId", state.pauses)
             .putString("method_$taskId", state.method)
             .putString("companion_app_$taskId", state.companionApp)
+            .putString("date_$taskId", todayKey())
             .apply()
+    }
+
+    private fun todayKey(): String = java.time.LocalDate.now().toString()
+
+    /**
+     * Reads persisted elapsed for the task, but only if it was recorded today.
+     * If the stored date is from a previous day, treat as zero so daily tasks
+     * restart fresh each morning (the cumulative target is per-day).
+     */
+    private fun readTodaysElapsed(taskId: String): Int {
+        val storedDate = prefs.getString("date_$taskId", null)
+        if (storedDate == null || storedDate != todayKey()) return 0
+        return prefs.getInt("elapsed_$taskId", 0)
     }
 
     fun getPersistedCompanionApps(taskId: String): List<String>? {
@@ -634,6 +695,7 @@ class MeditationTimerManager @Inject constructor(
             .remove("companion_app_$taskId")
             .remove("companion_apps_$taskId")
             .remove("bell_$taskId")
+            .remove("date_$taskId")
             .apply()
     }
 

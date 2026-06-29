@@ -32,6 +32,7 @@ class CompanionUsageVerifier @Inject constructor(
     @ApplicationContext private val context: Context,
     private val taskRepository: TaskRepository,
     private val completionRepository: CompletionRepository,
+    private val meditationTimerManager: MeditationTimerManager,
     private val debugLog: DebugLogRepository,
 ) {
     companion object {
@@ -65,7 +66,7 @@ class CompanionUsageVerifier @Inject constructor(
         var completed = 0
 
         for (task in tasks) {
-            if (task.taskType != "meditation") continue
+            if (task.verificationType != "meditation") continue
             if (task.completedToday) continue
 
             val config = task.verificationConfig?.let(MeditationTimerManager::parseMeditationConfig)
@@ -73,29 +74,43 @@ class CompanionUsageVerifier @Inject constructor(
             if (config.companionApps.isEmpty()) continue
 
             val usageSeconds = queryCompanionUsage(task, config)
-            if (usageSeconds >= config.durationSeconds) {
-                Log.i(TAG, "Completing '${task.title}' via usage stats (${usageSeconds}s >= ${config.durationSeconds}s)")
+
+            // Merge usage stats into the running tally so the list-view progress
+            // bar reflects time spent in companion apps even when the foreground
+            // service wasn't observing accessibility events.
+            val mergedSeconds = meditationTimerManager.mergeUsageStatsAccumulation(
+                taskId = task.id,
+                taskTitle = task.title,
+                targetSeconds = config.durationSeconds,
+                companionApps = config.companionApps,
+                usageSeconds = usageSeconds,
+            )
+
+            if (mergedSeconds >= config.durationSeconds) {
+                Log.i(TAG, "Completing '${task.title}' via usage stats (${mergedSeconds}s >= ${config.durationSeconds}s)")
                 debugLog.log(
                     "companion",
-                    "Auto-completed '${task.title}' via usage stats (${usageSeconds}s)",
-                    data = """{"method":"usage_stats","actual_seconds":$usageSeconds}""",
+                    "Auto-completed '${task.title}' via usage stats (${mergedSeconds}s)",
+                    data = """{"method":"usage_stats","actual_seconds":$mergedSeconds}""",
                 )
 
                 val verificationData = JSONObject().apply {
                     put("method", "usage_stats")
-                    put("actual_seconds", usageSeconds)
+                    put("actual_seconds", mergedSeconds)
                 }.toString()
 
                 completionRepository.completeTask(
                     taskId = task.id,
                     verificationData = verificationData,
                 )
+                // Tear down the running tally so the row stops showing in-progress.
+                meditationTimerManager.cancelTimer(task.id)
                 completed++
-            } else if (usageSeconds > 0) {
-                Log.d(TAG, "'${task.title}': companion usage ${usageSeconds}s / ${config.durationSeconds}s (not enough)")
+            } else if (mergedSeconds > 0) {
+                Log.d(TAG, "'${task.title}': merged companion usage ${mergedSeconds}s / ${config.durationSeconds}s")
                 debugLog.log(
                     "companion",
-                    "Usage stats check: '${task.title}' — ${usageSeconds}s / ${config.durationSeconds}s (insufficient)",
+                    "Usage stats check: '${task.title}' — merged tally ${mergedSeconds}s / ${config.durationSeconds}s",
                 )
             }
         }
