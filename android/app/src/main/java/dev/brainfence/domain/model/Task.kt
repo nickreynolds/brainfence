@@ -18,6 +18,7 @@ data class Task(
     val blockingRuleIds: String,     // UUID[] stored as JSON array string
     val availableFrom: String?,      // HH:MM — when task becomes completable
     val dueAt: String?,              // HH:MM — when task becomes overdue / triggers blocking
+    val homeOnlyBlocking: Boolean,   // true → task only blocks when user is at configured home location
     val createdAt: String,
     val updatedAt: String,
     // Derived from join with task_completions — not a stored column

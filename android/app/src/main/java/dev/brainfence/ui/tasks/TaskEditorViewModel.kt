@@ -48,6 +48,7 @@ data class TaskEditorState(
     val recurrenceType: String? = null, // null, "daily", "weekly"
     val weeklyDays: Set<String> = emptySet(),
     val isBlockingCondition: Boolean = false,
+    val homeOnlyBlocking: Boolean = false,
     val availableFrom: String = "",  // HH:MM — when task becomes completable
     val dueAt: String = "",          // HH:MM — when task becomes overdue / triggers blocking
     // General
@@ -223,6 +224,10 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(isBlockingCondition = enabled)
     }
 
+    fun setHomeOnlyBlocking(enabled: Boolean) {
+        _state.value = _state.value.copy(homeOnlyBlocking = enabled)
+    }
+
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
@@ -270,9 +275,9 @@ class TaskEditorViewModel @Inject constructor(
                              recurrence_type, recurrence_config,
                              verification_type, verification_config,
                              tags, sort_order, is_blocking_condition, blocking_rule_ids,
-                             available_from, due_at,
+                             available_from, due_at, home_only_blocking,
                              created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent(),
                     parameters = listOf(
                         taskId, userId, s.title, s.description.ifBlank { null },
@@ -280,7 +285,7 @@ class TaskEditorViewModel @Inject constructor(
                         effectiveRecurrenceType, recurrenceConfig,
                         verificationType, verificationConfig,
                         "{}", 0, if (s.isBlockingCondition) 1 else 0, "{}",
-                        availableFrom, dueAt,
+                        availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0,
                         now, now,
                     ),
                 )

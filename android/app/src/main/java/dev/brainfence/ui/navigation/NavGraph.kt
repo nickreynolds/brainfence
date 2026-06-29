@@ -21,6 +21,8 @@ import dev.brainfence.service.AccessibilityServiceChecker
 import dev.brainfence.ui.auth.AuthViewModel
 import dev.brainfence.ui.auth.SignInScreen
 import dev.brainfence.ui.auth.SignUpScreen
+import dev.brainfence.ui.settings.HomeLocationScreen
+import dev.brainfence.ui.settings.HomeLocationViewModel
 import dev.brainfence.ui.setup.AccessibilitySetupScreen
 import dev.brainfence.ui.debug.DebugScreen
 import dev.brainfence.ui.debug.DebugViewModel
@@ -70,6 +72,7 @@ private object Routes {
     const val DEBUG             = "debug"
     const val BLOCKING_RULES    = "blocking/rules"
     const val BLOCKING_RULE_EDITOR = "blocking/editor/{ruleId}"
+    const val HOME_LOCATION     = "settings/home-location"
 }
 
 @Composable
@@ -206,6 +209,7 @@ fun BrainfenceNavGraph(
                 onSignOut                = taskViewModel::signOut,
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
+                onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
                 onCreateTask             = { navController.navigate(Routes.TASK_EDITOR) },
             )
         }
@@ -361,6 +365,7 @@ fun BrainfenceNavGraph(
                 onSetRecurrenceType = viewModel::setRecurrenceType,
                 onToggleWeeklyDay = viewModel::toggleWeeklyDay,
                 onSetBlockingCondition = viewModel::setBlockingCondition,
+                onSetHomeOnlyBlocking = viewModel::setHomeOnlyBlocking,
                 onSetAvailableFrom = viewModel::setAvailableFrom,
                 onSetDueAt = viewModel::setDueAt,
                 onNextStep = viewModel::nextStep,
@@ -405,6 +410,21 @@ fun BrainfenceNavGraph(
                 onSetConditionLogic = viewModel::setConditionLogic,
                 onSave = { viewModel.save { navController.popBackStack() } },
                 onCancelPendingChanges = viewModel::cancelPendingChanges,
+                onClearError = viewModel::clearError,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.HOME_LOCATION) {
+            val viewModel: HomeLocationViewModel = hiltViewModel()
+            val homeState by viewModel.state.collectAsStateWithLifecycle()
+            HomeLocationScreen(
+                state = homeState,
+                onSetLatitude = viewModel::setLatitude,
+                onSetLongitude = viewModel::setLongitude,
+                onSetRadius = viewModel::setRadius,
+                onUseCurrentLocation = viewModel::useCurrentLocation,
+                onSave = viewModel::save,
+                onClear = viewModel::clear,
                 onClearError = viewModel::clearError,
                 onBack = { navController.popBackStack() },
             )

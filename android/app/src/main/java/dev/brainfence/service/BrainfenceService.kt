@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.location.Location
 import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -18,8 +19,11 @@ import dev.brainfence.MainActivity
 import dev.brainfence.R
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.debug.DebugLogRepository
+import dev.brainfence.data.settings.HomeLocation
+import dev.brainfence.data.settings.HomeLocationRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.blocking.BlockingState
+import dev.brainfence.domain.blocking.HomePresence
 import dev.brainfence.domain.blocking.evaluateBlocking
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
@@ -63,12 +67,15 @@ class BrainfenceService : Service() {
     @Inject lateinit var durationTimerManager: DurationTimerManager
     @Inject lateinit var meditationTimerManager: MeditationTimerManager
     @Inject lateinit var taskNotificationManager: TaskNotificationManager
+    @Inject lateinit var homeLocationRepository: HomeLocationRepository
     @Inject lateinit var debugLog: DebugLogRepository
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var evalJob: Job? = null
     private var currentTasks: List<Task> = emptyList()
     private var currentRules: List<BlockingRule> = emptyList()
+    private var currentHome: HomeLocation? = null
+    private var lastKnownLocation: Location? = null
     private var breadcrumbCounter = 0
 
     override fun onCreate() {
@@ -83,6 +90,7 @@ class BrainfenceService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification(), fgsType)
         observeData()
         startPeriodicEvaluation()
+        logLocationBreadcrumb() // seed last-known location so home-presence is known sooner
         gpsVerificationManager.startWatching()
         durationTimerManager.restoreTimers()
         meditationTimerManager.restoreTimers()
@@ -123,6 +131,12 @@ class BrainfenceService : Service() {
         scope.launch {
             blockingRepository.watchActiveRules().collect { rules ->
                 currentRules = rules
+                runEvaluation()
+            }
+        }
+        scope.launch {
+            homeLocationRepository.watch().collect { home ->
+                currentHome = home
                 runEvaluation()
             }
         }
@@ -214,14 +228,37 @@ class BrainfenceService : Service() {
     }
 
     private fun runEvaluation() {
-        val state = evaluateBlocking(currentRules, currentTasks)
+        val state = evaluateBlocking(
+            rules = currentRules,
+            tasks = currentTasks,
+            homePresence = computeHomePresence(),
+        )
         _blockingState.value = state
         taskNotificationManager.updateBlockingNotification(state)
         Log.d(TAG, "Evaluated: ${state.blockedApps.size} apps blocked")
     }
 
     /**
-     * Periodically log the device's last known location for debugging.
+     * Classify the user's current location relative to the configured home.
+     * Strict-by-default: any "we don't really know" case keeps blocking on
+     * (treated as AT_HOME by the evaluator) so users can't sidestep blocking
+     * by denying location permission or sitting somewhere with no GPS fix.
+     */
+    private fun computeHomePresence(): HomePresence {
+        val home = currentHome ?: return HomePresence.UNCONFIGURED
+        val loc = lastKnownLocation ?: return HomePresence.UNKNOWN
+        val distance = FloatArray(1)
+        Location.distanceBetween(
+            loc.latitude, loc.longitude,
+            home.latitude, home.longitude,
+            distance,
+        )
+        return if (distance[0] <= home.radiusMeters) HomePresence.AT_HOME else HomePresence.AWAY
+    }
+
+    /**
+     * Periodically refresh the device's last known location: powers the
+     * home-presence check for blocking and feeds a debug breadcrumb.
      * Uses getLastLocation() which returns a cached location — no battery impact.
      */
     @SuppressLint("MissingPermission")
@@ -230,6 +267,8 @@ class BrainfenceService : Service() {
         val client = LocationServices.getFusedLocationProviderClient(this)
         client.lastLocation.addOnSuccessListener { location ->
             if (location != null) {
+                lastKnownLocation = location
+                runEvaluation()
                 scope.launch {
                     debugLog.log(
                         category = "location",

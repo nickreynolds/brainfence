@@ -20,6 +20,7 @@ class BlockingEvaluatorTest {
         completedToday: Boolean = false,
         availableFrom: String? = "07:00",
         dueAt: String? = "10:00",
+        homeOnlyBlocking: Boolean = false,
     ) = Task(
         id = id,
         userId = "user-1",
@@ -38,6 +39,7 @@ class BlockingEvaluatorTest {
         blockingRuleIds = "[]",
         availableFrom = availableFrom,
         dueAt = dueAt,
+        homeOnlyBlocking = homeOnlyBlocking,
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
@@ -65,6 +67,7 @@ class BlockingEvaluatorTest {
         blockingRuleIds = "[]",
         availableFrom = null,
         dueAt = null,
+        homeOnlyBlocking = false,
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
@@ -200,5 +203,114 @@ class BlockingEvaluatorTest {
             timeZone = zone,
         )
         assertEquals(setOf("com.twitter.android"), result.blockedApps)
+    }
+
+    // -----------------------------------------------------------------------
+    // Home-only blocking
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `home-only task past due_at - blocks when at home`() {
+        val task = taskWithWindow(completedToday = false, homeOnlyBlocking = true)
+        val result = evaluateBlocking(
+            rules = listOf(rule()),
+            tasks = listOf(task),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.AT_HOME,
+        )
+        assertEquals(setOf("com.twitter.android"), result.blockedApps)
+    }
+
+    @Test
+    fun `home-only task past due_at - does not block when away`() {
+        val task = taskWithWindow(completedToday = false, homeOnlyBlocking = true)
+        val result = evaluateBlocking(
+            rules = listOf(rule()),
+            tasks = listOf(task),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.AWAY,
+        )
+        assertTrue("Home-only task shouldn't block when away", result.blockedApps.isEmpty())
+    }
+
+    @Test
+    fun `home-only task past due_at - blocks when presence unknown`() {
+        // Strict-by-default: if we don't know where the user is, keep blocking.
+        val task = taskWithWindow(completedToday = false, homeOnlyBlocking = true)
+        val result = evaluateBlocking(
+            rules = listOf(rule()),
+            tasks = listOf(task),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.UNKNOWN,
+        )
+        assertEquals(setOf("com.twitter.android"), result.blockedApps)
+    }
+
+    @Test
+    fun `home-only task past due_at - blocks when home unconfigured`() {
+        val task = taskWithWindow(completedToday = false, homeOnlyBlocking = true)
+        val result = evaluateBlocking(
+            rules = listOf(rule()),
+            tasks = listOf(task),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.UNCONFIGURED,
+        )
+        assertEquals(setOf("com.twitter.android"), result.blockedApps)
+    }
+
+    @Test
+    fun `non home-only task past due_at - blocks regardless of presence`() {
+        val task = taskWithWindow(completedToday = false, homeOnlyBlocking = false)
+        val result = evaluateBlocking(
+            rules = listOf(rule()),
+            tasks = listOf(task),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.AWAY,
+        )
+        assertEquals(
+            "Tasks without the home-only flag block regardless of presence",
+            setOf("com.twitter.android"),
+            result.blockedApps,
+        )
+    }
+
+    @Test
+    fun `mixed all-logic - home-only away plus manual incomplete - still blocks via manual`() {
+        // Home-only task is "met" because we're away, but the manual task is still incomplete.
+        // "all" logic requires every condition met → still blocks.
+        val homeTask = taskWithWindow(id = "task-1", completedToday = false, homeOnlyBlocking = true)
+        val mTask = manualTask(id = "task-2", completedToday = false)
+        val r = rule(conditionTaskIds = listOf("task-1", "task-2"), conditionLogic = "all")
+        val result = evaluateBlocking(
+            rules = listOf(r),
+            tasks = listOf(homeTask, mTask),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.AWAY,
+        )
+        assertEquals(setOf("com.twitter.android"), result.blockedApps)
+    }
+
+    @Test
+    fun `all-logic - both home-only and user away - lifts blocking`() {
+        val homeTaskA = taskWithWindow(id = "task-1", completedToday = false, homeOnlyBlocking = true)
+        val homeTaskB = taskWithWindow(id = "task-2", completedToday = false, homeOnlyBlocking = true)
+        val r = rule(conditionTaskIds = listOf("task-1", "task-2"), conditionLogic = "all")
+        val result = evaluateBlocking(
+            rules = listOf(r),
+            tasks = listOf(homeTaskA, homeTaskB),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+            homePresence = HomePresence.AWAY,
+        )
+        assertTrue(
+            "Both conditions are home-only and user is away → blocking lifted",
+            result.blockedApps.isEmpty(),
+        )
     }
 }

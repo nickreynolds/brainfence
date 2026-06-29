@@ -78,6 +78,7 @@ fun TaskEditorScreen(
     onSetRecurrenceType: (String?) -> Unit,
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
+    onSetHomeOnlyBlocking: (Boolean) -> Unit,
     onSetAvailableFrom: (String) -> Unit,
     onSetDueAt: (String) -> Unit,
     onNextStep: () -> Unit,
@@ -189,6 +190,7 @@ fun TaskEditorScreen(
                         onSetRecurrenceType = onSetRecurrenceType,
                         onToggleWeeklyDay = onToggleWeeklyDay,
                         onSetBlockingCondition = onSetBlockingCondition,
+                        onSetHomeOnlyBlocking = onSetHomeOnlyBlocking,
                         onSetAvailableFrom = onSetAvailableFrom,
                         onSetDueAt = onSetDueAt,
                     )
@@ -858,6 +860,7 @@ private fun ScheduleStep(
     onSetRecurrenceType: (String?) -> Unit,
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
+    onSetHomeOnlyBlocking: (Boolean) -> Unit,
     onSetAvailableFrom: (String) -> Unit,
     onSetDueAt: (String) -> Unit,
 ) {
@@ -962,6 +965,27 @@ private fun ScheduleStep(
                     checked = state.isBlockingCondition,
                     onCheckedChange = onSetBlockingCondition,
                 )
+            }
+            if (state.isBlockingCondition) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Only block when at home")
+                        Text(
+                            text = "Skip this task's blocking when you're away from your designated home location (e.g. on vacation)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = state.homeOnlyBlocking,
+                        onCheckedChange = onSetHomeOnlyBlocking,
+                    )
+                }
             }
         }
 

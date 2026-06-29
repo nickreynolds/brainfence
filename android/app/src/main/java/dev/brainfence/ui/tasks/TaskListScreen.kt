@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Warning
@@ -94,6 +95,7 @@ fun TaskListScreen(
     onSignOut: () -> Unit,
     onNavigateToDebug: () -> Unit = {},
     onNavigateToRules: () -> Unit = {},
+    onNavigateToHomeLocation: () -> Unit = {},
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -124,6 +126,9 @@ fun TaskListScreen(
                 actions = {
                     IconButton(onClick = onNavigateToRules) {
                         Icon(Icons.Default.Edit, contentDescription = "Blocking rules")
+                    }
+                    IconButton(onClick = onNavigateToHomeLocation) {
+                        Icon(Icons.Default.Home, contentDescription = "Home location")
                     }
                     IconButton(onClick = onCreateTask) {
                         Icon(Icons.Default.Add, contentDescription = "Create task")

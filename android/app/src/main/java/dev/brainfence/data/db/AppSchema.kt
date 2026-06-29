@@ -46,6 +46,7 @@ val AppSchema = Schema(
             Column.text("blocking_rule_ids"),     // UUID[] as JSON array
             Column.text("available_from"),        // HH:MM — when task becomes completable
             Column.text("due_at"),                // HH:MM — when task becomes overdue / triggers blocking
+            Column.integer("home_only_blocking"), // 1 = only block when user is at configured home location
             Column.text("created_at"),
             Column.text("updated_at"),
         ),
