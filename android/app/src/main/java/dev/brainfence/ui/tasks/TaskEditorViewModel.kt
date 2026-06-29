@@ -1,5 +1,6 @@
 package dev.brainfence.ui.tasks
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.powersync.PowerSyncDatabase
@@ -10,6 +11,7 @@ import dev.brainfence.data.routine.RoutineRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.time.Instant
@@ -54,6 +56,9 @@ data class TaskEditorState(
     // General
     val isSaving: Boolean = false,
     val error: String? = null,
+    /** Non-null when editing an existing task. Drives INSERT vs UPDATE on save. */
+    val editingTaskId: String? = null,
+    val isLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -61,10 +66,118 @@ class TaskEditorViewModel @Inject constructor(
     private val database: PowerSyncDatabase,
     private val sessionRepository: SessionRepository,
     private val routineRepository: RoutineRepository,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TaskEditorState())
     val state: StateFlow<TaskEditorState> = _state.asStateFlow()
+
+    init {
+        val taskId: String? = savedStateHandle["taskId"]
+        if (!taskId.isNullOrBlank()) loadExistingTask(taskId)
+    }
+
+    private fun loadExistingTask(taskId: String) {
+        _state.value = _state.value.copy(isLoading = true, editingTaskId = taskId)
+        viewModelScope.launch {
+            try {
+                val task = database.getOptional(
+                    sql = """
+                        SELECT id, title, description, task_type, recurrence_type, recurrence_config,
+                               verification_type, verification_config, is_blocking_condition,
+                               available_from, due_at, home_only_blocking
+                        FROM tasks WHERE id = ?
+                    """.trimIndent(),
+                    parameters = listOf(taskId),
+                ) { c ->
+                    object {
+                        val title = c.getString(1) ?: ""
+                        val description = c.getString(2) ?: ""
+                        val taskType = c.getString(3) ?: "simple"
+                        val recurrenceType = c.getString(4)
+                        val recurrenceConfig = c.getString(5) ?: "{}"
+                        val verificationType = c.getString(6)
+                        val verificationConfig = c.getString(7) ?: "{}"
+                        val isBlockingCondition = (c.getLong(8) ?: 0L) != 0L
+                        val availableFrom = c.getString(9) ?: ""
+                        val dueAt = c.getString(10) ?: ""
+                        val homeOnlyBlocking = (c.getLong(11) ?: 0L) != 0L
+                    }
+                } ?: run {
+                    _state.value = _state.value.copy(isLoading = false, error = "Task not found")
+                    return@launch
+                }
+
+                val vConfig = runCatching { JSONObject(task.verificationConfig) }.getOrDefault(JSONObject())
+                val rConfig = runCatching { JSONObject(task.recurrenceConfig) }.getOrDefault(JSONObject())
+                val (recurrenceTypeUi, weeklyDays) = uiRecurrenceFromStored(task.recurrenceType, rConfig)
+
+                val steps = if (task.taskType == "routine" || task.taskType == "workout") {
+                    routineRepository.watchRoutineSteps(taskId).first().map { rs ->
+                        val sConfig = runCatching { JSONObject(rs.config) }.getOrDefault(JSONObject())
+                        EditableStep(
+                            id = rs.id,
+                            title = rs.title,
+                            stepType = rs.stepType,
+                            defaultSets = sConfig.optInt("default_sets", 3),
+                            durationSeconds = sConfig.optInt("duration_seconds", 60),
+                            supersetGroup = rs.supersetGroup,
+                        )
+                    }
+                } else emptyList()
+
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    title = task.title,
+                    description = task.description,
+                    taskType = task.taskType,
+                    verificationType = task.verificationType
+                        ?: if (task.taskType == "timed") "duration" else "manual",
+                    durationSeconds = if (task.taskType == "timed") {
+                        vConfig.optInt("duration_seconds", 300)
+                    } else 300,
+                    latitude = if (task.verificationType == "gps") vConfig.optDouble("latitude", 0.0).toString() else "",
+                    longitude = if (task.verificationType == "gps") vConfig.optDouble("longitude", 0.0).toString() else "",
+                    radiusMeters = if (task.verificationType == "gps") vConfig.optInt("radius_meters", 100) else 100,
+                    meditationSeconds = if (task.verificationType == "meditation") vConfig.optInt("duration_seconds", 300) else 300,
+                    allowCompanion = if (task.verificationType == "meditation") vConfig.optBoolean("allow_companion", true) else true,
+                    routineSteps = steps,
+                    recurrenceType = recurrenceTypeUi,
+                    weeklyDays = weeklyDays,
+                    isBlockingCondition = task.isBlockingCondition,
+                    homeOnlyBlocking = task.homeOnlyBlocking,
+                    availableFrom = task.availableFrom,
+                    dueAt = task.dueAt,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(isLoading = false, error = e.message)
+            }
+        }
+    }
+
+    /**
+     * Reverses [buildRecurrenceConfig]: turn the stored ("daily" + days array, "weekly" + day,
+     * or null) form back into the UI's (recurrenceType, weeklyDays) pair.
+     */
+    private fun uiRecurrenceFromStored(
+        storedType: String?,
+        config: JSONObject,
+    ): Pair<String?, Set<String>> = when (storedType) {
+        "weekly" -> {
+            val day = config.optString("day", "").ifBlank { null }
+            "weekly" to (day?.let { setOf(it) } ?: emptySet())
+        }
+        "daily" -> {
+            val daysArr = config.optJSONArray("days")
+            if (daysArr != null && daysArr.length() > 0) {
+                val days = (0 until daysArr.length()).map { daysArr.getString(it) }.toSet()
+                "weekly" to days
+            } else {
+                "daily" to emptySet()
+            }
+        }
+        else -> null to emptySet()
+    }
 
     // --- Wizard navigation ---
 
@@ -246,7 +359,6 @@ class TaskEditorViewModel @Inject constructor(
             try {
                 val userId = sessionRepository.currentUser?.id
                     ?: error("Not authenticated")
-                val taskId = UUID.randomUUID().toString()
                 val now = Instant.now().toString()
 
                 val taskType = s.taskType
@@ -268,44 +380,65 @@ class TaskEditorViewModel @Inject constructor(
                 val availableFrom = s.availableFrom.ifBlank { null }
                 val dueAt = s.dueAt.ifBlank { null }
 
-                database.execute(
-                    sql = """
-                        INSERT INTO tasks
-                            (id, user_id, title, description, task_type, status,
-                             recurrence_type, recurrence_config,
-                             verification_type, verification_config,
-                             tags, sort_order, is_blocking_condition, blocking_rule_ids,
-                             available_from, due_at, home_only_blocking,
-                             created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """.trimIndent(),
-                    parameters = listOf(
-                        taskId, userId, s.title, s.description.ifBlank { null },
-                        taskType, "active",
-                        effectiveRecurrenceType, recurrenceConfig,
-                        verificationType, verificationConfig,
-                        "{}", 0, if (s.isBlockingCondition) 1 else 0, "{}",
-                        availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0,
-                        now, now,
-                    ),
-                )
-
-                // Insert routine steps if applicable
-                if (taskType == "routine" || taskType == "workout") {
-                    val newSteps = s.routineSteps.map { step ->
-                        val config = JSONObject()
-                        when (step.stepType) {
-                            "weight_reps", "just_reps" -> config.put("default_sets", step.defaultSets)
-                            "timed" -> config.put("duration_seconds", step.durationSeconds)
-                        }
-                        NewRoutineStep(
-                            title = step.title,
-                            stepType = step.stepType,
-                            config = config.toString(),
-                            supersetGroup = step.supersetGroup,
-                        )
+                val existingId = s.editingTaskId
+                if (existingId != null) {
+                    database.execute(
+                        sql = """
+                            UPDATE tasks SET
+                                title = ?, description = ?, task_type = ?,
+                                recurrence_type = ?, recurrence_config = ?,
+                                verification_type = ?, verification_config = ?,
+                                is_blocking_condition = ?, available_from = ?, due_at = ?,
+                                home_only_blocking = ?, updated_at = ?
+                            WHERE id = ?
+                        """.trimIndent(),
+                        parameters = listOf(
+                            s.title, s.description.ifBlank { null }, taskType,
+                            effectiveRecurrenceType, recurrenceConfig,
+                            verificationType, verificationConfig,
+                            if (s.isBlockingCondition) 1 else 0, availableFrom, dueAt,
+                            if (s.homeOnlyBlocking) 1 else 0, now,
+                            existingId,
+                        ),
+                    )
+                    if (taskType == "routine" || taskType == "workout") {
+                        syncRoutineSteps(existingId, s.routineSteps)
                     }
-                    routineRepository.insertRoutineSteps(taskId, newSteps)
+                } else {
+                    val taskId = UUID.randomUUID().toString()
+                    database.execute(
+                        sql = """
+                            INSERT INTO tasks
+                                (id, user_id, title, description, task_type, status,
+                                 recurrence_type, recurrence_config,
+                                 verification_type, verification_config,
+                                 tags, sort_order, is_blocking_condition, blocking_rule_ids,
+                                 available_from, due_at, home_only_blocking,
+                                 created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """.trimIndent(),
+                        parameters = listOf(
+                            taskId, userId, s.title, s.description.ifBlank { null },
+                            taskType, "active",
+                            effectiveRecurrenceType, recurrenceConfig,
+                            verificationType, verificationConfig,
+                            "{}", 0, if (s.isBlockingCondition) 1 else 0, "{}",
+                            availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0,
+                            now, now,
+                        ),
+                    )
+
+                    if (taskType == "routine" || taskType == "workout") {
+                        val newSteps = s.routineSteps.map { step ->
+                            NewRoutineStep(
+                                title = step.title,
+                                stepType = step.stepType,
+                                config = stepConfigJson(step).toString(),
+                                supersetGroup = step.supersetGroup,
+                            )
+                        }
+                        routineRepository.insertRoutineSteps(taskId, newSteps)
+                    }
                 }
 
                 _state.value = _state.value.copy(isSaving = false)
@@ -314,6 +447,66 @@ class TaskEditorViewModel @Inject constructor(
                 _state.value = _state.value.copy(isSaving = false, error = e.message)
             }
         }
+    }
+
+    /**
+     * Diff-sync routine steps for an existing task: insert new, update existing,
+     * delete removed. Done in-place rather than delete-all-and-reinsert because
+     * step_completions cascade-delete on routine_steps deletion — preserving
+     * each step's UUID keeps the user's historical completion data intact.
+     */
+    private suspend fun syncRoutineSteps(taskId: String, edited: List<EditableStep>) {
+        val now = Instant.now().toString()
+        val existing = routineRepository.watchRoutineSteps(taskId).first()
+        val existingById = existing.associateBy { it.id }
+        val editedById = edited.associateBy { it.id }
+
+        // Delete steps no longer present.
+        for (step in existing) {
+            if (step.id !in editedById) routineRepository.deleteStep(step.id)
+        }
+
+        // Insert or update.
+        val userId = sessionRepository.currentUser?.id ?: error("Not authenticated")
+        for ((index, step) in edited.withIndex()) {
+            val configJson = stepConfigJson(step).toString()
+            if (step.id in existingById) {
+                database.execute(
+                    sql = """
+                        UPDATE routine_steps SET
+                            title = ?, step_order = ?, step_type = ?,
+                            config = ?, superset_group = ?
+                        WHERE id = ?
+                    """.trimIndent(),
+                    parameters = listOf(
+                        step.title, index, step.stepType,
+                        configJson, step.supersetGroup,
+                        step.id,
+                    ),
+                )
+            } else {
+                database.execute(
+                    sql = """
+                        INSERT INTO routine_steps
+                            (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """.trimIndent(),
+                    parameters = listOf(
+                        step.id, userId, taskId, step.title, index, step.stepType,
+                        configJson, step.supersetGroup, now,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun stepConfigJson(step: EditableStep): JSONObject {
+        val cfg = JSONObject()
+        when (step.stepType) {
+            "weight_reps", "just_reps" -> cfg.put("default_sets", step.defaultSets)
+            "timed" -> cfg.put("duration_seconds", step.durationSeconds)
+        }
+        return cfg
     }
 
     private fun buildVerificationConfig(s: TaskEditorState): String {

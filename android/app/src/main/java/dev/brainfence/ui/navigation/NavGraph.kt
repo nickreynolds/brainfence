@@ -68,7 +68,7 @@ private object Routes {
     const val DURATION_TASK     = "duration-task/{taskId}"
     const val MEDITATION_TASK   = "meditation-task/{taskId}"
     const val ROUTINE_TASK      = "routine-task/{taskId}"
-    const val TASK_EDITOR       = "task/editor"
+    const val TASK_EDITOR       = "task/editor?taskId={taskId}"
     const val DEBUG             = "debug"
     const val BLOCKING_RULES    = "blocking/rules"
     const val BLOCKING_RULE_EDITOR = "blocking/editor/{ruleId}"
@@ -210,7 +210,8 @@ fun BrainfenceNavGraph(
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
                 onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
-                onCreateTask             = { navController.navigate(Routes.TASK_EDITOR) },
+                onCreateTask             = { navController.navigate("task/editor") },
+                onEditTask               = { task -> navController.navigate("task/editor?taskId=${task.id}") },
             )
         }
         composable(
@@ -342,7 +343,16 @@ fun BrainfenceNavGraph(
                 LoadingScreen(onBack = { navController.popBackStack() })
             }
         }
-        composable(Routes.TASK_EDITOR) {
+        composable(
+            route = Routes.TASK_EDITOR,
+            arguments = listOf(
+                navArgument("taskId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) {
             val viewModel: TaskEditorViewModel = hiltViewModel()
             val editorState by viewModel.state.collectAsStateWithLifecycle()
             TaskEditorScreen(

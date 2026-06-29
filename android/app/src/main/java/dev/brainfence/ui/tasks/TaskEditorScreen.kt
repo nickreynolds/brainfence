@@ -87,11 +87,12 @@ fun TaskEditorScreen(
     onClearError: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val titlePrefix = if (state.editingTaskId != null) "Edit Task" else "New Task"
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("New Task — Step ${state.currentStep + 1} of 3")
+                    Text("$titlePrefix — Step ${state.currentStep + 1} of 3")
                 },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -106,6 +107,7 @@ fun TaskEditorScreen(
             WizardBottomBar(
                 currentStep = state.currentStep,
                 isSaving = state.isSaving,
+                isEditing = state.editingTaskId != null,
                 onNext = onNextStep,
                 onBack = onPrevStep,
                 onSave = onSave,
@@ -255,6 +257,7 @@ private fun StepIndicator(currentStep: Int) {
 private fun WizardBottomBar(
     currentStep: Int,
     isSaving: Boolean,
+    isEditing: Boolean,
     onNext: () -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
@@ -277,8 +280,14 @@ private fun WizardBottomBar(
                 Text("Next")
             }
         } else {
+            val saveLabel = when {
+                isSaving && isEditing -> "Saving..."
+                isSaving -> "Creating..."
+                isEditing -> "Save Changes"
+                else -> "Create Task"
+            }
             Button(onClick = onSave, enabled = !isSaving) {
-                Text(if (isSaving) "Creating..." else "Create Task")
+                Text(saveLabel)
             }
         }
     }

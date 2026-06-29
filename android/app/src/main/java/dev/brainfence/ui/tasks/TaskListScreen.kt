@@ -90,6 +90,7 @@ fun TaskListScreen(
     onUsageStatsPermissionResult: () -> Unit,
     onSelectTab: (HomeTab) -> Unit,
     onTaskTap: (Task) -> Unit,
+    onEditTask: (Task) -> Unit,
     onConfirmComplete: () -> Unit,
     onDismissComplete: () -> Unit,
     onSignOut: () -> Unit,
@@ -257,7 +258,10 @@ fun TaskListScreen(
                         task = task,
                         showAsCompleted = selectedTab == HomeTab.COMPLETED,
                         showAsUpcoming = selectedTab == HomeTab.UPCOMING,
-                        onClick = { onTaskTap(task) },
+                        onClick = {
+                            if (selectedTab == HomeTab.UPCOMING) onEditTask(task)
+                            else onTaskTap(task)
+                        },
                     )
                 }
             }
@@ -292,9 +296,13 @@ private fun TaskItem(
     val isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase == TimeGatePhase.BEFORE_START && !task.completedToday)
     val isOverdue = phase == TimeGatePhase.PAST_DUE && !task.completedToday
 
+    // Upcoming items are visually "locked" but should still be tappable so the
+    // user can open the editor and adjust the task.
+    val canClick = if (showAsUpcoming) true
+                   else !showAsCompleted && !isLocked && !isCompletedRecurring
     ListItem(
         modifier = Modifier
-            .clickable(enabled = !showAsCompleted && !isLocked && !isCompletedRecurring, onClick = onClick)
+            .clickable(enabled = canClick, onClick = onClick)
             .alpha(when {
                 showAsCompleted || isCompletedRecurring -> 0.5f
                 isLocked -> 0.4f
