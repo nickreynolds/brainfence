@@ -16,6 +16,8 @@ data class BlockingState(
     val blockedDomains: Set<String>,
     /** Maps each blocked package to the rule(s) that block it, for overlay display. */
     val rulesByApp: Map<String, List<BlockingRule>>,
+    /** Maps each blocked package to the task IDs that are actively unmet (causing the block). */
+    val unmetTaskIdsByApp: Map<String, Set<String>> = emptyMap(),
 )
 
 /**
@@ -56,22 +58,25 @@ fun evaluateBlocking(
     val blockedApps = mutableSetOf<String>()
     val blockedDomains = mutableSetOf<String>()
     val rulesByApp = mutableMapOf<String, MutableList<BlockingRule>>()
+    val unmetTaskIdsByApp = mutableMapOf<String, MutableSet<String>>()
 
     val taskById = tasks.associateBy { it.id }
 
     for (rule in rules) {
         if (!rule.isActive) continue
-        if (conditionsMet(rule, taskById, currentTime, timeZone, homePresence)) continue
+        val unmetIds = conditionUnmetTaskIds(rule, taskById, currentTime, timeZone, homePresence)
+        if (isConditionMet(rule, unmetIds)) continue
 
         // Rule is active and conditions NOT met → block
         blockedApps.addAll(rule.blockedApps)
         blockedDomains.addAll(rule.blockedDomains)
         for (app in rule.blockedApps) {
             rulesByApp.getOrPut(app) { mutableListOf() }.add(rule)
+            unmetTaskIdsByApp.getOrPut(app) { mutableSetOf() }.addAll(unmetIds)
         }
     }
 
-    return BlockingState(blockedApps, blockedDomains, rulesByApp)
+    return BlockingState(blockedApps, blockedDomains, rulesByApp, unmetTaskIdsByApp)
 }
 
 /**
@@ -84,31 +89,29 @@ fun evaluateBlocking(
  * - It has no due_at and is completed (for tasks without time constraints that
  *   aren't yet completed, they block immediately)
  */
-private fun conditionsMet(
+private fun isConditionMet(rule: BlockingRule, unmetIds: Set<String>): Boolean {
+    if (rule.conditionTaskIds.isEmpty()) return false
+    return when (rule.conditionLogic) {
+        "any" -> unmetIds.size < rule.conditionTaskIds.size // at least one task is met
+        else  -> unmetIds.isEmpty() // all tasks must be met (default)
+    }
+}
+
+/**
+ * Returns the IDs of tasks in [rule] that are currently unmet (actively causing blocking).
+ */
+private fun conditionUnmetTaskIds(
     rule: BlockingRule,
     taskById: Map<String, Task>,
     currentTime: Instant,
     timeZone: ZoneId,
     homePresence: HomePresence,
-): Boolean {
-    if (rule.conditionTaskIds.isEmpty()) return false
-
-    val results = rule.conditionTaskIds.map { taskId ->
-        val task = taskById[taskId] ?: return@map false
-        if (task.completedToday) return@map true
-
-        // Home-only tasks don't contribute to blocking when the user is away.
-        if (task.homeOnlyBlocking && homePresence == HomePresence.AWAY) return@map true
-
-        // If the task has a due_at, it only triggers blocking after that time
+): Set<String> {
+    return rule.conditionTaskIds.filter { taskId ->
+        val task = taskById[taskId] ?: return@filter false
+        if (task.completedToday) return@filter false
+        if (task.homeOnlyBlocking && homePresence == HomePresence.AWAY) return@filter false
         val phase = computeTaskPhase(task.availableFrom, task.dueAt, currentTime, timeZone)
-        if (phase != null && phase != TimeGatePhase.PAST_DUE) return@map true
-
-        false
-    }
-
-    return when (rule.conditionLogic) {
-        "any" -> results.any { it }
-        else  -> results.all { it } // "all" is the default
-    }
+        phase == null || phase == TimeGatePhase.PAST_DUE
+    }.toSet()
 }

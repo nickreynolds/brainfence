@@ -47,9 +47,9 @@ class BlockingViewModel @Inject constructor(
             _appLabel,
         ) { blockingState, allTasks, appLabel ->
             val rules = blockingState.rulesByApp[blockedPackage].orEmpty()
-            val requiredTaskIds = rules.flatMap { it.conditionTaskIds }.toSet()
-            val requiredTasks = allTasks.filter { it.id in requiredTaskIds }
-            val allCompleted = requiredTasks.isNotEmpty() && requiredTasks.all { it.completedToday }
+            val unmetTaskIds = blockingState.unmetTaskIdsByApp[blockedPackage].orEmpty()
+            val requiredTasks = allTasks.filter { it.id in unmetTaskIds }
+            val allCompleted = requiredTasks.isEmpty()
             val isBlocked = blockedPackage in blockingState.blockedApps
 
             BlockingUiState(
