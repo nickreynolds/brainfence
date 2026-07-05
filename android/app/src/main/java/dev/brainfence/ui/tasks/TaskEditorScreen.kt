@@ -828,15 +828,14 @@ private fun EditableStepCard(
                 }
                 "timed" -> {
                     Spacer(Modifier.height(8.dp))
-                    val mins = step.durationSeconds / 60
                     OutlinedTextField(
-                        value = if (mins > 0) mins.toString() else (step.durationSeconds).toString(),
+                        value = step.durationSeconds.toString(),
                         onValueChange = { text ->
                             text.toIntOrNull()?.let { s ->
-                                onUpdate { it.copy(durationSeconds = (s * 60).coerceAtLeast(1)) }
+                                onUpdate { it.copy(durationSeconds = s.coerceAtLeast(1)) }
                             }
                         },
-                        label = { Text("Duration (minutes)") },
+                        label = { Text("Duration (seconds)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
