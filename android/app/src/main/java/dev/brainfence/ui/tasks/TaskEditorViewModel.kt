@@ -35,15 +35,19 @@ data class TaskEditorState(
     // Step 0: Basics
     val title: String = "",
     val description: String = "",
-    val taskType: String = "simple", // simple, timed, routine, workout
+    val taskType: String = "simple", // simple, timed, routine, workout, journal, shopping
     // Step 1: Type-specific config
     val verificationType: String = "manual", // manual, duration, gps, meditation
     // -- duration config --
     val durationSeconds: Int = 300,
-    // -- GPS config --
+    // -- GPS config (also the shopping reminder location) --
     val latitude: String = "",
     val longitude: String = "",
     val radiusMeters: Int = 100,
+    // -- shopping notify window (prefilled for an evening commute) --
+    val notifyDays: Set<String> = setOf("mon", "tue", "wed", "thu", "fri"),
+    val notifyStart: String = "15:00", // HH:MM, blank = from midnight
+    val notifyEnd: String = "21:00",   // HH:MM, blank = until midnight
     // -- meditation config --
     val meditationSeconds: Int = 300,
     /** Package names of companion apps that can record meditation time externally. */
@@ -65,7 +69,11 @@ data class TaskEditorState(
     /** Non-null when editing an existing task. Drives INSERT vs UPDATE on save. */
     val editingTaskId: String? = null,
     val isLoading: Boolean = false,
-)
+) {
+    /** Shopping tasks skip the Schedule step — they never recur, block, or expire. */
+    val totalSteps: Int get() = if (taskType == "shopping") 2 else 3
+    val isLastStep: Boolean get() = currentStep == totalSteps - 1
+}
 
 @HiltViewModel
 class TaskEditorViewModel @Inject constructor(
@@ -122,6 +130,7 @@ class TaskEditorViewModel @Inject constructor(
 
                 val vConfig = runCatching { JSONObject(task.verificationConfig) }.getOrDefault(JSONObject())
                 val rConfig = runCatching { JSONObject(task.recurrenceConfig) }.getOrDefault(JSONObject())
+                val notifyWindow = if (task.taskType == "shopping") vConfig.optJSONObject("notify_window") else null
                 val (recurrenceTypeUi, weeklyDays) = uiRecurrenceFromStored(task.recurrenceType, rConfig)
 
                 val steps = if (task.taskType == "routine" || task.taskType == "workout") {
@@ -148,9 +157,23 @@ class TaskEditorViewModel @Inject constructor(
                     durationSeconds = if (task.taskType == "timed") {
                         vConfig.optInt("duration_seconds", 300)
                     } else 300,
-                    latitude = if (task.verificationType == "gps") vConfig.optDouble("latitude", 0.0).toString() else "",
-                    longitude = if (task.verificationType == "gps") vConfig.optDouble("longitude", 0.0).toString() else "",
-                    radiusMeters = if (task.verificationType == "gps") vConfig.optInt("radius_meters", 100) else 100,
+                    latitude = if (task.verificationType == "gps") {
+                        (if (vConfig.has("latitude")) vConfig.optDouble("latitude", 0.0)
+                         else vConfig.optDouble("lat", 0.0)).toString()
+                    } else "",
+                    longitude = if (task.verificationType == "gps") {
+                        (if (vConfig.has("longitude")) vConfig.optDouble("longitude", 0.0)
+                         else vConfig.optDouble("lng", 0.0)).toString()
+                    } else "",
+                    radiusMeters = if (task.verificationType == "gps") {
+                        if (vConfig.has("radius_meters")) vConfig.optInt("radius_meters", 100)
+                        else vConfig.optInt("radius_m", 100)
+                    } else 100,
+                    notifyDays = notifyWindow?.optJSONArray("days")?.let { arr ->
+                        buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
+                    } ?: _state.value.notifyDays,
+                    notifyStart = notifyWindow?.optString("start", "") ?: _state.value.notifyStart,
+                    notifyEnd = notifyWindow?.optString("end", "") ?: _state.value.notifyEnd,
                     meditationSeconds = if (task.verificationType == "meditation") vConfig.optInt("duration_seconds", 300) else 300,
                     companionApps = if (task.verificationType == "meditation") parseCompanionApps(vConfig) else emptySet(),
                     routineSteps = steps,
@@ -227,6 +250,7 @@ class TaskEditorViewModel @Inject constructor(
                 _state.value = s.copy(currentStep = 1, error = null)
             }
             1 -> {
+                if (s.isLastStep) return // shopping: step 1 is the final step
                 if ((s.taskType == "routine" || s.taskType == "workout") && s.routineSteps.isEmpty()) {
                     _state.value = s.copy(error = "Add at least one step")
                     return
@@ -265,6 +289,7 @@ class TaskEditorViewModel @Inject constructor(
             "timed" -> "duration"
             "routine", "workout" -> "manual"
             "journal" -> "journal"
+            "shopping" -> "gps"
             else -> s.verificationType
         }
         _state.value = s.copy(taskType = type, verificationType = verificationType)
@@ -303,6 +328,20 @@ class TaskEditorViewModel @Inject constructor(
                                 else s.companionApps + packageName,
             )
         }
+    }
+
+    fun toggleNotifyDay(day: String) {
+        _state.value = _state.value.let { s ->
+            s.copy(notifyDays = if (day in s.notifyDays) s.notifyDays - day else s.notifyDays + day)
+        }
+    }
+
+    fun setNotifyStart(time: String) {
+        _state.value = _state.value.copy(notifyStart = time)
+    }
+
+    fun setNotifyEnd(time: String) {
+        _state.value = _state.value.copy(notifyEnd = time)
     }
 
     fun setAvailableFrom(time: String) {
@@ -403,6 +442,12 @@ class TaskEditorViewModel @Inject constructor(
             _state.value = s.copy(error = "Title is required")
             return
         }
+        if (s.taskType == "shopping" &&
+            (s.latitude.toDoubleOrNull() == null || s.longitude.toDoubleOrNull() == null)
+        ) {
+            _state.value = s.copy(error = "A reminder location (latitude/longitude) is required")
+            return
+        }
         _state.value = s.copy(isSaving = true, error = null)
 
         viewModelScope.launch {
@@ -415,6 +460,7 @@ class TaskEditorViewModel @Inject constructor(
                 val verificationType = when (taskType) {
                     "timed" -> "duration"
                     "routine", "workout" -> null
+                    "shopping" -> "gps"
                     else -> s.verificationType.takeIf { it != "manual" }
                 }
                 val verificationConfig = buildVerificationConfig(s)
@@ -422,13 +468,16 @@ class TaskEditorViewModel @Inject constructor(
 
                 // RecurrenceEngine uses "daily" with a "days" array for multi-day
                 // schedules, and "weekly" with a single "day" string.
+                // Shopping lists never recur, block, or expire.
                 val effectiveRecurrenceType = when {
+                    taskType == "shopping" -> null
                     s.recurrenceType == "weekly" && s.weeklyDays.size > 1 -> "daily"
                     else -> s.recurrenceType
                 }
+                val isBlockingCondition = taskType != "shopping" && s.isBlockingCondition
 
-                val availableFrom = s.availableFrom.ifBlank { null }
-                val dueAt = s.dueAt.ifBlank { null }
+                val availableFrom = if (taskType == "shopping") null else s.availableFrom.ifBlank { null }
+                val dueAt = if (taskType == "shopping") null else s.dueAt.ifBlank { null }
                 val blockingDaysJson = JSONArray(s.blockingDaysOfWeek.toList()).toString()
 
                 val existingId = s.editingTaskId
@@ -447,7 +496,7 @@ class TaskEditorViewModel @Inject constructor(
                             s.title, s.description.ifBlank { null }, taskType,
                             effectiveRecurrenceType, recurrenceConfig,
                             verificationType, verificationConfig,
-                            if (s.isBlockingCondition) 1 else 0, availableFrom, dueAt,
+                            if (isBlockingCondition) 1 else 0, availableFrom, dueAt,
                             if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson, now,
                             existingId,
                         ),
@@ -473,7 +522,7 @@ class TaskEditorViewModel @Inject constructor(
                             taskType, "active",
                             effectiveRecurrenceType, recurrenceConfig,
                             verificationType, verificationConfig,
-                            "{}", 0, if (s.isBlockingCondition) 1 else 0, "{}",
+                            "{}", 0, if (isBlockingCondition) 1 else 0, "{}",
                             availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson,
                             now, now,
                         ),
@@ -564,6 +613,17 @@ class TaskEditorViewModel @Inject constructor(
         val config = JSONObject()
         when {
             s.taskType == "timed" -> config.put("duration_seconds", s.durationSeconds)
+            s.taskType == "shopping" -> {
+                config.put("latitude", s.latitude.toDoubleOrNull() ?: 0.0)
+                config.put("longitude", s.longitude.toDoubleOrNull() ?: 0.0)
+                config.put("radius_meters", s.radiusMeters)
+                config.put("mode", "notify")
+                val window = JSONObject()
+                window.put("days", JSONArray(s.notifyDays.toList()))
+                if (s.notifyStart.isNotBlank()) window.put("start", s.notifyStart)
+                if (s.notifyEnd.isNotBlank()) window.put("end", s.notifyEnd)
+                config.put("notify_window", window)
+            }
             s.verificationType == "gps" -> {
                 val lat = s.latitude.toDoubleOrNull() ?: 0.0
                 val lng = s.longitude.toDoubleOrNull() ?: 0.0

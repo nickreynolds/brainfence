@@ -66,6 +66,17 @@ val AppSchema = Schema(
         ),
     ),
     Table(
+        name = "shopping_items",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("task_id"),
+            Column.text("title"),
+            Column.integer("sort_order"),
+            Column.text("completed_at"),         // null = still to buy
+            Column.text("created_at"),
+        ),
+    ),
+    Table(
         name = "task_completions",
         columns = listOf(
             Column.text("task_id"),

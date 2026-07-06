@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -53,7 +54,10 @@ class BlockingRuleEditorViewModel @Inject constructor(
     private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
     val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
 
+    // Shopping lists are excluded: they never complete, so using one as a
+    // blocking condition would block apps forever.
     val tasks: StateFlow<List<Task>> = taskRepository.watchActiveTasks()
+        .map { list -> list.filter { it.taskType != "shopping" } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {

@@ -39,6 +39,8 @@ import dev.brainfence.ui.tasks.MeditationTaskViewModel
 import dev.brainfence.ui.tasks.AutoRoutineProgress
 import dev.brainfence.ui.tasks.RoutineTaskScreen
 import dev.brainfence.ui.tasks.RoutineTaskViewModel
+import dev.brainfence.ui.tasks.ShoppingListScreen
+import dev.brainfence.ui.tasks.ShoppingListViewModel
 import dev.brainfence.ui.tasks.TaskEditorScreen
 import dev.brainfence.ui.tasks.TaskEditorViewModel
 import dev.brainfence.ui.tasks.TaskListScreen
@@ -73,6 +75,7 @@ private object Routes {
     const val MEDITATION_TASK   = "meditation-task/{taskId}"
     const val ROUTINE_TASK      = "routine-task/{taskId}"
     const val JOURNAL_TASK      = "journal-task/{taskId}"
+    const val SHOPPING_TASK     = "shopping-task/{taskId}"
     const val JOURNAL_HISTORY   = "journal/history"
     const val TASK_EDITOR       = "task/editor?taskId={taskId}"
     const val DEBUG             = "debug"
@@ -187,6 +190,7 @@ fun BrainfenceNavGraph(
             val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
             val needsUsageStats   by taskViewModel.needsUsageStatsPermission.collectAsStateWithLifecycle()
             val meditationTimerStates by taskViewModel.meditationTimerStates.collectAsStateWithLifecycle()
+            val shoppingItemCounts by taskViewModel.shoppingItemCounts.collectAsStateWithLifecycle()
             TaskListScreen(
                 activeTasks              = activeTasks,
                 completedTasks           = completedTasks,
@@ -196,6 +200,7 @@ fun BrainfenceNavGraph(
                 pendingTask              = pendingTask,
                 blockingStatus           = blockingStatus,
                 meditationTimerStates    = meditationTimerStates,
+                shoppingItemCounts       = shoppingItemCounts,
                 isAccessibilityEnabled   = isAccessibilityEnabled,
                 hasLocationPermission    = hasLocationPerm,
                 needsUsageStatsPermission = needsUsageStats,
@@ -204,6 +209,8 @@ fun BrainfenceNavGraph(
                 onSelectTab              = taskViewModel::selectTab,
                 onTaskTap                = { task ->
                     when {
+                        // Before the gps check: shopping tasks also carry verificationType "gps"
+                        task.taskType == "shopping" -> navController.navigate("shopping-task/${task.id}")
                         task.verificationType == "gps" -> navController.navigate("task/${task.id}")
                         task.verificationType == "duration" -> navController.navigate("duration-task/${task.id}")
                         task.verificationType == "meditation" -> navController.navigate("meditation-task/${task.id}")
@@ -376,6 +383,30 @@ fun BrainfenceNavGraph(
                 LoadingScreen(onBack = { navController.popBackStack() })
             }
         }
+        composable(
+            route = Routes.SHOPPING_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val shoppingViewModel: ShoppingListViewModel = hiltViewModel()
+            val task      by shoppingViewModel.task.collectAsStateWithLifecycle()
+            val openItems by shoppingViewModel.openItems.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            if (currentTask != null) {
+                ShoppingListScreen(
+                    task = currentTask,
+                    openItems = openItems,
+                    onAddItem = shoppingViewModel::addItem,
+                    onCheckOff = shoppingViewModel::checkOff,
+                    onUndoCheckOff = shoppingViewModel::undoCheckOff,
+                    onDeleteItem = shoppingViewModel::deleteItem,
+                    onEditTask = { navController.navigate("task/editor?taskId=${currentTask.id}") },
+                    onBack = { navController.popBackStack() },
+                )
+            } else {
+                LoadingScreen(onBack = { navController.popBackStack() })
+            }
+        }
         composable(Routes.JOURNAL_HISTORY) {
             val journalHistoryViewModel: JournalHistoryViewModel = hiltViewModel()
             val entries by journalHistoryViewModel.entries.collectAsStateWithLifecycle()
@@ -410,6 +441,9 @@ fun BrainfenceNavGraph(
                 onSetRadiusMeters = viewModel::setRadiusMeters,
                 onSetMeditationSeconds = viewModel::setMeditationSeconds,
                 onToggleCompanionApp = viewModel::toggleCompanionApp,
+                onToggleNotifyDay = viewModel::toggleNotifyDay,
+                onSetNotifyStart = viewModel::setNotifyStart,
+                onSetNotifyEnd = viewModel::setNotifyEnd,
                 onAddRoutineStep = viewModel::addRoutineStep,
                 onRemoveRoutineStep = viewModel::removeRoutineStep,
                 onUpdateRoutineStep = viewModel::updateRoutineStep,

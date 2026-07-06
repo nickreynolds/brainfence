@@ -5,6 +5,7 @@ bucket_definitions:
       - SELECT * FROM groups WHERE user_id = bucket.user_id
       - SELECT * FROM tasks WHERE user_id = bucket.user_id
       - SELECT * FROM routine_steps WHERE user_id = bucket.user_id
+      - SELECT * FROM shopping_items WHERE user_id = bucket.user_id
       - SELECT * FROM task_completions WHERE user_id = bucket.user_id
       - SELECT * FROM step_completions WHERE user_id = bucket.user_id
       - SELECT * FROM blocking_rules WHERE user_id = bucket.user_id

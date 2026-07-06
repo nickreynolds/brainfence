@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.completion.CompletionRepository
+import dev.brainfence.data.shopping.ShoppingRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
@@ -54,7 +55,17 @@ class TaskListViewModel @Inject constructor(
     private val blockingRepository: BlockingRepository,
     private val companionUsageVerifier: CompanionUsageVerifier,
     meditationTimerManager: MeditationTimerManager,
+    shoppingRepository: ShoppingRepository,
 ) : ViewModel() {
+
+    /** Open shopping-item counts keyed by task ID, for shopping task rows. */
+    val shoppingItemCounts: kotlinx.coroutines.flow.StateFlow<Map<String, Int>> =
+        shoppingRepository.watchOpenItemCounts()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyMap(),
+            )
 
     /** Live snapshot of every running meditation timer (in-app or companion). */
     val meditationTimerStates: kotlinx.coroutines.flow.StateFlow<Map<String, MeditationTimerState>> =

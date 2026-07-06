@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
@@ -89,6 +90,7 @@ fun TaskListScreen(
     pendingTask: Task?,
     blockingStatus: BlockingStatusState,
     meditationTimerStates: Map<String, dev.brainfence.service.MeditationTimerState>,
+    shoppingItemCounts: Map<String, Int>,
     isAccessibilityEnabled: Boolean,
     hasLocationPermission: Boolean,
     needsUsageStatsPermission: Boolean,
@@ -284,6 +286,9 @@ fun TaskListScreen(
                         showAsCompleted = selectedTab == HomeTab.COMPLETED,
                         showAsUpcoming = selectedTab == HomeTab.UPCOMING,
                         meditationTimer = meditationTimerStates[task.id],
+                        shoppingItemCount = if (task.taskType == "shopping") {
+                            shoppingItemCounts[task.id] ?: 0
+                        } else null,
                         onClick = {
                             if (selectedTab == HomeTab.UPCOMING) onEditTask(task)
                             else onTaskTap(task)
@@ -315,8 +320,37 @@ private fun TaskItem(
     showAsCompleted: Boolean,
     showAsUpcoming: Boolean,
     meditationTimer: dev.brainfence.service.MeditationTimerState?,
+    shoppingItemCount: Int?,
     onClick: () -> Unit,
 ) {
+    // Shopping lists are permanent: no completion, no schedule — just the open count.
+    if (shoppingItemCount != null) {
+        ListItem(
+            modifier = Modifier.clickable(onClick = onClick),
+            headlineContent = { Text(task.title) },
+            supportingContent = {
+                Text(
+                    text = if (shoppingItemCount > 0) {
+                        "$shoppingItemCount item${if (shoppingItemCount != 1) "s" else ""} to buy"
+                    } else "List is empty",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            leadingContent = {
+                Icon(
+                    imageVector = Icons.Outlined.ShoppingCart,
+                    contentDescription = "Shopping list",
+                    tint = if (shoppingItemCount > 0) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.outline,
+                )
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        )
+        return
+    }
+
     val phase = computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
 
     val isCompletedRecurring = showAsUpcoming && task.completedToday && task.recurrenceType != null

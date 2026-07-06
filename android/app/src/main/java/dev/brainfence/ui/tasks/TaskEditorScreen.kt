@@ -79,6 +79,9 @@ fun TaskEditorScreen(
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
+    onToggleNotifyDay: (String) -> Unit,
+    onSetNotifyStart: (String) -> Unit,
+    onSetNotifyEnd: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
@@ -102,7 +105,7 @@ fun TaskEditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("$titlePrefix — Step ${state.currentStep + 1} of 3")
+                    Text("$titlePrefix — Step ${state.currentStep + 1} of ${state.totalSteps}")
                 },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -116,6 +119,7 @@ fun TaskEditorScreen(
         bottomBar = {
             WizardBottomBar(
                 currentStep = state.currentStep,
+                isLastStep = state.isLastStep,
                 isSaving = state.isSaving,
                 isEditing = state.editingTaskId != null,
                 onNext = onNextStep,
@@ -130,7 +134,7 @@ fun TaskEditorScreen(
                 .padding(padding),
         ) {
             // Step indicator
-            StepIndicator(currentStep = state.currentStep)
+            StepIndicator(currentStep = state.currentStep, totalSteps = state.totalSteps)
 
             // Error banner
             if (state.error != null) {
@@ -192,6 +196,9 @@ fun TaskEditorScreen(
                         onSetRadiusMeters = onSetRadiusMeters,
                         onSetMeditationSeconds = onSetMeditationSeconds,
                         onToggleCompanionApp = onToggleCompanionApp,
+                        onToggleNotifyDay = onToggleNotifyDay,
+                        onSetNotifyStart = onSetNotifyStart,
+                        onSetNotifyEnd = onSetNotifyEnd,
                         onAddRoutineStep = onAddRoutineStep,
                         onRemoveRoutineStep = onRemoveRoutineStep,
                         onUpdateRoutineStep = onUpdateRoutineStep,
@@ -215,14 +222,14 @@ fun TaskEditorScreen(
 }
 
 @Composable
-private fun StepIndicator(currentStep: Int) {
+private fun StepIndicator(currentStep: Int, totalSteps: Int = 3) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.Center,
     ) {
-        val labels = listOf("Basics", "Configure", "Schedule")
+        val labels = listOf("Basics", "Configure", "Schedule").take(totalSteps)
         labels.forEachIndexed { index, label ->
             if (index > 0) {
                 Box(
@@ -268,6 +275,7 @@ private fun StepIndicator(currentStep: Int) {
 @Composable
 private fun WizardBottomBar(
     currentStep: Int,
+    isLastStep: Boolean,
     isSaving: Boolean,
     isEditing: Boolean,
     onNext: () -> Unit,
@@ -287,7 +295,7 @@ private fun WizardBottomBar(
         } else {
             Spacer(Modifier.width(1.dp))
         }
-        if (currentStep < 2) {
+        if (!isLastStep) {
             Button(onClick = onNext) {
                 Text("Next")
             }
@@ -364,6 +372,7 @@ private fun TaskTypeSelector(selected: String, onSelect: (String) -> Unit) {
         "routine" to "Routine",
         "workout" to "Workout",
         "journal" to "Journal",
+        "shopping" to "Shopping List",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         types.chunked(2).forEach { row ->
@@ -410,6 +419,7 @@ private fun taskTypeDescription(type: String): String = when (type) {
     "routine" -> "Multi-step checklist"
     "workout" -> "Exercise tracking with sets"
     "journal" -> "Write a short entry"
+    "shopping" -> "Running list with location reminder"
     else -> ""
 }
 
@@ -426,6 +436,9 @@ private fun ConfigStep(
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
+    onToggleNotifyDay: (String) -> Unit,
+    onSetNotifyStart: (String) -> Unit,
+    onSetNotifyEnd: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
@@ -433,6 +446,15 @@ private fun ConfigStep(
     onRemoveSupersetGroup: (String) -> Unit,
 ) {
     when (state.taskType) {
+        "shopping" -> ShoppingConfigContent(
+            state = state,
+            onSetLatitude = onSetLatitude,
+            onSetLongitude = onSetLongitude,
+            onSetRadiusMeters = onSetRadiusMeters,
+            onToggleNotifyDay = onToggleNotifyDay,
+            onSetNotifyStart = onSetNotifyStart,
+            onSetNotifyEnd = onSetNotifyEnd,
+        )
         "simple" -> SimpleConfigContent(
             state = state,
             installedApps = installedApps,
@@ -562,6 +584,128 @@ private fun SimpleConfigContent(
             }
         }
 
+        item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+@Composable
+private fun ShoppingConfigContent(
+    state: TaskEditorState,
+    onSetLatitude: (String) -> Unit,
+    onSetLongitude: (String) -> Unit,
+    onSetRadiusMeters: (Int) -> Unit,
+    onToggleNotifyDay: (String) -> Unit,
+    onSetNotifyStart: (String) -> Unit,
+    onSetNotifyEnd: (String) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("How shopping lists work", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "This list never completes — add items anytime and check them off as you buy them. When you arrive at the reminder location below with at least one item on the list, you'll get a notification.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        item {
+            Text("Reminder Location", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "e.g. the subway stop on your way home",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.latitude,
+                    onValueChange = onSetLatitude,
+                    label = { Text("Latitude") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = state.longitude,
+                    onValueChange = onSetLongitude,
+                    label = { Text("Longitude") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = state.radiusMeters.toString(),
+                onValueChange = { it.toIntOrNull()?.let(onSetRadiusMeters) },
+                label = { Text("Radius (meters)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item {
+            Text("Reminder Window", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Only notify on these days and between these times — so the morning commute stays quiet. At most one reminder per window.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            val days = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+            val dayLabels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                days.forEachIndexed { index, day ->
+                    FilterChip(
+                        selected = day in state.notifyDays,
+                        onClick = { onToggleNotifyDay(day) },
+                        label = { Text(dayLabels[index], style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.notifyStart,
+                    onValueChange = onSetNotifyStart,
+                    label = { Text("From (HH:mm)") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = state.notifyEnd,
+                    onValueChange = onSetNotifyEnd,
+                    label = { Text("Until (HH:mm)") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
         item { Spacer(Modifier.height(16.dp)) }
     }
 }

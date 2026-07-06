@@ -14,6 +14,10 @@
     <string name="notif_blocking_soon_title_single">%1$s will block in 1 hour</string>
     <string name="notif_blocking_soon_title_multiple">%1$d tasks will block in 1 hour</string>
     <string name="notif_blocking_soon_body_single">Due at %1$s — complete it to avoid blocking</string>
+    <plurals name="notif_shopping_title">
+        <item quantity="one">%1$s — %2$d item to buy</item>
+        <item quantity="other">%1$s — %2$d items to buy</item>
+    </plurals>
     <plurals name="notif_blocking_active_body">
         <item quantity="one">%1$d app blocked — complete your tasks to unblock</item>
         <item quantity="other">%1$d apps blocked — complete your tasks to unblock</item>

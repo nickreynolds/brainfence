@@ -19,8 +19,12 @@ import dev.brainfence.data.auth.AuthState
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.completion.CompletionRepository
 import dev.brainfence.data.debug.DebugLogRepository
+import dev.brainfence.data.shopping.ShoppingRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
+import dev.brainfence.domain.recurrence.parseTaskTime
+import dev.brainfence.domain.shopping.NotifyWindow
+import dev.brainfence.domain.shopping.shouldNotifyShopping
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.time.Instant
+import java.time.ZonedDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,8 +50,10 @@ data class GpsConfig(
     val lat: Double,
     val lng: Double,
     val radiusM: Float,
-    val mode: String,        // "enter" or "leave"
+    val mode: String,        // "enter", "leave", or "notify"
     val minDurationM: Int,   // minutes to stay at location (enter mode)
+    /** Notify mode only: when the reminder is allowed to fire. */
+    val notifyWindow: NotifyWindow? = null,
 )
 
 /**
@@ -68,6 +75,10 @@ data class GeofenceTrackingState(
  *
  * Leave mode: completes immediately when the user is detected outside the geofence.
  * No requirement to have been inside first.
+ *
+ * Notify mode (shopping lists): the task is never completed. On geofence entry,
+ * a reminder notification fires if the list has at least one open item and the
+ * configured notify window / debounce allows it.
  */
 @Singleton
 class GpsVerificationManager @Inject constructor(
@@ -75,6 +86,8 @@ class GpsVerificationManager @Inject constructor(
     private val taskRepository: TaskRepository,
     private val completionRepository: CompletionRepository,
     private val sessionRepository: SessionRepository,
+    private val shoppingRepository: ShoppingRepository,
+    private val taskNotificationManager: TaskNotificationManager,
     private val debugLog: DebugLogRepository,
 ) {
     companion object {
@@ -83,16 +96,36 @@ class GpsVerificationManager @Inject constructor(
 
         fun parseGpsConfig(json: String): GpsConfig? = try {
             val obj = JSONObject(json)
+            // The task editor writes latitude/longitude/radius_meters; the spec
+            // (and hand-created tasks) use lat/lng/radius_m. Accept both.
             GpsConfig(
-                lat = obj.getDouble("lat"),
-                lng = obj.getDouble("lng"),
-                radiusM = obj.optDouble("radius_m", 100.0).toFloat(),
+                lat = if (obj.has("lat")) obj.getDouble("lat") else obj.getDouble("latitude"),
+                lng = if (obj.has("lng")) obj.getDouble("lng") else obj.getDouble("longitude"),
+                radiusM = when {
+                    obj.has("radius_m") -> obj.getDouble("radius_m")
+                    obj.has("radius_meters") -> obj.getDouble("radius_meters")
+                    else -> 100.0
+                }.toFloat(),
                 mode = obj.optString("mode", "enter"),
                 minDurationM = obj.optInt("min_duration_m", 0),
+                notifyWindow = parseNotifyWindow(obj.optJSONObject("notify_window")),
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse GPS config: $json", e)
             null
+        }
+
+        private fun parseNotifyWindow(obj: JSONObject?): NotifyWindow? {
+            if (obj == null) return null
+            val daysArr = obj.optJSONArray("days")
+            val days = buildSet {
+                if (daysArr != null) for (i in 0 until daysArr.length()) add(daysArr.getString(i))
+            }
+            return NotifyWindow(
+                days = days,
+                start = parseTaskTime(obj.optString("start", "")),
+                end = parseTaskTime(obj.optString("end", "")),
+            )
         }
     }
 
@@ -144,9 +177,14 @@ class GpsVerificationManager @Inject constructor(
             debugLog.log("service", "GpsVerificationManager started watching")
             taskRepository.watchActiveTasks().collect { tasks ->
                 val gpsTasks = tasks.filter { task ->
-                    task.verificationType == "gps"
-                        && !task.completedToday
-                        && parseGpsConfig(task.verificationConfig)?.mode in setOf("enter", "leave")
+                    if (task.verificationType != "gps") return@filter false
+                    when (parseGpsConfig(task.verificationConfig)?.mode) {
+                        // Notify-mode tasks (shopping lists) are never completed,
+                        // so their geofences stay registered permanently.
+                        "notify" -> true
+                        "enter", "leave" -> !task.completedToday
+                        else -> false
+                    }
                 }
                 syncGeofences(gpsTasks)
             }
@@ -226,11 +264,13 @@ class GpsVerificationManager @Inject constructor(
             removeGeofences(toRemove)
         }
 
-        // Add geofences for new GPS tasks, split by mode
+        // Add geofences for new GPS tasks, split by mode.
+        // Notify-mode geofences register like enter-mode: INITIAL_TRIGGER_ENTER
+        // is harmless because the notify window/debounce suppresses spurious fires.
         val toAdd = gpsTasks.filter { it.id !in currentTaskIds }
         if (toAdd.isNotEmpty()) {
             val enterTasks = toAdd.filter {
-                parseGpsConfig(it.verificationConfig)?.mode == "enter"
+                parseGpsConfig(it.verificationConfig)?.mode in setOf("enter", "notify")
             }
             val leaveTasks = toAdd.filter {
                 parseGpsConfig(it.verificationConfig)?.mode == "leave"
@@ -454,6 +494,11 @@ class GpsVerificationManager @Inject constructor(
             return
         }
 
+        if (state.config.mode == "notify") {
+            scope.launch { maybeNotifyShopping(state) }
+            return
+        }
+
         // Enter mode
         val updatedState = state.copy(enteredAt = now)
 
@@ -502,9 +547,54 @@ class GpsVerificationManager @Inject constructor(
             return
         }
 
+        if (state.config.mode == "notify") {
+            // Notify mode: nothing to do on exit.
+            return
+        }
+
         // Enter mode: cancel the duration timer — user left before required time elapsed
         state.durationJob?.cancel()
         trackingStates[taskId] = state.copy(enteredAt = null, durationJob = null)
+    }
+
+    /** Last-notified timestamps per shopping task, surviving service restarts. */
+    private val shoppingNotifyPrefs by lazy {
+        context.getSharedPreferences("brainfence_shopping_notify", Context.MODE_PRIVATE)
+    }
+
+    /**
+     * Geofence ENTER for a notify-mode (shopping) task: fire a reminder listing
+     * the open items, if there is at least one and the window/debounce allows.
+     * Requires no auth — everything is read from the local database.
+     */
+    private suspend fun maybeNotifyShopping(state: GeofenceTrackingState) {
+        val items = shoppingRepository.getOpenItems(state.taskId)
+        if (items.isEmpty()) {
+            debugLog.log("geofence", "Shopping list '${state.taskTitle}' is empty, no reminder")
+            return
+        }
+
+        val lastMillis = shoppingNotifyPrefs.getLong(state.taskId, 0L)
+        val lastNotifiedAt = if (lastMillis > 0) Instant.ofEpochMilli(lastMillis) else null
+        val now = ZonedDateTime.now()
+        if (!shouldNotifyShopping(state.config.notifyWindow, lastNotifiedAt, now)) {
+            debugLog.log(
+                "geofence",
+                "Shopping reminder for '${state.taskTitle}' suppressed (outside window or already notified)",
+            )
+            return
+        }
+
+        shoppingNotifyPrefs.edit().putLong(state.taskId, now.toInstant().toEpochMilli()).apply()
+        taskNotificationManager.showShoppingReminder(
+            taskId = state.taskId,
+            taskTitle = state.taskTitle,
+            items = items.map { it.title },
+        )
+        debugLog.log(
+            "geofence",
+            "Shopping reminder for '${state.taskTitle}' (${items.size} open item(s))",
+        )
     }
 
     /**

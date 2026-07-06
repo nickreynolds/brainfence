@@ -32,6 +32,7 @@ class TaskNotificationManager @Inject constructor(
         private const val NOTIF_ID_TASK_READY = 100
         private const val NOTIF_ID_BLOCKING_SOON = 200
         private const val NOTIF_ID_BLOCKING_ACTIVE = 300
+        private const val NOTIF_ID_SHOPPING_BASE = 400
     }
 
     // Track which notifications we've already sent today to avoid repeats.
@@ -163,6 +164,33 @@ class TaskNotificationManager @Inject constructor(
 
         notificationManager().notify(NOTIF_ID_BLOCKING_SOON, notification)
         Log.i(TAG, "Showed blocking-soon notification for ${tasks.size} task(s)")
+    }
+
+    /**
+     * Reminder fired when arriving at a shopping list's geofence with open items.
+     * Lists the items inline; tapping opens the app. One notification slot per
+     * task so multiple shopping lists don't overwrite each other.
+     */
+    fun showShoppingReminder(taskId: String, taskTitle: String, items: List<String>) {
+        val title = context.resources.getQuantityString(
+            R.plurals.notif_shopping_title, items.size, taskTitle, items.size,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(items.joinToString(", "))
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(items.joinToString("\n") { "• $it" })
+            )
+            .setContentIntent(openAppIntent())
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        val notifId = NOTIF_ID_SHOPPING_BASE + (taskId.hashCode() and 0x7FFF)
+        notificationManager().notify(notifId, notification)
+        Log.i(TAG, "Showed shopping reminder for '$taskTitle' (${items.size} item(s))")
     }
 
     private fun openAppIntent(): PendingIntent {
