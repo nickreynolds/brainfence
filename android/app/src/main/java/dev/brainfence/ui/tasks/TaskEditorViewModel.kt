@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 
@@ -307,6 +308,14 @@ class TaskEditorViewModel @Inject constructor(
 
     fun setLatitude(lat: String) {
         _state.value = _state.value.copy(latitude = lat)
+    }
+
+    /** Set both coordinates at once — used by the map picker. */
+    fun setLocation(lat: Double, lng: Double) {
+        _state.value = _state.value.copy(
+            latitude = String.format(Locale.US, "%.6f", lat),
+            longitude = String.format(Locale.US, "%.6f", lng),
+        )
     }
 
     fun setLongitude(lng: String) {

@@ -438,6 +438,7 @@ fun BrainfenceNavGraph(
                 onSetDurationSeconds = viewModel::setDurationSeconds,
                 onSetLatitude = viewModel::setLatitude,
                 onSetLongitude = viewModel::setLongitude,
+                onSetLocation = viewModel::setLocation,
                 onSetRadiusMeters = viewModel::setRadiusMeters,
                 onSetMeditationSeconds = viewModel::setMeditationSeconds,
                 onToggleCompanionApp = viewModel::toggleCompanionApp,

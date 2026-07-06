@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -63,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import dev.brainfence.ui.components.LocationPickerMap
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +78,7 @@ fun TaskEditorScreen(
     onSetDurationSeconds: (Int) -> Unit,
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
+    onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
@@ -193,6 +196,7 @@ fun TaskEditorScreen(
                         onSetDurationSeconds = onSetDurationSeconds,
                         onSetLatitude = onSetLatitude,
                         onSetLongitude = onSetLongitude,
+                        onSetLocation = onSetLocation,
                         onSetRadiusMeters = onSetRadiusMeters,
                         onSetMeditationSeconds = onSetMeditationSeconds,
                         onToggleCompanionApp = onToggleCompanionApp,
@@ -433,6 +437,7 @@ private fun ConfigStep(
     onSetDurationSeconds: (Int) -> Unit,
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
+    onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
@@ -448,8 +453,7 @@ private fun ConfigStep(
     when (state.taskType) {
         "shopping" -> ShoppingConfigContent(
             state = state,
-            onSetLatitude = onSetLatitude,
-            onSetLongitude = onSetLongitude,
+            onSetLocation = onSetLocation,
             onSetRadiusMeters = onSetRadiusMeters,
             onToggleNotifyDay = onToggleNotifyDay,
             onSetNotifyStart = onSetNotifyStart,
@@ -591,8 +595,7 @@ private fun SimpleConfigContent(
 @Composable
 private fun ShoppingConfigContent(
     state: TaskEditorState,
-    onSetLatitude: (String) -> Unit,
-    onSetLongitude: (String) -> Unit,
+    onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
     onSetNotifyStart: (String) -> Unit,
@@ -626,32 +629,31 @@ private fun ShoppingConfigContent(
             Text("Reminder Location", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "e.g. the subway stop on your way home",
+                text = "Tap the map to drop the pin — e.g. the subway stop on your way home. The circle shows the area that triggers the reminder.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = state.latitude,
-                    onValueChange = onSetLatitude,
-                    label = { Text("Latitude") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = state.longitude,
-                    onValueChange = onSetLongitude,
-                    label = { Text("Longitude") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            LocationPickerMap(
+                latitude = state.latitude.toDoubleOrNull(),
+                longitude = state.longitude.toDoubleOrNull(),
+                radiusMeters = state.radiusMeters,
+                onLocationSelected = onSetLocation,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (state.latitude.toDoubleOrNull() != null && state.longitude.toDoubleOrNull() != null) {
+                    "Selected: ${state.latitude}, ${state.longitude}"
+                } else {
+                    "No location selected yet"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = state.radiusMeters.toString(),
