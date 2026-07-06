@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Add
@@ -32,8 +33,11 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -99,6 +103,7 @@ fun TaskListScreen(
     onNavigateToDebug: () -> Unit = {},
     onNavigateToRules: () -> Unit = {},
     onNavigateToHomeLocation: () -> Unit = {},
+    onNavigateToJournalHistory: () -> Unit = {},
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -127,8 +132,8 @@ fun TaskListScreen(
             TopAppBar(
                 title = { Text("Tasks") },
                 actions = {
-                    IconButton(onClick = onNavigateToRules) {
-                        Icon(Icons.Default.Edit, contentDescription = "Blocking rules")
+                    IconButton(onClick = onNavigateToJournalHistory) {
+                        Icon(Icons.AutoMirrored.Filled.Article, contentDescription = "Journal history")
                     }
                     IconButton(onClick = onNavigateToHomeLocation) {
                         Icon(Icons.Default.Home, contentDescription = "Home location")
@@ -136,11 +141,29 @@ fun TaskListScreen(
                     IconButton(onClick = onCreateTask) {
                         Icon(Icons.Default.Add, contentDescription = "Create task")
                     }
-                    IconButton(onClick = onNavigateToDebug) {
-                        Icon(Icons.Default.BugReport, contentDescription = "Debug logs")
+                    var showMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
                     }
-                    IconButton(onClick = onSignOut) {
-                        Icon(Icons.Default.Logout, contentDescription = "Sign out")
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Blocking rules") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = { showMenu = false; onNavigateToRules() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Debug logs") },
+                            leadingIcon = { Icon(Icons.Default.BugReport, contentDescription = null) },
+                            onClick = { showMenu = false; onNavigateToDebug() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Sign out") },
+                            leadingIcon = { Icon(Icons.Default.Logout, contentDescription = null) },
+                            onClick = { showMenu = false; onSignOut() },
+                        )
                     }
                 },
             )
@@ -609,6 +632,7 @@ private fun formatNextDue(nextDue: Instant, timeZone: ZoneId): String {
 /** Human-readable hint for non-trivial verification types shown in the blocking status card. */
 private fun blockingVerificationHint(task: Task): String? = when {
     task.taskType == "routine" || task.taskType == "workout" -> "Requires routine completion"
+    task.taskType == "journal" -> "Requires journal entry"
     task.verificationType == "gps" -> "Requires GPS verification"
     task.verificationType == "meditation" -> "Requires meditation session"
     task.verificationType == "duration" -> "Requires timed session"

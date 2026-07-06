@@ -21,6 +21,7 @@ class BlockingEvaluatorTest {
         availableFrom: String? = "07:00",
         dueAt: String? = "10:00",
         homeOnlyBlocking: Boolean = false,
+        blockingDaysOfWeek: String = "[]",
     ) = Task(
         id = id,
         userId = "user-1",
@@ -40,6 +41,7 @@ class BlockingEvaluatorTest {
         availableFrom = availableFrom,
         dueAt = dueAt,
         homeOnlyBlocking = homeOnlyBlocking,
+        blockingDaysOfWeek = blockingDaysOfWeek,
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,
@@ -49,6 +51,7 @@ class BlockingEvaluatorTest {
     private fun manualTask(
         id: String = "task-2",
         completedToday: Boolean = false,
+        blockingDaysOfWeek: String = "[]",
     ) = Task(
         id = id,
         userId = "user-1",
@@ -68,6 +71,7 @@ class BlockingEvaluatorTest {
         availableFrom = null,
         dueAt = null,
         homeOnlyBlocking = false,
+        blockingDaysOfWeek = blockingDaysOfWeek,
         createdAt = "2026-04-01T00:00:00Z",
         updatedAt = "2026-04-01T00:00:00Z",
         completedToday = completedToday,

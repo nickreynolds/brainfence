@@ -3,6 +3,7 @@ package dev.brainfence.domain.recurrence
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * The three phases of a time-gated task within a single day.
@@ -14,6 +15,15 @@ enum class TimeGatePhase {
     ACTIVE,
     /** After due_at — task is still completable; if incomplete, it triggers blocking. */
     PAST_DUE,
+}
+
+/** Accepts single- and double-digit hours ("9:00" and "09:00"). */
+private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm")
+
+/** Parses "H:mm" or "HH:mm" time strings tolerantly. Returns null for blank or malformed input. */
+fun parseTaskTime(value: String?): LocalTime? {
+    if (value.isNullOrBlank()) return null
+    return runCatching { LocalTime.parse(value, TIME_FORMATTER) }.getOrNull()
 }
 
 /**
@@ -29,15 +39,15 @@ fun computeTaskPhase(
     currentTime: Instant,
     timeZone: ZoneId = ZoneId.systemDefault(),
 ): TimeGatePhase? {
-    if (availableFrom == null && dueAt == null) return null
+    val start = parseTaskTime(availableFrom)
+    val end = parseTaskTime(dueAt)
+    if (start == null && end == null) return null
 
     val now = currentTime.atZone(timeZone).toLocalTime()
-    val start = availableFrom?.let { LocalTime.parse(it) }
-    val end = dueAt?.let { LocalTime.parse(it) }
-
     return when {
         start != null && now < start -> TimeGatePhase.BEFORE_START
         end != null && now >= end -> TimeGatePhase.PAST_DUE
         else -> TimeGatePhase.ACTIVE
     }
 }
+

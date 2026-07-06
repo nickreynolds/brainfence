@@ -55,6 +55,8 @@ data class TaskEditorState(
     val weeklyDays: Set<String> = emptySet(),
     val isBlockingCondition: Boolean = false,
     val homeOnlyBlocking: Boolean = false,
+    /** Days of week the blocking condition is enforced. Empty = every day. */
+    val blockingDaysOfWeek: Set<String> = emptySet(),
     val availableFrom: String = "",  // HH:MM — when task becomes completable
     val dueAt: String = "",          // HH:MM — when task becomes overdue / triggers blocking
     // General
@@ -94,7 +96,7 @@ class TaskEditorViewModel @Inject constructor(
                     sql = """
                         SELECT id, title, description, task_type, recurrence_type, recurrence_config,
                                verification_type, verification_config, is_blocking_condition,
-                               available_from, due_at, home_only_blocking
+                               available_from, due_at, home_only_blocking, blocking_days_of_week
                         FROM tasks WHERE id = ?
                     """.trimIndent(),
                     parameters = listOf(taskId),
@@ -111,6 +113,7 @@ class TaskEditorViewModel @Inject constructor(
                         val availableFrom = c.getString(9) ?: ""
                         val dueAt = c.getString(10) ?: ""
                         val homeOnlyBlocking = (c.getLong(11) ?: 0L) != 0L
+                        val blockingDaysOfWeek = c.getString(12) ?: "[]"
                     }
                 } ?: run {
                     _state.value = _state.value.copy(isLoading = false, error = "Task not found")
@@ -155,6 +158,7 @@ class TaskEditorViewModel @Inject constructor(
                     weeklyDays = weeklyDays,
                     isBlockingCondition = task.isBlockingCondition,
                     homeOnlyBlocking = task.homeOnlyBlocking,
+                    blockingDaysOfWeek = parseBlockingDaysJson(task.blockingDaysOfWeek),
                     availableFrom = task.availableFrom,
                     dueAt = task.dueAt,
                 )
@@ -260,6 +264,7 @@ class TaskEditorViewModel @Inject constructor(
         val verificationType = when (type) {
             "timed" -> "duration"
             "routine", "workout" -> "manual"
+            "journal" -> "journal"
             else -> s.verificationType
         }
         _state.value = s.copy(taskType = type, verificationType = verificationType)
@@ -377,6 +382,15 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(homeOnlyBlocking = enabled)
     }
 
+    fun toggleBlockingDay(day: String) {
+        _state.value = _state.value.let { s ->
+            s.copy(
+                blockingDaysOfWeek = if (day in s.blockingDaysOfWeek) s.blockingDaysOfWeek - day
+                                     else s.blockingDaysOfWeek + day,
+            )
+        }
+    }
+
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
@@ -415,6 +429,7 @@ class TaskEditorViewModel @Inject constructor(
 
                 val availableFrom = s.availableFrom.ifBlank { null }
                 val dueAt = s.dueAt.ifBlank { null }
+                val blockingDaysJson = JSONArray(s.blockingDaysOfWeek.toList()).toString()
 
                 val existingId = s.editingTaskId
                 if (existingId != null) {
@@ -425,7 +440,7 @@ class TaskEditorViewModel @Inject constructor(
                                 recurrence_type = ?, recurrence_config = ?,
                                 verification_type = ?, verification_config = ?,
                                 is_blocking_condition = ?, available_from = ?, due_at = ?,
-                                home_only_blocking = ?, updated_at = ?
+                                home_only_blocking = ?, blocking_days_of_week = ?, updated_at = ?
                             WHERE id = ?
                         """.trimIndent(),
                         parameters = listOf(
@@ -433,7 +448,7 @@ class TaskEditorViewModel @Inject constructor(
                             effectiveRecurrenceType, recurrenceConfig,
                             verificationType, verificationConfig,
                             if (s.isBlockingCondition) 1 else 0, availableFrom, dueAt,
-                            if (s.homeOnlyBlocking) 1 else 0, now,
+                            if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson, now,
                             existingId,
                         ),
                     )
@@ -449,9 +464,9 @@ class TaskEditorViewModel @Inject constructor(
                                  recurrence_type, recurrence_config,
                                  verification_type, verification_config,
                                  tags, sort_order, is_blocking_condition, blocking_rule_ids,
-                                 available_from, due_at, home_only_blocking,
+                                 available_from, due_at, home_only_blocking, blocking_days_of_week,
                                  created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """.trimIndent(),
                         parameters = listOf(
                             taskId, userId, s.title, s.description.ifBlank { null },
@@ -459,7 +474,7 @@ class TaskEditorViewModel @Inject constructor(
                             effectiveRecurrenceType, recurrenceConfig,
                             verificationType, verificationConfig,
                             "{}", 0, if (s.isBlockingCondition) 1 else 0, "{}",
-                            availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0,
+                            availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson,
                             now, now,
                         ),
                     )
@@ -583,5 +598,12 @@ class TaskEditorViewModel @Inject constructor(
             }
         }
         return config.toString()
+    }
+
+    private fun parseBlockingDaysJson(json: String): Set<String> = try {
+        val arr = JSONArray(json)
+        buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
+    } catch (_: Exception) {
+        emptySet()
     }
 }

@@ -26,10 +26,14 @@ import dev.brainfence.ui.settings.HomeLocationViewModel
 import dev.brainfence.ui.setup.AccessibilitySetupScreen
 import dev.brainfence.ui.debug.DebugScreen
 import dev.brainfence.ui.debug.DebugViewModel
+import dev.brainfence.ui.journal.JournalHistoryScreen
+import dev.brainfence.ui.journal.JournalHistoryViewModel
 import dev.brainfence.ui.tasks.DurationTaskScreen
 import dev.brainfence.ui.tasks.DurationTaskViewModel
 import dev.brainfence.ui.tasks.GpsTaskScreen
 import dev.brainfence.ui.tasks.GpsTaskViewModel
+import dev.brainfence.ui.tasks.JournalTaskScreen
+import dev.brainfence.ui.tasks.JournalTaskViewModel
 import dev.brainfence.ui.tasks.MeditationTaskScreen
 import dev.brainfence.ui.tasks.MeditationTaskViewModel
 import dev.brainfence.ui.tasks.AutoRoutineProgress
@@ -68,6 +72,8 @@ private object Routes {
     const val DURATION_TASK     = "duration-task/{taskId}"
     const val MEDITATION_TASK   = "meditation-task/{taskId}"
     const val ROUTINE_TASK      = "routine-task/{taskId}"
+    const val JOURNAL_TASK      = "journal-task/{taskId}"
+    const val JOURNAL_HISTORY   = "journal/history"
     const val TASK_EDITOR       = "task/editor?taskId={taskId}"
     const val DEBUG             = "debug"
     const val BLOCKING_RULES    = "blocking/rules"
@@ -203,6 +209,7 @@ fun BrainfenceNavGraph(
                         task.verificationType == "meditation" -> navController.navigate("meditation-task/${task.id}")
                         task.taskType == "routine" || task.taskType == "workout" ->
                             navController.navigate("routine-task/${task.id}")
+                        task.taskType == "journal" -> navController.navigate("journal-task/${task.id}")
                         else -> taskViewModel.requestComplete(task)
                     }
                 },
@@ -212,6 +219,7 @@ fun BrainfenceNavGraph(
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
                 onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
+                onNavigateToJournalHistory = { navController.navigate(Routes.JOURNAL_HISTORY) },
                 onCreateTask             = { navController.navigate("task/editor") },
                 onEditTask               = { task -> navController.navigate("task/editor?taskId=${task.id}") },
             )
@@ -346,6 +354,37 @@ fun BrainfenceNavGraph(
             }
         }
         composable(
+            route = Routes.JOURNAL_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val journalViewModel: JournalTaskViewModel = hiltViewModel()
+            val task        by journalViewModel.task.collectAsStateWithLifecycle()
+            val text        by journalViewModel.text.collectAsStateWithLifecycle()
+            val isSubmitting by journalViewModel.isSubmitting.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            if (currentTask != null) {
+                JournalTaskScreen(
+                    task = currentTask,
+                    text = text,
+                    isSubmitting = isSubmitting,
+                    onTextChange = journalViewModel::updateText,
+                    onSubmit = { journalViewModel.submit { navController.popBackStack() } },
+                    onBack = { navController.popBackStack() },
+                )
+            } else {
+                LoadingScreen(onBack = { navController.popBackStack() })
+            }
+        }
+        composable(Routes.JOURNAL_HISTORY) {
+            val journalHistoryViewModel: JournalHistoryViewModel = hiltViewModel()
+            val entries by journalHistoryViewModel.entries.collectAsStateWithLifecycle()
+            JournalHistoryScreen(
+                entries = entries,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
             route = Routes.TASK_EDITOR,
             arguments = listOf(
                 navArgument("taskId") {
@@ -380,6 +419,7 @@ fun BrainfenceNavGraph(
                 onToggleWeeklyDay = viewModel::toggleWeeklyDay,
                 onSetBlockingCondition = viewModel::setBlockingCondition,
                 onSetHomeOnlyBlocking = viewModel::setHomeOnlyBlocking,
+                onToggleBlockingDay = viewModel::toggleBlockingDay,
                 onSetAvailableFrom = viewModel::setAvailableFrom,
                 onSetDueAt = viewModel::setDueAt,
                 onNextStep = viewModel::nextStep,

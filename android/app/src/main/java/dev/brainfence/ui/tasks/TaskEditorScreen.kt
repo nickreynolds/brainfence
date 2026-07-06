@@ -88,6 +88,7 @@ fun TaskEditorScreen(
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
     onSetHomeOnlyBlocking: (Boolean) -> Unit,
+    onToggleBlockingDay: (String) -> Unit,
     onSetAvailableFrom: (String) -> Unit,
     onSetDueAt: (String) -> Unit,
     onNextStep: () -> Unit,
@@ -203,6 +204,7 @@ fun TaskEditorScreen(
                         onToggleWeeklyDay = onToggleWeeklyDay,
                         onSetBlockingCondition = onSetBlockingCondition,
                         onSetHomeOnlyBlocking = onSetHomeOnlyBlocking,
+                        onToggleBlockingDay = onToggleBlockingDay,
                         onSetAvailableFrom = onSetAvailableFrom,
                         onSetDueAt = onSetDueAt,
                     )
@@ -361,6 +363,7 @@ private fun TaskTypeSelector(selected: String, onSelect: (String) -> Unit) {
         "timed" to "Timed",
         "routine" to "Routine",
         "workout" to "Workout",
+        "journal" to "Journal",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         types.chunked(2).forEach { row ->
@@ -406,6 +409,7 @@ private fun taskTypeDescription(type: String): String = when (type) {
     "timed" -> "Requires a timed session"
     "routine" -> "Multi-step checklist"
     "workout" -> "Exercise tracking with sets"
+    "journal" -> "Write a short entry"
     else -> ""
 }
 
@@ -451,6 +455,7 @@ private fun ConfigStep(
             onCreateSupersetGroup = onCreateSupersetGroup,
             onRemoveSupersetGroup = onRemoveSupersetGroup,
         )
+        "journal" -> JournalConfigContent()
     }
 }
 
@@ -558,6 +563,35 @@ private fun SimpleConfigContent(
         }
 
         item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+@Composable
+private fun JournalConfigContent() {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Journal entry", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Completing this task will open a screen to write a short journal entry. Entries are saved and viewable from the journal history icon on the home screen.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -875,6 +909,7 @@ private fun ScheduleStep(
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
     onSetHomeOnlyBlocking: (Boolean) -> Unit,
+    onToggleBlockingDay: (String) -> Unit,
     onSetAvailableFrom: (String) -> Unit,
     onSetDueAt: (String) -> Unit,
 ) {
@@ -999,6 +1034,28 @@ private fun ScheduleStep(
                         checked = state.homeOnlyBlocking,
                         onCheckedChange = onSetHomeOnlyBlocking,
                     )
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("Blocking days")
+                Text(
+                    text = "Days this task enforces blocking. Leave empty to block every day; on other days the task is still completable but doesn't block.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                val blockDays = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+                val blockDayLabels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    blockDays.forEachIndexed { index, day ->
+                        FilterChip(
+                            selected = day in state.blockingDaysOfWeek,
+                            onClick = { onToggleBlockingDay(day) },
+                            label = { Text(blockDayLabels[index], style = MaterialTheme.typography.labelSmall) },
+                        )
+                    }
                 }
             }
         }

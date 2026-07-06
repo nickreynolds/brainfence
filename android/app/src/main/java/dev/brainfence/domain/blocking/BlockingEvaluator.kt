@@ -4,6 +4,8 @@ import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeTaskPhase
+import org.json.JSONArray
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
 
@@ -45,6 +47,10 @@ enum class HomePresence {
  * Tasks flagged `homeOnlyBlocking` are treated as met (non-blocking) when
  * [homePresence] is `AWAY` — useful for routines tied to equipment at home
  * (e.g. a hangboard) so they don't block on vacation.
+ *
+ * Tasks with a non-empty `blockingDaysOfWeek` are treated as met on days
+ * not listed — they still show as completable, but don't enforce blocking
+ * on off-days (e.g. a journal task that only blocks Mon–Thu).
  *
  * Pure function — no side effects or dependencies.
  */
@@ -111,7 +117,41 @@ private fun conditionUnmetTaskIds(
         val task = taskById[taskId] ?: return@filter false
         if (task.completedToday) return@filter false
         if (task.homeOnlyBlocking && homePresence == HomePresence.AWAY) return@filter false
+        val allowedDays = parseBlockingDays(task.blockingDaysOfWeek)
+        if (allowedDays.isNotEmpty()) {
+            val dow = currentTime.atZone(timeZone).dayOfWeek
+            if (dow !in allowedDays) return@filter false
+        }
         val phase = computeTaskPhase(task.availableFrom, task.dueAt, currentTime, timeZone)
         phase == null || phase == TimeGatePhase.PAST_DUE
     }.toSet()
+}
+
+private val DAY_ABBREVIATIONS = mapOf(
+    "mon" to DayOfWeek.MONDAY,
+    "tue" to DayOfWeek.TUESDAY,
+    "wed" to DayOfWeek.WEDNESDAY,
+    "thu" to DayOfWeek.THURSDAY,
+    "fri" to DayOfWeek.FRIDAY,
+    "sat" to DayOfWeek.SATURDAY,
+    "sun" to DayOfWeek.SUNDAY,
+)
+
+/**
+ * Parses the task's `blocking_days_of_week` JSON array (e.g. `["mon","tue"]`)
+ * into a set of [DayOfWeek]. Returns empty set when the config is empty or
+ * malformed — callers treat "empty" as "block every day".
+ */
+private fun parseBlockingDays(json: String): Set<DayOfWeek> {
+    if (json.isBlank() || json == "[]") return emptySet()
+    return try {
+        val arr = JSONArray(json)
+        val out = mutableSetOf<DayOfWeek>()
+        for (i in 0 until arr.length()) {
+            DAY_ABBREVIATIONS[arr.optString(i).lowercase()]?.let(out::add)
+        }
+        out
+    } catch (_: Exception) {
+        emptySet()
+    }
 }

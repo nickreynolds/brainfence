@@ -72,11 +72,8 @@ class TaskNotificationManager @Inject constructor(
             val key = "ready:$today:$availableFrom"
             if (key in sentToday) continue
 
-            val startTime = try {
-                LocalTime.parse(availableFrom)
-            } catch (e: Exception) {
-                continue
-            }
+            val startTime = dev.brainfence.domain.recurrence.parseTaskTime(availableFrom)
+                ?: continue
 
             // Fire when we're at or past available_from (within a 2-minute window to avoid
             // missing it between eval cycles, but not so wide that it re-fires)
@@ -101,11 +98,8 @@ class TaskNotificationManager @Inject constructor(
             val key = "blocking:$today:${task.id}"
             if (key in sentToday) continue
 
-            val dueTime = try {
-                LocalTime.parse(task.dueAt)
-            } catch (e: Exception) {
-                continue
-            }
+            val dueTime = dev.brainfence.domain.recurrence.parseTaskTime(task.dueAt)
+                ?: continue
 
             val warningTime = dueTime.minusHours(1)
             // Fire when within the warning window (warningTime <= now < warningTime + 2min)

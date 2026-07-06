@@ -29,7 +29,7 @@ class SupabasePowerSyncConnector @Inject constructor(
     companion object {
         /** Map of table name → set of columns that are JSONB in Postgres. */
         private val JSONB_COLUMNS = mapOf(
-            "tasks" to setOf("recurrence_config", "verification_config"),
+            "tasks" to setOf("recurrence_config", "verification_config", "blocking_days_of_week"),
             "routine_steps" to setOf("config"),
             "task_completions" to setOf("verification_data"),
             "step_completions" to setOf("data"),
