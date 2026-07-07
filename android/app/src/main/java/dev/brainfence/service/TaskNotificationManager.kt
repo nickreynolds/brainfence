@@ -43,8 +43,13 @@ class TaskNotificationManager @Inject constructor(
     /**
      * Called periodically from the service evaluation loop.
      * Checks all active tasks and fires notifications as needed.
+     *
+     * @param enforcedTaskIds IDs of tasks that are a condition of an active
+     *   blocking rule — i.e. tasks that actually block apps. The "blocking soon"
+     *   warning is only meaningful for these; the per-task `is_blocking_condition`
+     *   flag is ignored by the blocking engine and so must not drive warnings.
      */
-    fun evaluate(tasks: List<Task>) {
+    fun evaluate(tasks: List<Task>, enforcedTaskIds: Set<String>) {
         val timeZone = ZoneId.systemDefault()
         val now = LocalTime.now(timeZone)
         val today = LocalDate.now(timeZone)
@@ -56,7 +61,7 @@ class TaskNotificationManager @Inject constructor(
         }
 
         checkTasksReady(tasks, now, today)
-        checkBlockingSoon(tasks, now, today)
+        checkBlockingSoon(tasks, enforcedTaskIds, now, today)
     }
 
     /**
@@ -88,13 +93,21 @@ class TaskNotificationManager @Inject constructor(
     /**
      * 1 hour before due_at, notify for each incomplete task that will start blocking.
      */
-    private fun checkBlockingSoon(tasks: List<Task>, now: LocalTime, today: LocalDate) {
+    private fun checkBlockingSoon(
+        tasks: List<Task>,
+        enforcedTaskIds: Set<String>,
+        now: LocalTime,
+        today: LocalDate,
+    ) {
         val tasksToWarn = mutableListOf<Task>()
 
         for (task in tasks) {
             if (task.completedToday) continue
             if (task.dueAt == null) continue
-            if (!task.isBlockingCondition) continue
+            // Only warn for tasks that actually block apps (wired into an active
+            // rule). A task with is_blocking_condition set but no rule never
+            // blocks, so warning about it would be a false alarm.
+            if (task.id !in enforcedTaskIds) continue
 
             val key = "blocking:$today:${task.id}"
             if (key in sentToday) continue
@@ -103,8 +116,11 @@ class TaskNotificationManager @Inject constructor(
                 ?: continue
 
             val warningTime = dueTime.minusHours(1)
-            // Fire when within the warning window (warningTime <= now < warningTime + 2min)
-            if (now >= warningTime && now < warningTime.plusMinutes(2)) {
+            // Fire once anytime in the hour before due (deduped via sentToday).
+            // A fixed short window is fragile under Doze — the eval loop or the
+            // due-check alarm may not land inside it — so warn across the whole
+            // pre-due hour instead.
+            if (now >= warningTime && now < dueTime) {
                 sentToday.add(key)
                 tasksToWarn.add(task)
             }

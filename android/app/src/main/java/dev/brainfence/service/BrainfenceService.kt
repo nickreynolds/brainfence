@@ -36,6 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -49,6 +50,9 @@ class BrainfenceService : Service() {
         private const val BREADCRUMB_INTERVAL_EVALS = 5  // Log location every 5 evals (5 min)
         private const val TAG = "BrainfenceService"
 
+        /** Intent action: run a due-check (refresh verification + re-evaluate). */
+        const val ACTION_DUE_CHECK = "dev.brainfence.service.DUE_CHECK"
+
         private val _blockingState = MutableStateFlow(
             BlockingState(emptySet(), emptySet(), emptyMap())
         )
@@ -57,6 +61,14 @@ class BrainfenceService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, BrainfenceService::class.java)
+            context.startForegroundService(intent)
+        }
+
+        /** Poke the service to run a due-check when a [DueCheckReceiver] alarm fires. */
+        fun requestDueCheck(context: Context) {
+            val intent = Intent(context, BrainfenceService::class.java).apply {
+                action = ACTION_DUE_CHECK
+            }
             context.startForegroundService(intent)
         }
     }
@@ -70,6 +82,7 @@ class BrainfenceService : Service() {
     @Inject lateinit var homeLocationRepository: HomeLocationRepository
     @Inject lateinit var companionUsageVerifier: CompanionUsageVerifier
     @Inject lateinit var debugLog: DebugLogRepository
+    @Inject lateinit var blockingAlarmScheduler: BlockingAlarmScheduler
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var evalJob: Job? = null
@@ -102,7 +115,43 @@ class BrainfenceService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_DUE_CHECK) {
+            handleDueCheck()
+        }
         return START_STICKY
+    }
+
+    /**
+     * Handle a due-check alarm: pierce Doze with a fresh verification refresh so
+     * a completed-but-unsynced task registers, then re-evaluate blocking and
+     * notifications against fresh data, and schedule the next alarm.
+     */
+    private fun handleDueCheck() {
+        scope.launch {
+            try {
+                gpsVerificationManager.refreshLeaveCompletions()
+                companionUsageVerifier.reconcile()
+            } catch (e: Exception) {
+                Log.w(TAG, "Due-check refresh failed", e)
+            }
+            // Re-read fresh data — also covers a cold start where the reactive
+            // fields aren't populated yet — and reflects any completion just written.
+            val tasks = taskRepository.watchActiveTasks().first()
+            val rules = blockingRepository.watchActiveRules().first()
+            currentTasks = tasks
+            currentRules = rules
+            runEvaluation()
+            val enforcedTaskIds = rules.flatMap { it.conditionTaskIds }.toSet()
+            taskNotificationManager.evaluate(tasks, enforcedTaskIds)
+            blockingAlarmScheduler.reschedule(tasks, enforcedTaskIds)
+            debugLog.log("service", "Ran due-check (refresh + evaluate)")
+        }
+    }
+
+    /** (Re)schedule the next Doze-piercing due-check alarm from current data. */
+    private fun rescheduleBlockingAlarm() {
+        val enforcedTaskIds = currentRules.flatMap { it.conditionTaskIds }.toSet()
+        blockingAlarmScheduler.reschedule(currentTasks, enforcedTaskIds)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -126,6 +175,7 @@ class BrainfenceService : Service() {
             taskRepository.watchActiveTasks().collect { tasks ->
                 currentTasks = tasks
                 runEvaluation()
+                rescheduleBlockingAlarm()
                 autoStartCompanionTracking(tasks)
             }
         }
@@ -133,6 +183,7 @@ class BrainfenceService : Service() {
             blockingRepository.watchActiveRules().collect { rules ->
                 currentRules = rules
                 runEvaluation()
+                rescheduleBlockingAlarm()
             }
         }
         scope.launch {
@@ -154,7 +205,11 @@ class BrainfenceService : Service() {
                 delay(EVAL_INTERVAL_MS)
                 applyExpiredConfigChanges()
                 runEvaluation()
-                taskNotificationManager.evaluate(currentTasks)
+                // Tasks that actually block apps = conditions of active rules.
+                // watchActiveRules() already filters to active rules.
+                val enforcedTaskIds = currentRules.flatMap { it.conditionTaskIds }.toSet()
+                taskNotificationManager.evaluate(currentTasks, enforcedTaskIds)
+                blockingAlarmScheduler.reschedule(currentTasks, enforcedTaskIds)
                 breadcrumbCounter++
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()

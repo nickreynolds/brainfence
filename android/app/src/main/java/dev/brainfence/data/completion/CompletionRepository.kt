@@ -30,14 +30,29 @@ class CompletionRepository @Inject constructor(
         val now = Instant.now().toString()
         val id  = UUID.randomUUID().toString()
 
+        // Idempotent per occurrence: at most one completion per one-off task
+        // (ever) and per recurring task per local day. Auto-verifiers (GPS leave,
+        // periodic re-checks, the due-check refresh, geofence EXIT) can all fire
+        // for the same occurrence; the INSERT ... WHERE NOT EXISTS makes those
+        // extra calls no-ops atomically, without a check-then-insert race.
         database.execute(
             sql = """
                 INSERT INTO task_completions
                     (id, task_id, user_id, completed_at, occurrence_date, verification_data, created_at)
-                VALUES
-                    (?, ?, ?, ?, ?, ?, ?)
+                SELECT ?, ?, ?, ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM task_completions existing
+                    WHERE existing.task_id = ?
+                      AND (
+                        (SELECT t.recurrence_type FROM tasks t WHERE t.id = ?) IS NULL
+                        OR date(existing.completed_at, 'localtime') = date('now', 'localtime')
+                      )
+                )
             """.trimIndent(),
-            parameters = listOf(id, taskId, userId, now, occurrenceDate, verificationData, now),
+            parameters = listOf(
+                id, taskId, userId, now, occurrenceDate, verificationData, now,
+                taskId, taskId,
+            ),
         )
     }
 }

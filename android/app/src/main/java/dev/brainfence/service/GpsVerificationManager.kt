@@ -36,7 +36,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import org.json.JSONObject
 import java.time.Instant
 import java.time.ZonedDateTime
@@ -448,6 +450,60 @@ class GpsVerificationManager @Inject constructor(
                     debugLog.log("error", "Periodic leave check failed: ${e.message}")
                 }
             }
+    }
+
+    /**
+     * Force a fresh location check for all tracked leave-mode tasks and complete
+     * any the user is currently outside of. Unlike [periodicLeaveCheck] this
+     * suspends until the fix is obtained and completions are written, so a caller
+     * (e.g. the due-time alarm in [BrainfenceService]) can re-evaluate blocking
+     * immediately afterward — catching walks whose geofence EXIT was frozen by Doze.
+     */
+    suspend fun refreshLeaveCompletions() {
+        val leaveStates = trackingStates.values.filter { it.config.mode == "leave" }
+        if (leaveStates.isEmpty() || !hasLocationPermission()) return
+
+        val location = awaitCurrentLocation() ?: run {
+            debugLog.log("geofence", "Due-check refresh: no fresh location available")
+            return
+        }
+        for (state in leaveStates) {
+            val distance = FloatArray(1)
+            android.location.Location.distanceBetween(
+                location.latitude, location.longitude,
+                state.config.lat, state.config.lng,
+                distance,
+            )
+            if (distance[0] > state.config.radiusM) {
+                debugLog.log(
+                    category = "geofence",
+                    message = "Due-check refresh: outside geofence for '${state.taskTitle}' (${distance[0].toInt()}m away), completing",
+                    lat = location.latitude,
+                    lng = location.longitude,
+                    accuracyM = location.accuracy,
+                )
+                completeGpsLeaveTask(state.taskId, location.latitude, location.longitude, location.accuracy)
+            }
+        }
+    }
+
+    /** Await a single fresh high-accuracy location fix. Returns null if unavailable. */
+    @SuppressLint("MissingPermission")
+    private suspend fun awaitCurrentLocation(): android.location.Location? {
+        if (!hasLocationPermission()) return null
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setMaxUpdateAgeMillis(60_000L)
+            .build()
+        return suspendCancellableCoroutine { cont ->
+            client.getCurrentLocation(request, null)
+                .addOnSuccessListener { location -> if (cont.isActive) cont.resume(location) }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "awaitCurrentLocation failed", e)
+                    if (cont.isActive) cont.resume(null)
+                }
+        }
     }
 
     private fun removeGeofences(taskIds: Set<String>) {

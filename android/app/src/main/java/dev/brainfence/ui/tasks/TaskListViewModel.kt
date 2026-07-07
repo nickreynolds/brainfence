@@ -74,6 +74,21 @@ class TaskListViewModel @Inject constructor(
     private val _needsUsageStatsPermission = MutableStateFlow(false)
     val needsUsageStatsPermission = _needsUsageStatsPermission.asStateFlow()
 
+    // Exact-alarm permission (Android 12+) powers the Doze-piercing due-check
+    // alarms that keep blocking on time. Without it we degrade to inexact alarms.
+    private val _needsExactAlarmPermission = MutableStateFlow(!canScheduleExactAlarms())
+    val needsExactAlarmPermission = _needsExactAlarmPermission.asStateFlow()
+
+    fun onExactAlarmPermissionResult() {
+        _needsExactAlarmPermission.value = !canScheduleExactAlarms()
+    }
+
+    private fun canScheduleExactAlarms(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+        return am?.canScheduleExactAlarms() ?: false
+    }
+
     init {
         runCompanionReconciliation()
     }

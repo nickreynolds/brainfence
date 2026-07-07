@@ -94,8 +94,10 @@ fun TaskListScreen(
     isAccessibilityEnabled: Boolean,
     hasLocationPermission: Boolean,
     needsUsageStatsPermission: Boolean,
+    needsExactAlarmPermission: Boolean,
     onLocationPermissionResult: (Boolean) -> Unit,
     onUsageStatsPermissionResult: () -> Unit,
+    onExactAlarmPermissionResult: () -> Unit,
     onSelectTab: (HomeTab) -> Unit,
     onTaskTap: (Task) -> Unit,
     onEditTask: (Task) -> Unit,
@@ -109,6 +111,14 @@ fun TaskListScreen(
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
+
+    // A task only actually blocks apps when it's a condition of an *active*
+    // blocking rule — the per-task `is_blocking_condition` flag is not enough
+    // (the blocking engine ignores it). Derive the enforced set from the active
+    // rules so the row's blocking label/icon reflects real enforcement.
+    val enforcedBlockingTaskIds = remember(activeRules) {
+        activeRules.flatMap { it.conditionTaskIds }.toSet()
+    }
 
     // Foreground location permission launcher
     val fineLocationLauncher = rememberLauncherForActivityResult(
@@ -248,6 +258,14 @@ fun TaskListScreen(
                             )
                         }
                     }
+                    // Only nag about exact alarms when the user actually uses blocking.
+                    if (needsExactAlarmPermission && blockingStatus.hasActiveRules) {
+                        item(key = "exact_alarm_banner") {
+                            ExactAlarmBanner(
+                                onResult = onExactAlarmPermissionResult,
+                            )
+                        }
+                    }
                     if (blockingStatus.hasActiveRules) {
                         item(key = "blocking_status") {
                             BlockingStatusCard(
@@ -283,6 +301,7 @@ fun TaskListScreen(
                 items(displayTasks, key = { it.id }) { task ->
                     TaskItem(
                         task = task,
+                        isEnforcedBlocker = task.id in enforcedBlockingTaskIds,
                         showAsCompleted = selectedTab == HomeTab.COMPLETED,
                         showAsUpcoming = selectedTab == HomeTab.UPCOMING,
                         meditationTimer = meditationTimerStates[task.id],
@@ -317,6 +336,9 @@ fun TaskListScreen(
 @Composable
 private fun TaskItem(
     task: Task,
+    /** True when this task is a condition of an active blocking rule (i.e. it
+     *  actually blocks apps). Distinct from the decorative `is_blocking_condition`. */
+    isEnforcedBlocker: Boolean,
     showAsCompleted: Boolean,
     showAsUpcoming: Boolean,
     meditationTimer: dev.brainfence.service.MeditationTimerState?,
@@ -399,7 +421,7 @@ private fun TaskItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                isOverdue && task.isBlockingCondition -> {
+                isOverdue && isEnforcedBlocker -> {
                     Text(
                         text = "Overdue \u2014 blocking apps until completed",
                         color = MaterialTheme.colorScheme.error,
@@ -430,9 +452,9 @@ private fun TaskItem(
                     val recur = task.recurrenceType
                     if (recur != null) {
                         val label = recur.replaceFirstChar { it.uppercase() }
-                        val dueText = if (task.isBlockingCondition && task.dueAt != null) {
+                        val dueText = if (isEnforcedBlocker && task.dueAt != null) {
                             " \u00b7 Due by ${task.dueAt}"
-                        } else if (task.isBlockingCondition) {
+                        } else if (isEnforcedBlocker) {
                             " \u00b7 Due today"
                         } else ""
                         Text(
@@ -456,7 +478,7 @@ private fun TaskItem(
                     contentDescription = "Not yet available",
                     tint               = MaterialTheme.colorScheme.outline,
                 )
-                isOverdue && task.isBlockingCondition -> Icon(
+                isOverdue && isEnforcedBlocker -> Icon(
                     imageVector        = Icons.Default.Warning,
                     contentDescription = "Overdue",
                     tint               = MaterialTheme.colorScheme.error,
@@ -473,7 +495,7 @@ private fun TaskItem(
                 )
             }
         },
-        trailingContent = if (task.isBlockingCondition) {
+        trailingContent = if (isEnforcedBlocker) {
             {
                 Icon(
                     imageVector        = Icons.Default.Block,
@@ -768,6 +790,64 @@ private fun UsageStatsBanner(
             Spacer(Modifier.width(12.dp))
             Text(
                 text = "Usage access needed to detect meditation app usage. Tap to grant.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExactAlarmBanner(
+    onResult: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+
+    // Re-check the permission when the user returns from settings.
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                onResult()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Card(
+        onClick = {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = android.net.Uri.fromParts("package", context.packageName, null)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.fromParts("package", context.packageName, null)
+                }
+            }
+            context.startActivity(intent)
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "Allow exact alarms so blocking stays on time even in deep sleep. Tap to grant.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )

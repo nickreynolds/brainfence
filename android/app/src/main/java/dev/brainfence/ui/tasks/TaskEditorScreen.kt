@@ -1151,7 +1151,8 @@ private fun ScheduleStep(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Use as blocking condition")
                     Text(
-                        text = "Apps will be blocked until this task is completed",
+                        text = "Makes this task available to blocking rules. Add it to a " +
+                            "rule's conditions to block apps until it's completed.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

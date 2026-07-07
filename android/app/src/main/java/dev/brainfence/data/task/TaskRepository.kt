@@ -66,29 +66,45 @@ class TaskRepository @Inject constructor(
                 }
             }
 
-    private fun mapTask(cursor: SqlCursor): Task = Task(
-        id                  = cursor.getString(0)!!,
-        userId              = cursor.getString(1)!!,
-        title               = cursor.getString(2)!!,
-        description         = cursor.getString(3),
-        taskType            = cursor.getString(4)!!,
-        status              = cursor.getString(5)!!,
-        recurrenceType      = cursor.getString(6),
-        recurrenceConfig    = cursor.getString(7) ?: "{}",
-        verificationType    = cursor.getString(8),
-        verificationConfig  = cursor.getString(9) ?: "{}",
-        tags                = cursor.getString(10) ?: "[]",
-        groupId             = cursor.getString(11),
-        sortOrder           = (cursor.getLong(12) ?: 0L).toInt(),
-        isBlockingCondition = (cursor.getLong(13) ?: 0L) != 0L,
-        blockingRuleIds     = cursor.getString(14) ?: "[]",
-        availableFrom       = cursor.getString(15),
-        dueAt               = cursor.getString(16),
-        homeOnlyBlocking    = (cursor.getLong(17) ?: 0L) != 0L,
-        blockingDaysOfWeek  = cursor.getString(18) ?: "[]",
-        createdAt           = cursor.getString(19)!!,
-        updatedAt           = cursor.getString(20)!!,
-        completedToday      = (cursor.getLong(21) ?: 0L) != 0L,
-        lastCompletionAt    = cursor.getString(22),
-    )
+    private fun mapTask(cursor: SqlCursor): Task {
+        val recurrenceType = cursor.getString(6)
+        val lastCompletionAt = cursor.getString(22)
+        // completed_today from SQL counts only completions dated today. That is
+        // right for recurring tasks (each day is a fresh occurrence) but wrong
+        // for one-off tasks (recurrence_type IS NULL): a one-off has a single
+        // occurrence, so once it has ever been completed it stays done. Without
+        // this, a one-off completed yesterday flips back to incomplete today and
+        // reappears in the active list (and re-blocks apps). Mirrors the domain
+        // recurrence engine's one-off handling (see computeOccurrenceStatus).
+        val completedToday = if (recurrenceType == null) {
+            lastCompletionAt != null
+        } else {
+            (cursor.getLong(21) ?: 0L) != 0L
+        }
+        return Task(
+            id                  = cursor.getString(0)!!,
+            userId              = cursor.getString(1)!!,
+            title               = cursor.getString(2)!!,
+            description         = cursor.getString(3),
+            taskType            = cursor.getString(4)!!,
+            status              = cursor.getString(5)!!,
+            recurrenceType      = recurrenceType,
+            recurrenceConfig    = cursor.getString(7) ?: "{}",
+            verificationType    = cursor.getString(8),
+            verificationConfig  = cursor.getString(9) ?: "{}",
+            tags                = cursor.getString(10) ?: "[]",
+            groupId             = cursor.getString(11),
+            sortOrder           = (cursor.getLong(12) ?: 0L).toInt(),
+            isBlockingCondition = (cursor.getLong(13) ?: 0L) != 0L,
+            blockingRuleIds     = cursor.getString(14) ?: "[]",
+            availableFrom       = cursor.getString(15),
+            dueAt               = cursor.getString(16),
+            homeOnlyBlocking    = (cursor.getLong(17) ?: 0L) != 0L,
+            blockingDaysOfWeek  = cursor.getString(18) ?: "[]",
+            createdAt           = cursor.getString(19)!!,
+            updatedAt           = cursor.getString(20)!!,
+            completedToday      = completedToday,
+            lastCompletionAt    = lastCompletionAt,
+        )
+    }
 }

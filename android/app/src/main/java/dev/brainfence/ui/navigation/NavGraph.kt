@@ -189,6 +189,7 @@ fun BrainfenceNavGraph(
             val activeRules        by taskViewModel.activeRules.collectAsStateWithLifecycle()
             val hasLocationPerm    by taskViewModel.hasLocationPermission.collectAsStateWithLifecycle()
             val needsUsageStats   by taskViewModel.needsUsageStatsPermission.collectAsStateWithLifecycle()
+            val needsExactAlarm   by taskViewModel.needsExactAlarmPermission.collectAsStateWithLifecycle()
             val meditationTimerStates by taskViewModel.meditationTimerStates.collectAsStateWithLifecycle()
             val shoppingItemCounts by taskViewModel.shoppingItemCounts.collectAsStateWithLifecycle()
             TaskListScreen(
@@ -204,8 +205,10 @@ fun BrainfenceNavGraph(
                 isAccessibilityEnabled   = isAccessibilityEnabled,
                 hasLocationPermission    = hasLocationPerm,
                 needsUsageStatsPermission = needsUsageStats,
+                needsExactAlarmPermission = needsExactAlarm,
                 onLocationPermissionResult = taskViewModel::onLocationPermissionResult,
                 onUsageStatsPermissionResult = taskViewModel::onUsageStatsPermissionResult,
+                onExactAlarmPermissionResult = taskViewModel::onExactAlarmPermissionResult,
                 onSelectTab              = taskViewModel::selectTab,
                 onTaskTap                = { task ->
                     when {
