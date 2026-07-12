@@ -42,6 +42,10 @@ data class BlockingStatusState(
     val blockedApps: List<BlockedAppInfo>,
     val incompleteTasks: List<Task>,
     val hasActiveRules: Boolean,
+    /** IDs of tasks that are *actually* causing an app to be blocked right now
+     *  (unmet conditions of a currently-blocking rule), per the live engine.
+     *  Drives the per-row "blocking apps" label so it can't contradict the banner. */
+    val activelyBlockingTaskIds: Set<String> = emptySet(),
 )
 
 enum class HomeTab { ACTIVE, COMPLETED, UPCOMING }
@@ -239,10 +243,18 @@ class TaskListViewModel @Inject constructor(
             )
         }.sortedBy { it.label }
 
+        // Tasks that are the actual reason an app is blocked right now — an unmet
+        // condition of a rule that is currently blocking. Excludes conditions that
+        // are met (e.g. not yet past due) even though they belong to a blocking rule.
+        val activelyBlockingTaskIds = blockingState.unmetTaskIdsByApp.values
+            .flatten()
+            .toSet()
+
         BlockingStatusState(
             blockedApps = blockedApps,
             incompleteTasks = incompleteTasks,
             hasActiveRules = true,
+            activelyBlockingTaskIds = activelyBlockingTaskIds,
         )
     }.stateIn(
         scope = viewModelScope,

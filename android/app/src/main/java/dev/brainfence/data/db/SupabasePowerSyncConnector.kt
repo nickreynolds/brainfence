@@ -12,13 +12,18 @@ import javax.inject.Named
 import javax.inject.Singleton
 
 /**
- * Wrapper around PowerSync's SupabaseConnector that correctly handles JSONB
- * columns. The default connector sends all TEXT values as JSON string
- * primitives, which causes Postgres JSONB columns to store the value as a
- * JSONB string type instead of a JSONB object/array.
+ * Wrapper around PowerSync's SupabaseConnector that correctly handles columns
+ * that PowerSync stores locally as JSON strings but which are a structured type
+ * in Postgres — both JSONB columns and native array columns (TEXT[] / UUID[]).
  *
- * This override parses known JSONB column values into proper JsonElements
- * before upserting so that Postgrest stores them as native JSONB objects.
+ * The default connector sends all local values as JSON string primitives. For a
+ * JSONB column that stores the value as a JSONB *string* instead of an
+ * object/array; for a TEXT[]/UUID[] column Postgres rejects the malformed array
+ * literal outright, which makes PowerSync roll the local write back (e.g. a
+ * blocking rule's condition_task_ids silently reverting after a save).
+ *
+ * This override parses those column values into proper JsonElements before
+ * upserting so Postgrest stores them as native JSONB objects / Postgres arrays.
  */
 @Singleton
 class SupabasePowerSyncConnector @Inject constructor(
@@ -27,29 +32,40 @@ class SupabasePowerSyncConnector @Inject constructor(
 ) : SupabaseConnector(supabase, powerSyncUrl) {
 
     companion object {
-        /** Map of table name → set of columns that are JSONB in Postgres. */
-        private val JSONB_COLUMNS = mapOf(
-            "tasks" to setOf("recurrence_config", "verification_config", "blocking_days_of_week"),
+        /**
+         * Map of table name → columns that must be parsed from their local JSON
+         * string into a real JSON element before upload. Covers every Postgres
+         * JSONB column and every native array column (TEXT[] / UUID[]); omitting
+         * an array column causes its writes to be rejected and reverted.
+         */
+        private val JSON_ENCODED_COLUMNS = mapOf(
+            "tasks" to setOf(
+                "recurrence_config", "verification_config", "blocking_days_of_week",
+                "tags", "blocking_rule_ids",
+            ),
             "routine_steps" to setOf("config"),
             "task_completions" to setOf("verification_data"),
             "step_completions" to setOf("data"),
-            "blocking_rules" to setOf("blocked_apps", "pending_changes"),
+            "blocking_rules" to setOf(
+                "blocked_apps", "pending_changes",
+                "blocked_domains", "condition_task_ids",
+            ),
             "groups" to setOf("visibility_schedule"),
-            "notes" to setOf("tags"),
+            "notes" to setOf("tags", "outgoing_links"),
         )
     }
 
     override suspend fun uploadCrudEntry(entry: CrudEntry) {
-        val jsonbCols = JSONB_COLUMNS[entry.table]
-        if (jsonbCols == null || entry.opData == null) {
+        val jsonEncodedCols = JSON_ENCODED_COLUMNS[entry.table]
+        if (jsonEncodedCols == null || entry.opData == null) {
             super.uploadCrudEntry(entry)
             return
         }
 
         val data = entry.opData!!.jsonValues.toMutableMap()
 
-        // Parse JSONB columns from string primitives into real JSON elements
-        for (col in jsonbCols) {
+        // Parse JSON-encoded columns from string primitives into real JSON elements
+        for (col in jsonEncodedCols) {
             val value = data[col]
             if (value is JsonPrimitive && value.isString) {
                 try {

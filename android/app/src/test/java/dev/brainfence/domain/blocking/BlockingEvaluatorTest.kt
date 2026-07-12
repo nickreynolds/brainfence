@@ -317,4 +317,38 @@ class BlockingEvaluatorTest {
             result.blockedApps.isEmpty(),
         )
     }
+
+    // -----------------------------------------------------------------------
+    // Unknown / dangling condition tasks — fail closed
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `unknown condition task fails closed - keeps blocking`() {
+        // A rule referencing a task id that isn't in the current task set (dangling
+        // reference to a deleted task, or a task set that hasn't loaded yet) must
+        // keep blocking rather than silently lift.
+        val r = rule(conditionTaskIds = listOf("missing-task"), conditionLogic = "all")
+        val result = evaluateBlocking(
+            rules = listOf(r),
+            tasks = emptyList(),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+        )
+        assertEquals(setOf("com.twitter.android"), result.blockedApps)
+    }
+
+    @Test
+    fun `any logic - unknown task but a real sibling is met - lifts blocking`() {
+        // Fail-closed shouldn't overreach: with "any" logic, a genuinely met
+        // sibling still satisfies the rule even though the other id is unknown.
+        val metTask = taskWithWindow(id = "task-1", completedToday = true)
+        val r = rule(conditionTaskIds = listOf("task-1", "ghost"), conditionLogic = "any")
+        val result = evaluateBlocking(
+            rules = listOf(r),
+            tasks = listOf(metTask),
+            currentTime = instant(11, 0),
+            timeZone = zone,
+        )
+        assertTrue(result.blockedApps.isEmpty())
+    }
 }
