@@ -31,8 +31,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +50,7 @@ class BrainfenceService : Service() {
         const val NOTIFICATION_CHANNEL_ID = "brainfence_service"
         const val NOTIFICATION_ID = 1
         private const val EVAL_INTERVAL_MS = 60_000L
+        private const val RESUBSCRIBE_DELAY_MS = 2_000L  // Backoff before re-subscribing a dropped data stream
         private const val BREADCRUMB_INTERVAL_EVALS = 5  // Log location every 5 evals (5 min)
         private const val TAG = "BrainfenceService"
 
@@ -171,25 +175,42 @@ class BrainfenceService : Service() {
      * Any change triggers an immediate re-evaluation.
      */
     private fun observeData() {
-        scope.launch {
-            taskRepository.watchActiveTasks().collect { tasks ->
-                currentTasks = tasks
-                runEvaluation()
-                rescheduleBlockingAlarm()
-                autoStartCompanionTracking(tasks)
-            }
+        observeResilient(taskRepository::watchActiveTasks) { tasks ->
+            currentTasks = tasks
+            runEvaluation()
+            rescheduleBlockingAlarm()
+            autoStartCompanionTracking(tasks)
         }
-        scope.launch {
-            blockingRepository.watchActiveRules().collect { rules ->
-                currentRules = rules
-                runEvaluation()
-                rescheduleBlockingAlarm()
-            }
+        observeResilient(blockingRepository::watchActiveRules) { rules ->
+            currentRules = rules
+            runEvaluation()
+            rescheduleBlockingAlarm()
         }
+        observeResilient(homeLocationRepository::watch) { home ->
+            currentHome = home
+            runEvaluation()
+        }
+    }
+
+    /**
+     * Collect [source], re-subscribing if the stream ever completes or errors.
+     *
+     * PowerSync's `onChange` flows can end on a DB reconnect / auth transition;
+     * if that happened the cached `currentRules` / `currentTasks` would freeze and
+     * the poll loop would evaluate a stale snapshot forever (blocking silently
+     * turning off). Re-subscribing keeps real-time updates flowing.
+     */
+    private fun <T> observeResilient(source: () -> Flow<T>, onEach: suspend (T) -> Unit) {
         scope.launch {
-            homeLocationRepository.watch().collect { home ->
-                currentHome = home
-                runEvaluation()
+            while (isActive) {
+                try {
+                    source().collect { onEach(it) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Data stream failed; resubscribing", e)
+                }
+                delay(RESUBSCRIBE_DELAY_MS)
             }
         }
     }
@@ -203,6 +224,16 @@ class BrainfenceService : Service() {
         evalJob = scope.launch {
             while (true) {
                 delay(EVAL_INTERVAL_MS)
+                // Re-read from the DB every tick so evaluation can never run on a
+                // stale snapshot. This is the correctness floor even if the
+                // reactive streams in observeData stop delivering: worst-case
+                // staleness for a time-based transition is one interval.
+                try {
+                    currentRules = blockingRepository.watchActiveRules().first()
+                    currentTasks = taskRepository.watchActiveTasks().first()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Periodic data refresh failed; using cached data", e)
+                }
                 applyExpiredConfigChanges()
                 runEvaluation()
                 // Tasks that actually block apps = conditions of active rules.

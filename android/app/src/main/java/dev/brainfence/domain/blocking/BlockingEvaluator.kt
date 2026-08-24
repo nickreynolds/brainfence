@@ -114,7 +114,11 @@ private fun conditionUnmetTaskIds(
     homePresence: HomePresence,
 ): Set<String> {
     return rule.conditionTaskIds.filter { taskId ->
-        val task = taskById[taskId] ?: return@filter false
+        // Fail closed: a condition task we can't resolve — a dangling reference to
+        // an archived/deleted task, or a task set that hasn't loaded yet — counts
+        // as unmet so blocking never silently lifts. Strict-by-default, matching
+        // the home-presence handling above.
+        val task = taskById[taskId] ?: return@filter true
         if (task.completedToday) return@filter false
         if (task.homeOnlyBlocking && homePresence == HomePresence.AWAY) return@filter false
         val allowedDays = parseBlockingDays(task.blockingDaysOfWeek)

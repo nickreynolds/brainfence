@@ -302,6 +302,7 @@ fun TaskListScreen(
                     TaskItem(
                         task = task,
                         isEnforcedBlocker = task.id in enforcedBlockingTaskIds,
+                        isActivelyBlocking = task.id in blockingStatus.activelyBlockingTaskIds,
                         showAsCompleted = selectedTab == HomeTab.COMPLETED,
                         showAsUpcoming = selectedTab == HomeTab.UPCOMING,
                         meditationTimer = meditationTimerStates[task.id],
@@ -336,9 +337,14 @@ fun TaskListScreen(
 @Composable
 private fun TaskItem(
     task: Task,
-    /** True when this task is a condition of an active blocking rule (i.e. it
-     *  actually blocks apps). Distinct from the decorative `is_blocking_condition`. */
+    /** True when this task is a condition of an active blocking rule. A static
+     *  property of the task — distinct from the decorative `is_blocking_condition`
+     *  and from whether it is *currently* blocking (see [isActivelyBlocking]). */
     isEnforcedBlocker: Boolean,
+    /** True when this task is right now the reason apps are blocked, per the live
+     *  engine. Drives the present-tense "blocking apps" copy so the row can't
+     *  claim apps are blocked when the engine says otherwise. */
+    isActivelyBlocking: Boolean,
     showAsCompleted: Boolean,
     showAsUpcoming: Boolean,
     meditationTimer: dev.brainfence.service.MeditationTimerState?,
@@ -421,7 +427,7 @@ private fun TaskItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                isOverdue && isEnforcedBlocker -> {
+                isOverdue && isActivelyBlocking -> {
                     Text(
                         text = "Overdue \u2014 blocking apps until completed",
                         color = MaterialTheme.colorScheme.error,
@@ -478,7 +484,7 @@ private fun TaskItem(
                     contentDescription = "Not yet available",
                     tint               = MaterialTheme.colorScheme.outline,
                 )
-                isOverdue && isEnforcedBlocker -> Icon(
+                isOverdue && isActivelyBlocking -> Icon(
                     imageVector        = Icons.Default.Warning,
                     contentDescription = "Overdue",
                     tint               = MaterialTheme.colorScheme.error,
