@@ -10,7 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -238,9 +238,16 @@ class DurationTimerManager @Inject constructor(
         }
     }
 
+    /**
+     * Cancels the running jobs, not [scope] itself — this is a `@Singleton`, so
+     * cancelling the scope would make every later `scope.launch` a silent no-op
+     * for the life of the process once the foreground service is recreated.
+     */
     fun stop() {
         persistAllTimers()
-        scope.cancel()
+        timerJobs.values.forEach { it.cancel() }
+        timerJobs.clear()
+        scope.coroutineContext.cancelChildren()
     }
 
     // ── Internal ──────────────────────────────────────────────────────

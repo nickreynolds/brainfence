@@ -45,6 +45,10 @@ data class TaskEditorState(
     val latitude: String = "",
     val longitude: String = "",
     val radiusMeters: Int = 100,
+    /** GPS geofence mode: "enter" (arrive) or "leave" (depart). */
+    val gpsMode: String = "enter",
+    /** Enter mode only: minutes the user must stay before the task completes. */
+    val gpsMinDurationM: Int = 0,
     // -- shopping notify window (prefilled for an evening commute) --
     val notifyDays: Set<String> = setOf("mon", "tue", "wed", "thu", "fri"),
     val notifyStart: String = "15:00", // HH:MM, blank = from midnight
@@ -170,6 +174,14 @@ class TaskEditorViewModel @Inject constructor(
                         if (vConfig.has("radius_meters")) vConfig.optInt("radius_meters", 100)
                         else vConfig.optInt("radius_m", 100)
                     } else 100,
+                    // Mirrors GpsVerificationManager.parseGpsConfig's defaults so a
+                    // save round-trips the config instead of rewriting it.
+                    gpsMode = if (task.verificationType == "gps") {
+                        vConfig.optString("mode", "enter")
+                    } else "enter",
+                    gpsMinDurationM = if (task.verificationType == "gps") {
+                        vConfig.optInt("min_duration_m", 0)
+                    } else 0,
                     notifyDays = notifyWindow?.optJSONArray("days")?.let { arr ->
                         buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
                     } ?: _state.value.notifyDays,
@@ -324,6 +336,14 @@ class TaskEditorViewModel @Inject constructor(
 
     fun setRadiusMeters(radius: Int) {
         _state.value = _state.value.copy(radiusMeters = radius.coerceAtLeast(10))
+    }
+
+    fun setGpsMode(mode: String) {
+        _state.value = _state.value.copy(gpsMode = mode)
+    }
+
+    fun setGpsMinDurationM(minutes: Int) {
+        _state.value = _state.value.copy(gpsMinDurationM = minutes.coerceAtLeast(0))
     }
 
     fun setMeditationSeconds(seconds: Int) {
@@ -639,6 +659,11 @@ class TaskEditorViewModel @Inject constructor(
                 config.put("latitude", lat)
                 config.put("longitude", lng)
                 config.put("radius_meters", s.radiusMeters)
+                // Always write the mode: save() replaces verification_config
+                // wholesale, so omitting it would silently demote a leave-mode
+                // task to the "enter" default on the next edit.
+                config.put("mode", s.gpsMode)
+                config.put("min_duration_m", if (s.gpsMode == "enter") s.gpsMinDurationM else 0)
             }
             s.verificationType == "meditation" -> {
                 config.put("duration_seconds", s.meditationSeconds)

@@ -133,7 +133,7 @@ class BrainfenceService : Service() {
     private fun handleDueCheck() {
         scope.launch {
             try {
-                gpsVerificationManager.refreshLeaveCompletions()
+                gpsVerificationManager.refreshLeaveCompletions("due-check")
                 companionUsageVerifier.reconcile()
             } catch (e: Exception) {
                 Log.w(TAG, "Due-check refresh failed", e)
@@ -244,7 +244,7 @@ class BrainfenceService : Service() {
                 breadcrumbCounter++
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()
-                    gpsVerificationManager.periodicLeaveCheck()
+                    gpsVerificationManager.refreshLeaveCompletions("periodic")
                     // Pull companion-app foreground time from Android's usage
                     // stats so the meditation tally stays accurate even when
                     // accessibility events were missed (service restart, etc.).

@@ -25,12 +25,15 @@ import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.parseTaskTime
 import dev.brainfence.domain.shopping.NotifyWindow
 import dev.brainfence.domain.shopping.shouldNotifyShopping
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -95,6 +98,7 @@ class GpsVerificationManager @Inject constructor(
     companion object {
         private const val TAG = "GpsVerificationMgr"
         const val ACTION_GEOFENCE_EVENT = "dev.brainfence.ACTION_GEOFENCE_EVENT"
+        private const val RESUBSCRIBE_DELAY_MS = 2_000L
 
         fun parseGpsConfig(json: String): GpsConfig? = try {
             val obj = JSONObject(json)
@@ -163,43 +167,91 @@ class GpsVerificationManager @Inject constructor(
         )
     }
 
+    /** Long-lived collectors started by [startWatching], cancelled by [stop]. */
+    private val watchJobs = mutableListOf<Job>()
+
     /**
      * Start watching tasks and managing geofences.
-     * Called from BrainfenceService.onCreate().
+     * Called from BrainfenceService.onCreate(), which can run more than once in
+     * the life of the process, so this is idempotent.
      */
     fun startWatching() {
-        scope.launch {
-            sessionRepository.authState.collect { state ->
-                if (state is AuthState.SignedIn) {
-                    drainPendingCompletions()
-                }
-            }
-        }
-        scope.launch {
-            debugLog.log("service", "GpsVerificationManager started watching")
-            taskRepository.watchActiveTasks().collect { tasks ->
-                val gpsTasks = tasks.filter { task ->
-                    if (task.verificationType != "gps") return@filter false
-                    when (parseGpsConfig(task.verificationConfig)?.mode) {
-                        // Notify-mode tasks (shopping lists) are never completed,
-                        // so their geofences stay registered permanently.
-                        "notify" -> true
-                        "enter", "leave" -> !task.completedToday
-                        else -> false
+        synchronized(watchJobs) {
+            watchJobs.forEach { it.cancel() }
+            watchJobs.clear()
+            watchJobs += scope.launch {
+                collectResilient("auth state") {
+                    sessionRepository.authState.collect { state ->
+                        if (state is AuthState.SignedIn) {
+                            drainPendingCompletions()
+                        }
                     }
                 }
-                syncGeofences(gpsTasks)
+            }
+            watchJobs += scope.launch {
+                debugLog.log("service", "GpsVerificationManager started watching")
+                collectResilient("active tasks") {
+                    taskRepository.watchActiveTasks().collect { tasks ->
+                        val gpsTasks = tasks.filter { task ->
+                            if (task.verificationType != "gps") return@filter false
+                            when (parseGpsConfig(task.verificationConfig)?.mode) {
+                                // Notify-mode tasks (shopping lists) are never completed,
+                                // so their geofences stay registered permanently.
+                                "notify" -> true
+                                "enter", "leave" -> !task.completedToday
+                                else -> false
+                            }
+                        }
+                        syncGeofences(gpsTasks)
+                    }
+                }
             }
         }
         Log.i(TAG, "Started watching GPS tasks")
     }
 
     /**
+     * Run [block] forever, restarting it if the flow it collects ever completes
+     * or throws.
+     *
+     * PowerSync's `onChange` flows can end on a DB reconnect / auth transition
+     * (flaky or roaming networks make that much more likely). Without this the
+     * collector would exit silently and geofences would never be registered or
+     * removed again for the life of the process. Mirrors
+     * [dev.brainfence.service.BrainfenceService.observeResilient].
+     */
+    private suspend fun collectResilient(label: String, block: suspend () -> Unit) {
+        while (currentCoroutineContext().isActive) {
+            try {
+                block()
+                Log.w(TAG, "$label stream completed; resubscribing")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "$label stream failed; resubscribing", e)
+                debugLog.log("error", "GPS $label stream failed, resubscribing: ${e.message}")
+            }
+            delay(RESUBSCRIBE_DELAY_MS)
+        }
+    }
+
+    /**
      * Stop watching and clean up all geofences.
+     *
+     * Cancels the collectors' jobs rather than [scope] itself: this is a
+     * `@Singleton`, so a cancelled scope would stay cancelled for the life of
+     * the process and every later `scope.launch` would be a silent no-op —
+     * permanently disabling GPS verification the first time the foreground
+     * service is destroyed and recreated without the process dying (the
+     * accessibility service keeps it alive).
      */
     fun stop() {
+        synchronized(watchJobs) {
+            watchJobs.forEach { it.cancel() }
+            watchJobs.clear()
+        }
         removeAllGeofences()
-        scope.cancel()
+        scope.coroutineContext.cancelChildren()
         Log.i(TAG, "Stopped")
     }
 
@@ -340,149 +392,83 @@ class GpsVerificationManager @Inject constructor(
             Log.e(TAG, "Security exception adding geofences", e)
         }
 
-        // For leave-mode tasks, also proactively check the current location.
-        // INITIAL_TRIGGER_EXIT can be unreliable, so this is a belt-and-suspenders approach.
+        // For leave-mode tasks, also proactively check the current location:
+        // INITIAL_TRIGGER_EXIT can be unreliable, and a user who is already
+        // outside will never produce a transition to complete the task.
         if (isLeaveMode) {
-            checkCurrentLocationForLeaveTasks(tasks)
+            scope.launch { refreshLeaveCompletions("registration") }
         }
     }
 
     /**
-     * Proactively check the device's last known location against leave-mode geofences.
-     * If the user is already outside, complete the task immediately.
-     * This supplements INITIAL_TRIGGER_EXIT which can be unreliable.
-     */
-    @SuppressLint("MissingPermission")
-    private fun checkCurrentLocationForLeaveTasks(tasks: List<Task>) {
-        if (!hasLocationPermission()) return
-        val locationClient = LocationServices.getFusedLocationProviderClient(context)
-        locationClient.lastLocation.addOnSuccessListener { location ->
-            if (location == null) {
-                scope.launch {
-                    debugLog.log("geofence", "No last known location for leave-mode check")
-                }
-                return@addOnSuccessListener
-            }
-            for (task in tasks) {
-                val config = parseGpsConfig(task.verificationConfig) ?: continue
-                val distance = FloatArray(1)
-                android.location.Location.distanceBetween(
-                    location.latitude, location.longitude,
-                    config.lat, config.lng,
-                    distance,
-                )
-                if (distance[0] > config.radiusM) {
-                    scope.launch {
-                        debugLog.log(
-                            category = "geofence",
-                            message = "Already outside geofence for '${task.title}' (${distance[0].toInt()}m away), completing",
-                            lat = location.latitude,
-                            lng = location.longitude,
-                            accuracyM = location.accuracy,
-                        )
-                        completeGpsLeaveTask(task.id, location.latitude, location.longitude, location.accuracy)
-                    }
-                } else {
-                    scope.launch {
-                        debugLog.log(
-                            category = "geofence",
-                            message = "Inside geofence for '${task.title}' (${distance[0].toInt()}m from center), waiting for exit",
-                            lat = location.latitude,
-                            lng = location.longitude,
-                            accuracyM = location.accuracy,
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Periodically request a fresh location fix and check it against all tracked
-     * leave-mode geofences. This compensates for Android geofencing being unreliable
-     * during Doze mode — the passive lastLocation API often returns stale data, so
-     * we use getCurrentLocation() for an actual GPS fix.
+     * Every active, not-yet-completed leave-mode GPS task, read from the database.
      *
-     * Called from BrainfenceService on the breadcrumb interval (~5 min).
+     * Deliberately *not* derived from [trackingStates]: that map is only ever
+     * populated as a side effect of a geofence registration, so it is empty
+     * whenever registration failed, the task watcher dropped its subscription,
+     * or the day has rolled over without anything writing to the task tables
+     * (`completed_today` is computed from `date('now')`, so midnight produces no
+     * change event and therefore no re-registration). A user standing still
+     * outside the geofence generates no EXIT transition, so those windows would
+     * otherwise have no path to completion at all.
      */
-    @SuppressLint("MissingPermission")
-    fun periodicLeaveCheck() {
-        val leaveStates = trackingStates.values.filter { it.config.mode == "leave" }
-        if (leaveStates.isEmpty() || !hasLocationPermission()) return
-
-        val locationClient = LocationServices.getFusedLocationProviderClient(context)
-        val request = CurrentLocationRequest.Builder()
-            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-            .setMaxUpdateAgeMillis(60_000L)
-            .build()
-        locationClient.getCurrentLocation(request, null)
-            .addOnSuccessListener { location ->
-                if (location == null) {
-                    scope.launch {
-                        debugLog.log("geofence", "Periodic leave check: no location available")
-                    }
-                    return@addOnSuccessListener
-                }
-                for (state in leaveStates) {
-                    val distance = FloatArray(1)
-                    android.location.Location.distanceBetween(
-                        location.latitude, location.longitude,
-                        state.config.lat, state.config.lng,
-                        distance,
-                    )
-                    if (distance[0] > state.config.radiusM) {
-                        scope.launch {
-                            debugLog.log(
-                                category = "geofence",
-                                message = "Periodic check: outside geofence for '${state.taskTitle}' (${distance[0].toInt()}m away), completing",
-                                lat = location.latitude,
-                                lng = location.longitude,
-                                accuracyM = location.accuracy,
-                            )
-                            completeGpsLeaveTask(state.taskId, location.latitude, location.longitude, location.accuracy)
-                        }
-                    }
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.w(TAG, "Periodic leave check: location request failed", e)
-                scope.launch {
-                    debugLog.log("error", "Periodic leave check failed: ${e.message}")
-                }
-            }
+    private suspend fun activeLeaveTasks(): List<Pair<Task, GpsConfig>> = try {
+        taskRepository.watchActiveTasks().first().mapNotNull { task ->
+            if (task.verificationType != "gps" || task.completedToday) return@mapNotNull null
+            val config = parseGpsConfig(task.verificationConfig) ?: return@mapNotNull null
+            if (config.mode == "leave") task to config else null
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "Failed to read active leave-mode tasks", e)
+        emptyList()
     }
 
     /**
-     * Force a fresh location check for all tracked leave-mode tasks and complete
-     * any the user is currently outside of. Unlike [periodicLeaveCheck] this
-     * suspends until the fix is obtained and completions are written, so a caller
+     * Force a fresh location fix and complete every active leave-mode task the
+     * user is currently outside of.
+     *
+     * Suspends until the fix is obtained and completions are written, so a caller
      * (e.g. the due-time alarm in [BrainfenceService]) can re-evaluate blocking
-     * immediately afterward — catching walks whose geofence EXIT was frozen by Doze.
+     * immediately afterward — catching walks whose geofence EXIT was frozen by
+     * Doze. Uses getCurrentLocation() rather than the passive lastLocation API,
+     * which often returns stale data after a long move.
+     *
+     * Called on geofence registration, on the breadcrumb interval (~5 min), and
+     * from the Doze-piercing due-check alarm.
      */
-    suspend fun refreshLeaveCompletions() {
-        val leaveStates = trackingStates.values.filter { it.config.mode == "leave" }
-        if (leaveStates.isEmpty() || !hasLocationPermission()) return
+    suspend fun refreshLeaveCompletions(reason: String) {
+        if (!hasLocationPermission()) return
+        val leaveTasks = activeLeaveTasks()
+        if (leaveTasks.isEmpty()) return
 
         val location = awaitCurrentLocation() ?: run {
-            debugLog.log("geofence", "Due-check refresh: no fresh location available")
+            debugLog.log("geofence", "Leave check ($reason): no fresh location available")
             return
         }
-        for (state in leaveStates) {
+        for ((task, config) in leaveTasks) {
             val distance = FloatArray(1)
             android.location.Location.distanceBetween(
                 location.latitude, location.longitude,
-                state.config.lat, state.config.lng,
+                config.lat, config.lng,
                 distance,
             )
-            if (distance[0] > state.config.radiusM) {
+            if (distance[0] > config.radiusM) {
                 debugLog.log(
                     category = "geofence",
-                    message = "Due-check refresh: outside geofence for '${state.taskTitle}' (${distance[0].toInt()}m away), completing",
+                    message = "Leave check ($reason): outside geofence for '${task.title}' " +
+                        "(${distance[0].toInt()}m away), completing",
                     lat = location.latitude,
                     lng = location.longitude,
                     accuracyM = location.accuracy,
                 )
-                completeGpsLeaveTask(state.taskId, location.latitude, location.longitude, location.accuracy)
+                completeGpsLeaveTask(
+                    taskId = task.id,
+                    taskTitle = task.title,
+                    config = config,
+                    lat = location.latitude,
+                    lng = location.longitude,
+                    accuracyM = location.accuracy,
+                )
             }
         }
     }
@@ -598,7 +584,7 @@ class GpsVerificationManager @Inject constructor(
             // Leave mode: complete immediately on exit — no requirement
             // to have been inside first.
             scope.launch {
-                completeGpsLeaveTask(taskId, lat, lng, accuracyM)
+                completeGpsLeaveTask(taskId, state.taskTitle, state.config, lat, lng, accuracyM)
             }
             return
         }
@@ -752,25 +738,30 @@ class GpsVerificationManager @Inject constructor(
         trackingStates[taskId] = state.copy(durationJob = null)
     }
 
+    /**
+     * Takes the title and config as parameters rather than looking them up in
+     * [trackingStates]: callers include [refreshLeaveCompletions], which works
+     * off the database precisely so it still runs when nothing is tracked.
+     */
     private suspend fun completeGpsLeaveTask(
         taskId: String,
+        taskTitle: String,
+        config: GpsConfig,
         lat: Double?,
         lng: Double?,
         accuracyM: Float?,
     ) {
-        val state = trackingStates[taskId] ?: return
-
         val verificationData = JSONObject().apply {
             put("departed_at", Instant.now().toString())
-            put("lat", lat ?: state.config.lat)
-            put("lng", lng ?: state.config.lng)
+            put("lat", lat ?: config.lat)
+            put("lng", lng ?: config.lng)
             if (accuracyM != null) put("accuracy_m", accuracyM.toDouble())
         }.toString()
 
-        Log.i(TAG, "Completing GPS leave task '${state.taskTitle}' with proof: $verificationData")
+        Log.i(TAG, "Completing GPS leave task '$taskTitle' with proof: $verificationData")
         debugLog.log(
             category = "geofence",
-            message = "Completing leave-mode task '${state.taskTitle}'",
+            message = "Completing leave-mode task '$taskTitle'",
             data = verificationData,
             lat = lat,
             lng = lng,
@@ -778,9 +769,9 @@ class GpsVerificationManager @Inject constructor(
         )
 
         if (!awaitAuth()) {
-            debugLog.log("geofence", "Auth not available for '${state.taskTitle}', queuing for retry when auth restores")
+            debugLog.log("geofence", "Auth not available for '$taskTitle', queuing for retry when auth restores")
             synchronized(pendingCompletions) {
-                pendingCompletions.add(PendingCompletion(taskId, state.taskTitle, verificationData))
+                pendingCompletions.add(PendingCompletion(taskId, taskTitle, verificationData))
             }
             return
         }

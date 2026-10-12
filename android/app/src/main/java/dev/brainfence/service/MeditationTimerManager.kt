@@ -13,7 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -545,11 +545,21 @@ class MeditationTimerManager @Inject constructor(
         }
     }
 
+    /**
+     * Cancels the running jobs, not [scope] itself — this is a `@Singleton`, so
+     * cancelling the scope would make every later `scope.launch` a silent no-op
+     * for the life of the process once the foreground service is recreated.
+     * (`soundPool` is safe to release: it is lazily rebuilt on next use.)
+     */
     fun stop() {
         persistAllTimers()
         soundPool?.release()
         soundPool = null
-        scope.cancel()
+        timerJobs.values.forEach { it.cancel() }
+        timerJobs.clear()
+        companionJobs.values.forEach { it.cancel() }
+        companionJobs.clear()
+        scope.coroutineContext.cancelChildren()
     }
 
     // ── Internal ─────────────────────────────────────────────────────

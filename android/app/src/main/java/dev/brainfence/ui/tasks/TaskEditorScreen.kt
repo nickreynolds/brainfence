@@ -80,6 +80,8 @@ fun TaskEditorScreen(
     onSetLongitude: (String) -> Unit,
     onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
+    onSetGpsMode: (String) -> Unit,
+    onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
@@ -198,6 +200,8 @@ fun TaskEditorScreen(
                         onSetLongitude = onSetLongitude,
                         onSetLocation = onSetLocation,
                         onSetRadiusMeters = onSetRadiusMeters,
+                        onSetGpsMode = onSetGpsMode,
+                        onSetGpsMinDurationM = onSetGpsMinDurationM,
                         onSetMeditationSeconds = onSetMeditationSeconds,
                         onToggleCompanionApp = onToggleCompanionApp,
                         onToggleNotifyDay = onToggleNotifyDay,
@@ -439,6 +443,8 @@ private fun ConfigStep(
     onSetLongitude: (String) -> Unit,
     onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
+    onSetGpsMode: (String) -> Unit,
+    onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
@@ -466,6 +472,8 @@ private fun ConfigStep(
             onSetLatitude = onSetLatitude,
             onSetLongitude = onSetLongitude,
             onSetRadiusMeters = onSetRadiusMeters,
+            onSetGpsMode = onSetGpsMode,
+            onSetGpsMinDurationM = onSetGpsMinDurationM,
             onSetMeditationSeconds = onSetMeditationSeconds,
             onToggleCompanionApp = onToggleCompanionApp,
         )
@@ -493,6 +501,8 @@ private fun SimpleConfigContent(
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
+    onSetGpsMode: (String) -> Unit,
+    onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
 ) {
@@ -564,6 +574,48 @@ private fun SimpleConfigContent(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    Spacer(Modifier.height(16.dp))
+                    Text("Completes When", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "enter" to "I arrive",
+                            "leave" to "I leave",
+                        ).forEach { (value, label) ->
+                            FilterChip(
+                                selected = state.gpsMode == value,
+                                onClick = { onSetGpsMode(value) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = when (state.gpsMode) {
+                            "leave" -> "Completes when you leave the area — including " +
+                                "immediately, if you are already outside it."
+                            else -> "Completes when you arrive in the area."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    if (state.gpsMode == "enter") {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = state.gpsMinDurationM.toString(),
+                            onValueChange = { it.toIntOrNull()?.let(onSetGpsMinDurationM) },
+                            label = { Text("Minimum stay (minutes)") },
+                            supportingText = { Text("0 = complete on arrival") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
             "meditation" -> {

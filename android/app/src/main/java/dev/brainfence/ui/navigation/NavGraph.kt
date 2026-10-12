@@ -443,6 +443,8 @@ fun BrainfenceNavGraph(
                 onSetLongitude = viewModel::setLongitude,
                 onSetLocation = viewModel::setLocation,
                 onSetRadiusMeters = viewModel::setRadiusMeters,
+                onSetGpsMode = viewModel::setGpsMode,
+                onSetGpsMinDurationM = viewModel::setGpsMinDurationM,
                 onSetMeditationSeconds = viewModel::setMeditationSeconds,
                 onToggleCompanionApp = viewModel::toggleCompanionApp,
                 onToggleNotifyDay = viewModel::toggleNotifyDay,
