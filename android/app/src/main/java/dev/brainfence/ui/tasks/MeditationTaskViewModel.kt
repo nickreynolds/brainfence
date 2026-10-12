@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.brainfence.data.completion.CompletionRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
 import dev.brainfence.service.MeditationConfig
@@ -13,12 +14,21 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import org.json.JSONObject
 import javax.inject.Inject
+
+/** How today's meditation was completed, parsed from the completion's proof data. */
+data class MeditationSessionSummary(
+    val actualSeconds: Int,
+    /** Finished at or after the short-sit threshold but before the full duration. */
+    val isShortSit: Boolean,
+)
 
 @HiltViewModel
 class MeditationTaskViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     taskRepository: TaskRepository,
+    completionRepository: CompletionRepository,
     private val meditationTimerManager: MeditationTimerManager,
 ) : ViewModel() {
 
@@ -36,16 +46,33 @@ class MeditationTaskViewModel @Inject constructor(
         .map { it[taskId] }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun startInAppTimer() {
+    val todaysSession: StateFlow<MeditationSessionSummary?> =
+        completionRepository.watchTodaysVerificationData(taskId)
+            .map { json -> json?.let(::parseSessionSummary) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun startInAppTimer() = startInApp(shortSitIntent = false)
+
+    /** Start the "middle way": a short sit that counts, with the rest offered after. */
+    fun startShortSit() = startInApp(shortSitIntent = true)
+
+    private fun startInApp(shortSitIntent: Boolean) {
         val t = task.value ?: return
         val config = meditationConfig.value ?: return
+        if (shortSitIntent && config.shortSitSeconds <= 0) return
         meditationTimerManager.persistBellInterval(t.id, config.bellIntervalSeconds)
         meditationTimerManager.startInAppTimer(
             t.id,
             t.title,
             config.durationSeconds,
             config.bellIntervalSeconds,
+            shortSitSeconds = config.shortSitSeconds,
+            shortSitIntent = shortSitIntent,
         )
+    }
+
+    fun finishEarly() {
+        meditationTimerManager.finishEarly(taskId)
     }
 
     fun startCompanionTracking() {
@@ -80,4 +107,14 @@ class MeditationTaskViewModel @Inject constructor(
     fun onReturnedToApp() {
         meditationTimerManager.onReturnedToApp(taskId)
     }
+}
+
+private fun parseSessionSummary(json: String): MeditationSessionSummary? = try {
+    val obj = JSONObject(json)
+    MeditationSessionSummary(
+        actualSeconds = obj.optInt("actual_seconds", 0),
+        isShortSit = obj.optBoolean("short_sit", false),
+    )
+} catch (_: Exception) {
+    null
 }

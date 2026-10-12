@@ -83,6 +83,7 @@ fun TaskEditorScreen(
     onSetGpsMode: (String) -> Unit,
     onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
+    onSetShortSitSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
     onSetNotifyStart: (String) -> Unit,
@@ -203,6 +204,7 @@ fun TaskEditorScreen(
                         onSetGpsMode = onSetGpsMode,
                         onSetGpsMinDurationM = onSetGpsMinDurationM,
                         onSetMeditationSeconds = onSetMeditationSeconds,
+                        onSetShortSitSeconds = onSetShortSitSeconds,
                         onToggleCompanionApp = onToggleCompanionApp,
                         onToggleNotifyDay = onToggleNotifyDay,
                         onSetNotifyStart = onSetNotifyStart,
@@ -446,6 +448,7 @@ private fun ConfigStep(
     onSetGpsMode: (String) -> Unit,
     onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
+    onSetShortSitSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
     onSetNotifyStart: (String) -> Unit,
@@ -475,6 +478,7 @@ private fun ConfigStep(
             onSetGpsMode = onSetGpsMode,
             onSetGpsMinDurationM = onSetGpsMinDurationM,
             onSetMeditationSeconds = onSetMeditationSeconds,
+            onSetShortSitSeconds = onSetShortSitSeconds,
             onToggleCompanionApp = onToggleCompanionApp,
         )
         "timed" -> TimedConfigContent(
@@ -504,6 +508,7 @@ private fun SimpleConfigContent(
     onSetGpsMode: (String) -> Unit,
     onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
+    onSetShortSitSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
 ) {
     LazyColumn(
@@ -627,6 +632,24 @@ private fun SimpleConfigContent(
                         value = minutes.toString(),
                         onValueChange = { it.toIntOrNull()?.let { m -> onSetMeditationSeconds(m * 60) } },
                         label = { Text("Duration (minutes)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val shortSitIgnored = state.shortSitSeconds > 0 &&
+                        state.shortSitSeconds >= state.meditationSeconds
+                    OutlinedTextField(
+                        value = (state.shortSitSeconds / 60).toString(),
+                        onValueChange = { it.toIntOrNull()?.let { m -> onSetShortSitSeconds(m * 60) } },
+                        label = { Text("Short sit (minutes, 0 = off)") },
+                        supportingText = {
+                            Text(
+                                if (shortSitIgnored) "Must be shorter than the full duration, or it's ignored"
+                                else "A shorter sit that still counts for the day",
+                            )
+                        },
+                        isError = shortSitIgnored,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),

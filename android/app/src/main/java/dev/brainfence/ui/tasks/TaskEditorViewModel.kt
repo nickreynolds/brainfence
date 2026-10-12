@@ -10,6 +10,7 @@ import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.routine.NewRoutineStep
 import dev.brainfence.data.routine.RoutineRepository
+import dev.brainfence.service.MeditationTimerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +56,8 @@ data class TaskEditorState(
     val notifyEnd: String = "21:00",   // HH:MM, blank = until midnight
     // -- meditation config --
     val meditationSeconds: Int = 300,
+    /** "Middle way" short-sit threshold; 0 = off. */
+    val shortSitSeconds: Int = MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
     /** Package names of companion apps that can record meditation time externally. */
     val companionApps: Set<String> = emptySet(),
     // -- routine steps (sub-tasks) --
@@ -189,6 +192,9 @@ class TaskEditorViewModel @Inject constructor(
                     notifyEnd = notifyWindow?.optString("end", "") ?: _state.value.notifyEnd,
                     meditationSeconds = if (task.verificationType == "meditation") vConfig.optInt("duration_seconds", 300) else 300,
                     companionApps = if (task.verificationType == "meditation") parseCompanionApps(vConfig) else emptySet(),
+                    shortSitSeconds = if (task.verificationType == "meditation") {
+                        vConfig.optInt("short_sit_seconds", MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS)
+                    } else MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
                     routineSteps = steps,
                     recurrenceType = recurrenceTypeUi,
                     weeklyDays = weeklyDays,
@@ -348,6 +354,10 @@ class TaskEditorViewModel @Inject constructor(
 
     fun setMeditationSeconds(seconds: Int) {
         _state.value = _state.value.copy(meditationSeconds = seconds.coerceAtLeast(1))
+    }
+
+    fun setShortSitSeconds(seconds: Int) {
+        _state.value = _state.value.copy(shortSitSeconds = seconds.coerceAtLeast(0))
     }
 
     fun toggleCompanionApp(packageName: String) {
@@ -667,6 +677,7 @@ class TaskEditorViewModel @Inject constructor(
             }
             s.verificationType == "meditation" -> {
                 config.put("duration_seconds", s.meditationSeconds)
+                config.put("short_sit_seconds", s.shortSitSeconds)
                 val apps = JSONArray()
                 for (pkg in s.companionApps) {
                     apps.put(JSONObject().apply {

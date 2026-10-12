@@ -284,6 +284,9 @@ class BrainfenceService : Service() {
         for (task in tasks) {
             if (task.verificationType != "meditation") continue
             if (task.completedToday) continue
+            // The user chose the in-app timer (e.g. a short sit) — don't
+            // replace their session with companion tracking.
+            if (activeTimers[task.id]?.method == "in_app_timer") continue
 
             val config = task.verificationConfig?.let(MeditationTimerManager::parseMeditationConfig)
             if (config == null || config.companionApps.isEmpty()) continue

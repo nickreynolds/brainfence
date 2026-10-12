@@ -291,6 +291,7 @@ fun BrainfenceNavGraph(
             val task             by meditationViewModel.task.collectAsStateWithLifecycle()
             val meditationConfig by meditationViewModel.meditationConfig.collectAsStateWithLifecycle()
             val timerState       by meditationViewModel.timerState.collectAsStateWithLifecycle()
+            val todaysSession    by meditationViewModel.todaysSession.collectAsStateWithLifecycle()
 
             val currentTask = task
             val currentConfig = meditationConfig
@@ -299,10 +300,13 @@ fun BrainfenceNavGraph(
                     task = currentTask,
                     meditationConfig = currentConfig,
                     timerState = timerState,
+                    todaysSession = todaysSession,
                     onStartInApp = meditationViewModel::startInAppTimer,
+                    onStartShortSit = meditationViewModel::startShortSit,
                     onStartCompanion = meditationViewModel::startCompanionTracking,
                     onPause = meditationViewModel::pauseTimer,
                     onResume = meditationViewModel::resumeTimer,
+                    onFinishEarly = meditationViewModel::finishEarly,
                     onCancel = {
                         meditationViewModel.cancelTimer()
                         navController.popBackStack()
@@ -446,6 +450,7 @@ fun BrainfenceNavGraph(
                 onSetGpsMode = viewModel::setGpsMode,
                 onSetGpsMinDurationM = viewModel::setGpsMinDurationM,
                 onSetMeditationSeconds = viewModel::setMeditationSeconds,
+                onSetShortSitSeconds = viewModel::setShortSitSeconds,
                 onToggleCompanionApp = viewModel::toggleCompanionApp,
                 onToggleNotifyDay = viewModel::toggleNotifyDay,
                 onSetNotifyStart = viewModel::setNotifyStart,

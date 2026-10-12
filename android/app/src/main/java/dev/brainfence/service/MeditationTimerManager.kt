@@ -34,6 +34,12 @@ data class MeditationConfig(
     val bellIntervalSeconds: Int,
     /** Package names of companion apps (empty = in-app only). */
     val companionApps: List<String>,
+    /**
+     * "Middle way" threshold in seconds (0 = disabled). An in-app session that
+     * reaches it counts as done for the day, even if stopped before the full
+     * [durationSeconds] — an honest alternative to skipping or bypassing.
+     */
+    val shortSitSeconds: Int,
 )
 
 /**
@@ -53,6 +59,12 @@ data class MeditationTimerState(
     val companionApp: String?,
     /** Whether the user navigated away (for in-app timer warning). */
     val navigatedAway: Boolean,
+    /** Short-sit threshold for this session (0 = disabled). */
+    val shortSitSeconds: Int = 0,
+    /** Session was started as a short sit — the UI offers the rest at the threshold. */
+    val shortSitIntent: Boolean = false,
+    /** Threshold reached and a completion already written for today. */
+    val shortSitBanked: Boolean = false,
 )
 
 @Singleton
@@ -65,6 +77,8 @@ class MeditationTimerManager @Inject constructor(
         private const val TAG = "MeditationTimerMgr"
         private const val PREFS_NAME = "meditation_timers"
         private const val TICK_INTERVAL_MS = 1_000L
+        /** Short-sit threshold used when a task's config doesn't specify one. */
+        const val DEFAULT_SHORT_SIT_SECONDS = 120
 
         fun parseMeditationConfig(json: String): MeditationConfig? = try {
             val obj = try {
@@ -99,11 +113,15 @@ class MeditationTimerManager @Inject constructor(
                     }
                 }
                 Log.d(TAG, "Parsed meditation config: duration=${durationSeconds}s, companionApps=$companionApps")
+                // A threshold at or beyond the full duration would be meaningless.
+                val shortSitSeconds = obj.optInt("short_sit_seconds", DEFAULT_SHORT_SIT_SECONDS)
+                    .takeIf { it in 1 until durationSeconds } ?: 0
                 MeditationConfig(
                     durationSeconds = durationSeconds,
                     allowPause = obj.optBoolean("allow_pause", false),
                     bellIntervalSeconds = obj.optInt("bell_interval_seconds", 0),
                     companionApps = companionApps,
+                    shortSitSeconds = shortSitSeconds,
                 )
             }
         } catch (e: Exception) {
@@ -129,20 +147,34 @@ class MeditationTimerManager @Inject constructor(
 
     /**
      * Start an in-app meditation timer.
+     *
+     * @param shortSitSeconds threshold at which the session counts as done (0 = off).
+     * @param shortSitIntent  true when started as a short sit: a chime marks the
+     *   threshold and the UI offers to continue to [targetSeconds].
+     *
+     * Takes over from companion tracking if that's active (it's auto-started
+     * for tasks with companion apps), carrying today's accumulated time over.
      */
     fun startInAppTimer(
         taskId: String,
         taskTitle: String,
         targetSeconds: Int,
         bellIntervalSeconds: Int,
+        shortSitSeconds: Int = 0,
+        shortSitIntent: Boolean = false,
     ) {
-        if (_timerStates.value.containsKey(taskId)) {
+        val existing = _timerStates.value[taskId]
+        if (existing != null && existing.method != "companion_app") {
             Log.d(TAG, "Timer already active for task $taskId")
             return
         }
+        if (existing != null) {
+            timerJobs.remove(taskId)?.cancel()
+            companionJobs.remove(taskId)?.cancel()
+        }
 
-        val savedElapsed = prefs.getInt("elapsed_$taskId", 0)
-        val savedPauses = prefs.getInt("pauses_$taskId", 0)
+        val savedElapsed = existing?.let(::computeCurrentElapsed) ?: readTodaysElapsed(taskId)
+        val savedPauses = if (existing != null) 0 else prefs.getInt("pauses_$taskId", 0)
 
         val state = MeditationTimerState(
             taskId = taskId,
@@ -155,20 +187,23 @@ class MeditationTimerManager @Inject constructor(
             method = "in_app_timer",
             companionApp = null,
             navigatedAway = false,
+            shortSitSeconds = shortSitSeconds,
+            shortSitIntent = shortSitIntent,
         )
 
         updateState(taskId, state)
         persistTimer(taskId, state)
         launchInAppTickJob(taskId, bellIntervalSeconds)
 
-        if (bellIntervalSeconds > 0) {
+        if (bellIntervalSeconds > 0 || shortSitIntent) {
             ensureSoundPool()
         }
 
         scope.launch {
             debugLog.log(
                 "meditation",
-                "Started in-app meditation for '$taskTitle' (target=${targetSeconds}s)",
+                "Started in-app meditation for '$taskTitle' (target=${targetSeconds}s, " +
+                    "shortSit=${shortSitSeconds}s, intent=${if (shortSitIntent) "short" else "full"})",
             )
         }
         Log.i(TAG, "Started in-app timer for '$taskTitle' (target=${targetSeconds}s)")
@@ -195,6 +230,7 @@ class MeditationTimerManager @Inject constructor(
         )
         updateState(taskId, pausedState)
         persistTimer(taskId, pausedState)
+        syncBankedCompletion(pausedState)
 
         Log.d(TAG, "User navigated away — paused at ${elapsed}s (pause #${pausedState.pauses})")
     }
@@ -224,6 +260,7 @@ class MeditationTimerManager @Inject constructor(
         )
         updateState(taskId, pausedState)
         persistTimer(taskId, pausedState)
+        syncBankedCompletion(pausedState)
 
         Log.d(TAG, "Paused meditation for '${state.taskTitle}' at ${elapsed}s")
     }
@@ -242,8 +279,26 @@ class MeditationTimerManager @Inject constructor(
 
         val bellInterval = prefs.getInt("bell_$taskId", 0)
         launchInAppTickJob(taskId, bellInterval)
+        if (state.shortSitIntent) ensureSoundPool()
 
         Log.d(TAG, "Resumed meditation for '${state.taskTitle}' at ${state.elapsedSeconds}s")
+    }
+
+    /**
+     * End an in-app session early once it has reached its short-sit threshold,
+     * recording it as done with the actual time sat. No-op (returns false)
+     * below the threshold — use [cancelTimer] there.
+     */
+    fun finishEarly(taskId: String): Boolean {
+        val state = _timerStates.value[taskId] ?: return false
+        val elapsed = computeCurrentElapsed(state)
+        if (state.shortSitSeconds <= 0 || elapsed < state.shortSitSeconds) return false
+        // Detach from the tick job before the suspend write so it can't
+        // complete or re-bank the session underneath us.
+        timerJobs[taskId]?.cancel()
+        timerJobs.remove(taskId)
+        scope.launch { completeTimer(taskId, elapsed) }
+        return true
     }
 
     fun cancelTimer(taskId: String) {
@@ -485,6 +540,11 @@ class MeditationTimerManager @Inject constructor(
             val pauses = prefs.getInt("pauses_$taskId", 0)
             val method = prefs.getString("method_$taskId", "in_app_timer") ?: "in_app_timer"
             val companionApp = prefs.getString("companion_app_$taskId", null)
+            val shortSitSeconds = prefs.getInt("short_sit_$taskId", 0)
+            val shortSitIntent = prefs.getBoolean("short_sit_intent_$taskId", false)
+            // Like elapsed, a banked short sit only belongs to the day it was recorded.
+            val isToday = prefs.getString("date_$taskId", null) == todayKey()
+            val shortSitBanked = isToday && prefs.getBoolean("short_sit_banked_$taskId", false)
 
             if (target <= 0) {
                 clearPersistedTimer(taskId)
@@ -507,6 +567,9 @@ class MeditationTimerManager @Inject constructor(
                 method = method,
                 companionApp = companionApp,
                 navigatedAway = false,
+                shortSitSeconds = shortSitSeconds,
+                shortSitIntent = shortSitIntent,
+                shortSitBanked = shortSitBanked,
             )
             updateState(taskId, state)
 
@@ -579,17 +642,28 @@ class MeditationTimerManager @Inject constructor(
                     break
                 }
 
-                // Play interval bell
-                if (bellIntervalSeconds > 0 && elapsed > 0 && elapsed % bellIntervalSeconds == 0) {
+                var next = state.copy(
+                    elapsedSeconds = elapsed,
+                    startedAtMillis = System.currentTimeMillis(),
+                )
+                val reachedShortSit = state.shortSitSeconds > 0 &&
+                    !state.shortSitBanked && elapsed >= state.shortSitSeconds
+                if (reachedShortSit) {
+                    next = next.copy(shortSitBanked = true)
+                    // Publish + persist the banked flag before writing, so a
+                    // concurrent pause can't observe a stale un-banked state.
+                    updateState(taskId, next)
+                    persistTimer(taskId, next)
+                    bankShortSit(next)
+                    if (state.shortSitIntent) playChime()
+                } else if (bellIntervalSeconds > 0 && elapsed > 0 && elapsed % bellIntervalSeconds == 0) {
+                    // Play interval bell
                     playChime()
                 }
 
-                updateState(taskId, state.copy(
-                    elapsedSeconds = elapsed,
-                    startedAtMillis = System.currentTimeMillis(),
-                ))
+                updateState(taskId, next)
                 if (elapsed % 10 == 0) {
-                    persistTimer(taskId, state.copy(elapsedSeconds = elapsed))
+                    persistTimer(taskId, next)
                 }
             }
         }
@@ -599,16 +673,7 @@ class MeditationTimerManager @Inject constructor(
         val state = _timerStates.value[taskId]
         val title = state?.taskTitle ?: taskId
         val method = state?.method ?: "in_app_timer"
-
-        val verificationData = JSONObject().apply {
-            put("method", method)
-            if (method == "in_app_timer") {
-                put("pauses", state?.pauses ?: 0)
-            } else {
-                put("app", state?.companionApp ?: "unknown")
-            }
-            put("actual_seconds", actualSeconds)
-        }.toString()
+        val verificationData = buildVerificationData(state, actualSeconds)
 
         Log.i(TAG, "Meditation complete for '$title' (${actualSeconds}s, method=$method)")
         debugLog.log(
@@ -621,6 +686,11 @@ class MeditationTimerManager @Inject constructor(
             taskId = taskId,
             verificationData = verificationData,
         )
+        if (state?.shortSitBanked == true) {
+            // The short-sit completion already exists (completeTask was a
+            // no-op) — overwrite its proof with the final tally.
+            completionRepository.updateTodaysVerificationData(taskId, verificationData)
+        }
 
         timerJobs[taskId]?.cancel()
         timerJobs.remove(taskId)
@@ -628,6 +698,53 @@ class MeditationTimerManager @Inject constructor(
         companionJobs.remove(taskId)
         removeState(taskId)
         clearPersistedTimer(taskId)
+    }
+
+    private fun buildVerificationData(state: MeditationTimerState?, actualSeconds: Int): String {
+        val method = state?.method ?: "in_app_timer"
+        return JSONObject().apply {
+            put("method", method)
+            if (method == "in_app_timer") {
+                put("pauses", state?.pauses ?: 0)
+            } else {
+                put("app", state?.companionApp ?: "unknown")
+            }
+            put("actual_seconds", actualSeconds)
+            if (state != null && state.shortSitSeconds > 0) {
+                put("target_seconds", state.targetSeconds)
+                put("short_sit", actualSeconds < state.targetSeconds)
+            }
+        }.toString()
+    }
+
+    /**
+     * Record today's completion the moment a session reaches its short-sit
+     * threshold, so it counts even if the session is later abandoned. Runs on
+     * [scope] rather than the tick job so pausing can't cancel the write.
+     */
+    private fun bankShortSit(state: MeditationTimerState) {
+        val verificationData = buildVerificationData(state, state.elapsedSeconds)
+        scope.launch {
+            completionRepository.completeTask(
+                taskId = state.taskId,
+                verificationData = verificationData,
+            )
+            debugLog.log(
+                "meditation",
+                "Short sit banked for '${state.taskTitle}' (${state.elapsedSeconds}s)",
+                data = verificationData,
+            )
+        }
+        Log.i(TAG, "Short sit banked for '${state.taskTitle}' at ${state.elapsedSeconds}s")
+    }
+
+    /** Keep a banked completion's recorded duration in step when a session stops ticking. */
+    private fun syncBankedCompletion(state: MeditationTimerState) {
+        if (!state.shortSitBanked) return
+        val verificationData = buildVerificationData(state, state.elapsedSeconds)
+        scope.launch {
+            completionRepository.updateTodaysVerificationData(state.taskId, verificationData)
+        }
     }
 
     private fun computeCurrentElapsed(state: MeditationTimerState): Int {
@@ -655,6 +772,9 @@ class MeditationTimerManager @Inject constructor(
             .putInt("pauses_$taskId", state.pauses)
             .putString("method_$taskId", state.method)
             .putString("companion_app_$taskId", state.companionApp)
+            .putInt("short_sit_$taskId", state.shortSitSeconds)
+            .putBoolean("short_sit_intent_$taskId", state.shortSitIntent)
+            .putBoolean("short_sit_banked_$taskId", state.shortSitBanked)
             .putString("date_$taskId", todayKey())
             .apply()
     }
@@ -705,6 +825,9 @@ class MeditationTimerManager @Inject constructor(
             .remove("companion_app_$taskId")
             .remove("companion_apps_$taskId")
             .remove("bell_$taskId")
+            .remove("short_sit_$taskId")
+            .remove("short_sit_intent_$taskId")
+            .remove("short_sit_banked_$taskId")
             .remove("date_$taskId")
             .apply()
     }
