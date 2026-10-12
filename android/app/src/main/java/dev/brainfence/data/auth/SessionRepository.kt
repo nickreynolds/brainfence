@@ -33,6 +33,16 @@ class SessionRepository @Inject constructor(
 
     val currentUser get() = supabase.auth.currentUserOrNull()
 
+    /**
+     * The signed-in user's id for local database writes. Falls back to the
+     * persisted session when the in-memory status isn't Authenticated (e.g. a
+     * token refresh is pending or failed offline): a local PowerSync write only
+     * needs the id, and it uploads once the session is valid again.
+     * Null only when no one has signed in on this device.
+     */
+    suspend fun userIdForLocalWrites(): String? =
+        currentUser?.id ?: supabase.auth.sessionManager.loadSession()?.user?.id
+
     suspend fun signIn(email: String, password: String) {
         supabase.auth.signInWith(Email) {
             this.email = email

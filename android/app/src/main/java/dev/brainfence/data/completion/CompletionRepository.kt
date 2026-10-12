@@ -25,7 +25,7 @@ class CompletionRepository @Inject constructor(
         verificationData: String = "{}",
         occurrenceDate: String = Instant.now().toString(),
     ) {
-        val userId = sessionRepository.currentUser?.id
+        val userId = sessionRepository.userIdForLocalWrites()
             ?: error("completeTask called while not authenticated")
         val now = Instant.now().toString()
         val id  = UUID.randomUUID().toString()
