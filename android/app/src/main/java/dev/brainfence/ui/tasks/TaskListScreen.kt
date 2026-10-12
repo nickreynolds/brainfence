@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.ShoppingCart
@@ -108,6 +109,7 @@ fun TaskListScreen(
     onNavigateToRules: () -> Unit = {},
     onNavigateToHomeLocation: () -> Unit = {},
     onNavigateToJournalHistory: () -> Unit = {},
+    onNavigateToContemplations: () -> Unit = {},
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -165,6 +167,11 @@ fun TaskListScreen(
                             text = { Text("Blocking rules") },
                             leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                             onClick = { showMenu = false; onNavigateToRules() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Contemplations") },
+                            leadingIcon = { Icon(Icons.Default.SelfImprovement, contentDescription = null) },
+                            onClick = { showMenu = false; onNavigateToContemplations() },
                         )
                         DropdownMenuItem(
                             text = { Text("Debug logs") },

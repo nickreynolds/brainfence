@@ -4,7 +4,6 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.brainfence.domain.model.Task
@@ -88,19 +87,9 @@ class BlockingAlarmScheduler @Inject constructor(
 
     private fun scheduleAt(triggerAtMillis: Long) {
         val am = alarmManager() ?: return
-        val pi = pendingIntent()
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
-                // Exact-alarm permission not granted — inexact still pierces Doze,
-                // just with looser timing, which is fine for a ~minute-scale check.
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-            } else {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-            }
-        } catch (e: SecurityException) {
-            // Permission revoked between the check and the call — degrade gracefully.
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-        }
+        // Inexact fallback (no exact-alarm permission) still pierces Doze, just
+        // with looser timing, which is fine for a ~minute-scale check.
+        am.setWhileIdleCompat(triggerAtMillis, pendingIntent())
         Log.d(TAG, "Scheduled due-check alarm at $triggerAtMillis")
     }
 

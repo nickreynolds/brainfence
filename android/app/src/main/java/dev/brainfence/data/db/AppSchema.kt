@@ -116,6 +116,51 @@ val AppSchema = Schema(
         ),
     ),
     Table(
+        name = "contemplation_decks",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("name"),
+            Column.text("description"),
+            Column.text("ordering"),             // 'sequential' | 'random'
+            Column.text("response_type"),        // 'none' | 'affirm'
+            Column.text("response_label"),
+            Column.integer("weight"),
+            Column.integer("is_enabled"),
+            Column.text("library_key"),          // set when added from the built-in library
+            Column.integer("sort_order"),
+            Column.text("created_at"),
+            Column.text("updated_at"),
+        ),
+    ),
+    Table(
+        name = "contemplations",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("deck_id"),
+            Column.text("title"),
+            Column.text("body"),
+            Column.text("attribution"),
+            Column.integer("sort_order"),
+            Column.text("created_at"),
+            Column.text("updated_at"),
+        ),
+    ),
+    Table(
+        name = "contemplation_deliveries",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("deck_id"),
+            Column.text("contemplation_id"),
+            Column.text("title"),                // snapshot at delivery time
+            Column.text("body"),
+            Column.text("attribution"),
+            Column.text("delivered_at"),
+            Column.text("response"),             // null | 'affirmed'
+            Column.text("responded_at"),
+            Column.text("created_at"),
+        ),
+    ),
+    Table(
         name = "notes",
         columns = listOf(
             Column.text("user_id"),

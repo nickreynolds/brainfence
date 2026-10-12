@@ -21,6 +21,10 @@ import dev.brainfence.service.AccessibilityServiceChecker
 import dev.brainfence.ui.auth.AuthViewModel
 import dev.brainfence.ui.auth.SignInScreen
 import dev.brainfence.ui.auth.SignUpScreen
+import dev.brainfence.ui.contemplation.ContemplationDeckScreen
+import dev.brainfence.ui.contemplation.ContemplationDeckViewModel
+import dev.brainfence.ui.contemplation.ContemplationSettingsScreen
+import dev.brainfence.ui.contemplation.ContemplationSettingsViewModel
 import dev.brainfence.ui.settings.HomeLocationScreen
 import dev.brainfence.ui.settings.HomeLocationViewModel
 import dev.brainfence.ui.setup.AccessibilitySetupScreen
@@ -82,6 +86,8 @@ private object Routes {
     const val BLOCKING_RULES    = "blocking/rules"
     const val BLOCKING_RULE_EDITOR = "blocking/editor/{ruleId}"
     const val HOME_LOCATION     = "settings/home-location"
+    const val CONTEMPLATIONS    = "settings/contemplations"
+    const val CONTEMPLATION_DECK = "settings/contemplations/deck/{deckId}"
 }
 
 @Composable
@@ -230,6 +236,7 @@ fun BrainfenceNavGraph(
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
                 onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
                 onNavigateToJournalHistory = { navController.navigate(Routes.JOURNAL_HISTORY) },
+                onNavigateToContemplations = { navController.navigate(Routes.CONTEMPLATIONS) },
                 onCreateTask             = { navController.navigate("task/editor") },
                 onEditTask               = { task -> navController.navigate("task/editor?taskId=${task.id}") },
             )
@@ -525,6 +532,53 @@ fun BrainfenceNavGraph(
                 onSave = viewModel::save,
                 onClear = viewModel::clear,
                 onClearError = viewModel::clearError,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.CONTEMPLATIONS) {
+            val viewModel: ContemplationSettingsViewModel = hiltViewModel()
+            val form                  by viewModel.form.collectAsStateWithLifecycle()
+            val decks                 by viewModel.decks.collectAsStateWithLifecycle()
+            val availableLibraryDecks by viewModel.availableLibraryDecks.collectAsStateWithLifecycle()
+            val recentDeliveries      by viewModel.recentDeliveries.collectAsStateWithLifecycle()
+            ContemplationSettingsScreen(
+                form = form,
+                decks = decks,
+                availableLibraryDecks = availableLibraryDecks,
+                recentDeliveries = recentDeliveries,
+                onSetEnabled = viewModel::setEnabled,
+                onSetPerDay = viewModel::setPerDay,
+                onSetWindowStart = viewModel::setWindowStart,
+                onSetWindowEnd = viewModel::setWindowEnd,
+                onSaveSchedule = viewModel::saveSchedule,
+                onClearError = viewModel::clearError,
+                onSendNow = viewModel::sendNow,
+                onAddFromLibrary = viewModel::addFromLibrary,
+                onSetDeckEnabled = viewModel::setDeckEnabled,
+                onOpenDeck = { deckId -> navController.navigate("settings/contemplations/deck/$deckId") },
+                onCreateDeck = {
+                    viewModel.createDeck { deckId ->
+                        navController.navigate("settings/contemplations/deck/$deckId")
+                    }
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.CONTEMPLATION_DECK,
+            arguments = listOf(navArgument("deckId") { type = NavType.StringType }),
+        ) {
+            val viewModel: ContemplationDeckViewModel = hiltViewModel()
+            val form  by viewModel.form.collectAsStateWithLifecycle()
+            val items by viewModel.items.collectAsStateWithLifecycle()
+            ContemplationDeckScreen(
+                form = form,
+                items = items,
+                onUpdateForm = viewModel::update,
+                onSave = { viewModel.save { navController.popBackStack() } },
+                onDeleteDeck = { viewModel.deleteDeck { navController.popBackStack() } },
+                onSaveItem = viewModel::saveItem,
+                onDeleteItem = viewModel::deleteItem,
                 onBack = { navController.popBackStack() },
             )
         }
