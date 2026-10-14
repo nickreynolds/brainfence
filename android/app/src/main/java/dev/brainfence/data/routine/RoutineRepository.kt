@@ -20,6 +20,7 @@ data class NewRoutineStep(
     val stepType: String,
     val config: String,
     val supersetGroup: String?,
+    val description: String? = null,
 )
 
 @Singleton
@@ -37,7 +38,7 @@ class RoutineRepository @Inject constructor(
                     emit(
                         database.getAll(
                             sql = """
-                                SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at
+                                SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at, description
                                 FROM routine_steps
                                 WHERE task_id = ?
                                 ORDER BY step_order
@@ -134,12 +135,12 @@ class RoutineRepository @Inject constructor(
         database.execute(
             sql = """
                 INSERT INTO routine_steps
-                    (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             parameters = listOf(
                 stepId, userId, taskId, step.title, stepOrder, step.stepType,
-                step.config, step.supersetGroup, now,
+                step.config, step.supersetGroup, now, step.description,
             ),
         )
         return stepId
@@ -170,12 +171,12 @@ class RoutineRepository @Inject constructor(
             database.execute(
                 sql = """
                     INSERT INTO routine_steps
-                        (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at, description)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
                 parameters = listOf(
                     stepId, userId, taskId, step.title, index, step.stepType,
-                    step.config, step.supersetGroup, now,
+                    step.config, step.supersetGroup, now, step.description,
                 ),
             )
         }
@@ -190,6 +191,7 @@ class RoutineRepository @Inject constructor(
         config         = cursor.getString(5) ?: "{}",
         supersetGroup  = cursor.getString(6),
         createdAt      = cursor.getString(7)!!,
+        description    = cursor.getString(8),
     )
 
     private fun mapStepCompletion(cursor: SqlCursor): StepCompletion = StepCompletion(

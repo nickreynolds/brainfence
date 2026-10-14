@@ -32,6 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -90,6 +92,7 @@ fun TaskEditorScreen(
     onSetNotifyEnd: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
+    onMoveRoutineStep: (fromIndex: Int, toIndex: Int) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
@@ -212,6 +215,7 @@ fun TaskEditorScreen(
                         onSetNotifyEnd = onSetNotifyEnd,
                         onAddRoutineStep = onAddRoutineStep,
                         onRemoveRoutineStep = onRemoveRoutineStep,
+                        onMoveRoutineStep = onMoveRoutineStep,
                         onUpdateRoutineStep = onUpdateRoutineStep,
                         onCreateSupersetGroup = onCreateSupersetGroup,
                         onRemoveSupersetGroup = onRemoveSupersetGroup,
@@ -459,6 +463,7 @@ private fun ConfigStep(
     onSetNotifyEnd: (String) -> Unit,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
+    onMoveRoutineStep: (fromIndex: Int, toIndex: Int) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
@@ -494,6 +499,7 @@ private fun ConfigStep(
             state = state,
             onAddRoutineStep = onAddRoutineStep,
             onRemoveRoutineStep = onRemoveRoutineStep,
+            onMoveRoutineStep = onMoveRoutineStep,
             onUpdateRoutineStep = onUpdateRoutineStep,
             onCreateSupersetGroup = onCreateSupersetGroup,
             onRemoveSupersetGroup = onRemoveSupersetGroup,
@@ -946,6 +952,7 @@ private fun RoutineConfigContent(
     state: TaskEditorState,
     onAddRoutineStep: () -> Unit,
     onRemoveRoutineStep: (String) -> Unit,
+    onMoveRoutineStep: (fromIndex: Int, toIndex: Int) -> Unit,
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
@@ -987,9 +994,11 @@ private fun RoutineConfigContent(
             }
         }
 
-        itemsIndexed(state.routineSteps, key = { _, step -> step.id }) { _, step ->
+        itemsIndexed(state.routineSteps, key = { _, step -> step.id }) { index, step ->
             EditableStepCard(
                 step = step,
+                onMoveUp = if (index > 0) ({ onMoveRoutineStep(index, index - 1) }) else null,
+                onMoveDown = if (index < state.routineSteps.lastIndex) ({ onMoveRoutineStep(index, index + 1) }) else null,
                 reports = state.availableReports,
                 isWorkout = state.taskType == "workout",
                 isSelectedForSuperset = step.id in selectedForSuperset,
@@ -1047,6 +1056,8 @@ private fun RoutineConfigContent(
 @Composable
 private fun EditableStepCard(
     step: EditableStep,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
     reports: List<dev.brainfence.domain.model.Report>,
     isWorkout: Boolean,
     isSelectedForSuperset: Boolean,
@@ -1085,10 +1096,27 @@ private fun EditableStepCard(
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(onClick = { onMoveUp?.invoke() }, enabled = onMoveUp != null) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up", modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = { onMoveDown?.invoke() }, enabled = onMoveDown != null) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down", modifier = Modifier.size(20.dp))
+                }
                 IconButton(onClick = onRemove) {
                     Icon(Icons.Default.Delete, contentDescription = "Remove", modifier = Modifier.size(20.dp))
                 }
             }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = step.description,
+                onValueChange = { text -> onUpdate { it.copy(description = text) } },
+                label = { Text("Notes (optional)") },
+                placeholder = { Text("Form cues, weights to use…") },
+                minLines = 1,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Spacer(Modifier.height(8.dp))
 

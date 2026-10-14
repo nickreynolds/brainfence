@@ -567,6 +567,7 @@ fun BrainfenceNavGraph(
                 onSetNotifyEnd = viewModel::setNotifyEnd,
                 onAddRoutineStep = viewModel::addRoutineStep,
                 onRemoveRoutineStep = viewModel::removeRoutineStep,
+                onMoveRoutineStep = viewModel::moveStep,
                 onUpdateRoutineStep = viewModel::updateRoutineStep,
                 onCreateSupersetGroup = viewModel::createSupersetGroup,
                 onRemoveSupersetGroup = viewModel::removeSupersetGroup,

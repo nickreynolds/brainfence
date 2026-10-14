@@ -3,6 +3,8 @@ package dev.brainfence.ui.tasks
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -579,6 +581,10 @@ private fun StepCard(
                 }
             }
 
+            if (!step.description.isNullOrBlank()) {
+                StepNotes(step.description)
+            }
+
             Spacer(Modifier.height(12.dp))
 
             when (step.stepType) {
@@ -628,6 +634,23 @@ private fun StepCard(
             }
         }
     }
+}
+
+/** A step's notes: two lines, tap to expand. */
+@Composable
+private fun StepNotes(text: String) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = if (expanded) Int.MAX_VALUE else 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 28.dp, top = 4.dp)
+            .clickable { expanded = !expanded },
+    )
 }
 
 @Composable

@@ -34,6 +34,8 @@ data class EditableStep(
     val supersetGroup: String? = null,
     /** For step type "report": which report the step asks. */
     val reportId: String? = null,
+    /** Optional notes (form cues, weights…) shown with the step. */
+    val description: String = "",
 )
 
 data class TaskEditorState(
@@ -165,6 +167,7 @@ class TaskEditorViewModel @Inject constructor(
                             durationSeconds = sConfig.optInt("duration_seconds", 60),
                             supersetGroup = rs.supersetGroup,
                             reportId = sConfig.optString("report_id").takeIf { it.isNotBlank() },
+                            description = rs.description.orEmpty(),
                         )
                     }
                 } else emptyList()
@@ -594,7 +597,11 @@ class TaskEditorViewModel @Inject constructor(
                             taskType, "active",
                             effectiveRecurrenceType, recurrenceConfig,
                             verificationType, verificationConfig,
-                            "{}", 0, if (isBlockingCondition) 1 else 0, "{}",
+                            // tags / blocking_rule_ids are TEXT[] / UUID[]: locally a JSON
+                            // array, which the connector uploads as a real array. A Postgres
+                            // literal like "{}" parses as a JSON *object*, so the server
+                            // rejects the row (22P02) and PowerSync silently discards it.
+                            "[]", 0, if (isBlockingCondition) 1 else 0, "[]",
                             availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson,
                             now, now,
                         ),
@@ -607,6 +614,7 @@ class TaskEditorViewModel @Inject constructor(
                                 stepType = step.stepType,
                                 config = stepConfigJson(step).toString(),
                                 supersetGroup = step.supersetGroup,
+                                description = step.description.trim().ifBlank { null },
                             )
                         }
                         routineRepository.insertRoutineSteps(taskId, newSteps)
@@ -642,17 +650,18 @@ class TaskEditorViewModel @Inject constructor(
         val userId = sessionRepository.currentUser?.id ?: error("Not authenticated")
         for ((index, step) in edited.withIndex()) {
             val configJson = stepConfigJson(step).toString()
+            val description = step.description.trim().ifBlank { null }
             if (step.id in existingById) {
                 database.execute(
                     sql = """
                         UPDATE routine_steps SET
                             title = ?, step_order = ?, step_type = ?,
-                            config = ?, superset_group = ?
+                            config = ?, superset_group = ?, description = ?
                         WHERE id = ?
                     """.trimIndent(),
                     parameters = listOf(
                         step.title, index, step.stepType,
-                        configJson, step.supersetGroup,
+                        configJson, step.supersetGroup, description,
                         step.id,
                     ),
                 )
@@ -660,12 +669,12 @@ class TaskEditorViewModel @Inject constructor(
                 database.execute(
                     sql = """
                         INSERT INTO routine_steps
-                            (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (id, user_id, task_id, title, step_order, step_type, config, superset_group, created_at, description)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent(),
                     parameters = listOf(
                         step.id, userId, taskId, step.title, index, step.stepType,
-                        configJson, step.supersetGroup, now,
+                        configJson, step.supersetGroup, now, description,
                     ),
                 )
             }

@@ -62,6 +62,7 @@ val AppSchema = Schema(
             Column.text("step_type"),
             Column.text("config"),               // JSONB
             Column.text("superset_group"),
+            Column.text("description"),          // optional notes shown with the step
             Column.text("created_at"),
         ),
     ),

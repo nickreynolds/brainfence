@@ -9,4 +9,6 @@ data class RoutineStep(
     val config: String,   // JSONB as JSON string
     val supersetGroup: String?, // steps with the same non-null value form a superset
     val createdAt: String,
+    /** Optional notes (form cues, weights…) shown with the step. */
+    val description: String? = null,
 )
