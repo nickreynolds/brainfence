@@ -22,6 +22,14 @@ import dev.brainfence.ui.auth.AuthViewModel
 import dev.brainfence.ui.auth.SignInScreen
 import dev.brainfence.ui.auth.SignUpScreen
 import dev.brainfence.ui.contemplation.ContemplationDeckScreen
+import dev.brainfence.ui.report.MetricEditorScreen
+import dev.brainfence.ui.report.MetricEditorViewModel
+import dev.brainfence.ui.report.ReportEditorScreen
+import dev.brainfence.ui.report.ReportEditorViewModel
+import dev.brainfence.ui.report.ReportTaskScreen
+import dev.brainfence.ui.report.ReportTaskViewModel
+import dev.brainfence.ui.report.ReportsScreen
+import dev.brainfence.ui.report.ReportsViewModel
 import dev.brainfence.ui.contemplation.ContemplationDeckViewModel
 import dev.brainfence.ui.contemplation.ContemplationSettingsScreen
 import dev.brainfence.ui.contemplation.ContemplationSettingsViewModel
@@ -80,6 +88,10 @@ private object Routes {
     const val ROUTINE_TASK      = "routine-task/{taskId}"
     const val JOURNAL_TASK      = "journal-task/{taskId}"
     const val SHOPPING_TASK     = "shopping-task/{taskId}"
+    const val REPORT_TASK       = "report-task/{taskId}"
+    const val REPORTS           = "reports"
+    const val REPORT_EDITOR     = "reports/{reportId}"
+    const val METRIC_EDITOR     = "reports/metric/{metricId}"
     const val JOURNAL_HISTORY   = "journal/history"
     const val TASK_EDITOR       = "task/editor?taskId={taskId}"
     const val DEBUG             = "debug"
@@ -226,6 +238,7 @@ fun BrainfenceNavGraph(
                         task.taskType == "routine" || task.taskType == "workout" ->
                             navController.navigate("routine-task/${task.id}")
                         task.taskType == "journal" -> navController.navigate("journal-task/${task.id}")
+                        task.taskType == "report" -> navController.navigate("report-task/${task.id}")
                         else -> taskViewModel.requestComplete(task)
                     }
                 },
@@ -237,6 +250,7 @@ fun BrainfenceNavGraph(
                 onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
                 onNavigateToJournalHistory = { navController.navigate(Routes.JOURNAL_HISTORY) },
                 onNavigateToContemplations = { navController.navigate(Routes.CONTEMPLATIONS) },
+                onNavigateToReports = { navController.navigate(Routes.REPORTS) },
                 onCreateTask             = { navController.navigate("task/editor") },
                 onEditTask               = { task -> navController.navigate("task/editor?taskId=${task.id}") },
             )
@@ -337,6 +351,9 @@ fun BrainfenceNavGraph(
             val allStepsCompleted by routineViewModel.allStepsCompleted.collectAsStateWithLifecycle()
             val isAutoRoutine by routineViewModel.isAutoRoutine.collectAsStateWithLifecycle()
             val autoProgress by routineViewModel.autoProgress.collectAsStateWithLifecycle()
+            val reportSteps by routineViewModel.reportSteps.collectAsStateWithLifecycle()
+            val reportSubmissions by routineViewModel.reportSubmissions.collectAsStateWithLifecycle()
+            val submittingReportSteps by routineViewModel.submittingReportSteps.collectAsStateWithLifecycle()
 
             val currentTask = task
             if (currentTask != null) {
@@ -363,6 +380,10 @@ fun BrainfenceNavGraph(
                     onRemoveStep = routineViewModel::removeStep,
                     onStartAutoRoutine = routineViewModel::startAutoRoutine,
                     onStopAutoRoutine = routineViewModel::stopAutoRoutine,
+                    reportSteps = reportSteps,
+                    reportSubmissions = reportSubmissions,
+                    submittingReportSteps = submittingReportSteps,
+                    onSubmitReport = routineViewModel::submitReportStep,
                     onFinish = {
                         routineViewModel.finishRoutine {
                             navController.popBackStack()
@@ -421,6 +442,88 @@ fun BrainfenceNavGraph(
                 LoadingScreen(onBack = { navController.popBackStack() })
             }
         }
+        composable(
+            route = Routes.REPORT_TASK,
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) {
+            val reportViewModel: ReportTaskViewModel = hiltViewModel()
+            val task             by reportViewModel.task.collectAsStateWithLifecycle()
+            val report           by reportViewModel.report.collectAsStateWithLifecycle()
+            val todaysSubmission by reportViewModel.todaysSubmission.collectAsStateWithLifecycle()
+            val isSubmitting     by reportViewModel.isSubmitting.collectAsStateWithLifecycle()
+
+            val currentTask = task
+            if (currentTask != null) {
+                ReportTaskScreen(
+                    task = currentTask,
+                    report = report,
+                    todaysSubmission = todaysSubmission,
+                    isSubmitting = isSubmitting,
+                    onSubmit = { answers, note ->
+                        reportViewModel.submit(answers, note) { navController.popBackStack() }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            } else {
+                LoadingScreen(onBack = { navController.popBackStack() })
+            }
+        }
+        composable(Routes.REPORTS) {
+            val viewModel: ReportsViewModel = hiltViewModel()
+            val reports  by viewModel.reports.collectAsStateWithLifecycle()
+            val metrics  by viewModel.metrics.collectAsStateWithLifecycle()
+            val starters by viewModel.availableStarters.collectAsStateWithLifecycle()
+            ReportsScreen(
+                reports = reports,
+                metrics = metrics,
+                starters = starters,
+                onOpenReport = { id -> navController.navigate("reports/$id") },
+                onOpenMetric = { id -> navController.navigate("reports/metric/$id") },
+                onAddStarter = viewModel::addStarter,
+                onCreateReport = { viewModel.createReport { id -> navController.navigate("reports/$id") } },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.REPORT_EDITOR,
+            arguments = listOf(navArgument("reportId") { type = NavType.StringType }),
+        ) {
+            val viewModel: ReportEditorViewModel = hiltViewModel()
+            val form           by viewModel.form.collectAsStateWithLifecycle()
+            val report         by viewModel.report.collectAsStateWithLifecycle()
+            val addableMetrics by viewModel.addableMetrics.collectAsStateWithLifecycle()
+            ReportEditorScreen(
+                form = form,
+                report = report,
+                addableMetrics = addableMetrics,
+                onSetName = viewModel::setName,
+                onSetIncludeNote = viewModel::setIncludeNote,
+                onSave = { viewModel.save { navController.popBackStack() } },
+                onAddMetric = viewModel::addMetric,
+                onCreateMetric = { viewModel.createMetric { id -> navController.navigate("reports/metric/$id") } },
+                onOpenMetric = { id -> navController.navigate("reports/metric/$id") },
+                onRemoveMetric = viewModel::removeMetric,
+                onMoveMetric = viewModel::moveMetric,
+                onDelete = { viewModel.deleteReport { navController.popBackStack() } },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.METRIC_EDITOR,
+            arguments = listOf(navArgument("metricId") { type = NavType.StringType }),
+        ) {
+            val viewModel: MetricEditorViewModel = hiltViewModel()
+            val form   by viewModel.form.collectAsStateWithLifecycle()
+            val usedIn by viewModel.usedIn.collectAsStateWithLifecycle()
+            MetricEditorScreen(
+                form = form,
+                usedIn = usedIn,
+                onUpdate = viewModel::update,
+                onSave = { viewModel.save { navController.popBackStack() } },
+                onDelete = { viewModel.deleteMetric { navController.popBackStack() } },
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.JOURNAL_HISTORY) {
             val journalHistoryViewModel: JournalHistoryViewModel = hiltViewModel()
             val entries by journalHistoryViewModel.entries.collectAsStateWithLifecycle()
@@ -467,6 +570,7 @@ fun BrainfenceNavGraph(
                 onUpdateRoutineStep = viewModel::updateRoutineStep,
                 onCreateSupersetGroup = viewModel::createSupersetGroup,
                 onRemoveSupersetGroup = viewModel::removeSupersetGroup,
+                onSetReportId = viewModel::setReportId,
                 onSetRecurrenceType = viewModel::setRecurrenceType,
                 onToggleWeeklyDay = viewModel::toggleWeeklyDay,
                 onSetBlockingCondition = viewModel::setBlockingCondition,

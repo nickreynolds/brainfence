@@ -93,6 +93,7 @@ fun TaskEditorScreen(
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
+    onSetReportId: (String) -> Unit,
     onSetRecurrenceType: (String?) -> Unit,
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
@@ -214,6 +215,7 @@ fun TaskEditorScreen(
                         onUpdateRoutineStep = onUpdateRoutineStep,
                         onCreateSupersetGroup = onCreateSupersetGroup,
                         onRemoveSupersetGroup = onRemoveSupersetGroup,
+                        onSetReportId = onSetReportId,
                     )
                     2 -> ScheduleStep(
                         state = state,
@@ -383,6 +385,7 @@ private fun TaskTypeSelector(selected: String, onSelect: (String) -> Unit) {
         "workout" to "Workout",
         "journal" to "Journal",
         "shopping" to "Shopping List",
+        "report" to "Report",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         types.chunked(2).forEach { row ->
@@ -430,6 +433,7 @@ private fun taskTypeDescription(type: String): String = when (type) {
     "workout" -> "Exercise tracking with sets"
     "journal" -> "Write a short entry"
     "shopping" -> "Running list with location reminder"
+    "report" -> "Answer a few quick questions"
     else -> ""
 }
 
@@ -458,6 +462,7 @@ private fun ConfigStep(
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
+    onSetReportId: (String) -> Unit,
 ) {
     when (state.taskType) {
         "shopping" -> ShoppingConfigContent(
@@ -494,6 +499,76 @@ private fun ConfigStep(
             onRemoveSupersetGroup = onRemoveSupersetGroup,
         )
         "journal" -> JournalConfigContent()
+        "report" -> ReportConfigContent(state = state, onSetReportId = onSetReportId)
+    }
+}
+
+/** Dropdown of the user's reports; reports are managed under ⋮ → Reports. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReportPicker(
+    reports: List<dev.brainfence.domain.model.Report>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = reports.firstOrNull { it.id == selectedId }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = selected?.name ?: "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Report") },
+            placeholder = { Text(if (reports.isEmpty()) "No reports yet" else "Choose a report") },
+            supportingText = {
+                Text(
+                    selected?.let { r -> r.metrics.joinToString { it.name }.ifBlank { "No metrics yet" } }
+                        ?: "Create and edit reports under ⋮ → Reports",
+                )
+            },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            reports.forEach { report ->
+                DropdownMenuItem(
+                    text = { Text(report.name) },
+                    onClick = {
+                        onSelect(report.id)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportConfigContent(state: TaskEditorState, onSetReportId: (String) -> Unit) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Completing this task asks each metric in the report. Several tasks or routine " +
+                    "steps can share one report, so their answers form one history.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item {
+            ReportPicker(
+                reports = state.availableReports,
+                selectedId = state.reportId,
+                onSelect = onSetReportId,
+            )
+        }
     }
 }
 
@@ -915,6 +990,7 @@ private fun RoutineConfigContent(
         itemsIndexed(state.routineSteps, key = { _, step -> step.id }) { _, step ->
             EditableStepCard(
                 step = step,
+                reports = state.availableReports,
                 isWorkout = state.taskType == "workout",
                 isSelectedForSuperset = step.id in selectedForSuperset,
                 onToggleSelectForSuperset = {
@@ -971,6 +1047,7 @@ private fun RoutineConfigContent(
 @Composable
 private fun EditableStepCard(
     step: EditableStep,
+    reports: List<dev.brainfence.domain.model.Report>,
     isWorkout: Boolean,
     isSelectedForSuperset: Boolean,
     onToggleSelectForSuperset: () -> Unit,
@@ -1030,6 +1107,7 @@ private fun EditableStepCard(
                     "timed" to "Timed",
                     "weight_reps" to "Weight & Reps",
                     "just_reps" to "Reps Only",
+                    "report" to "Report",
                 )
             }
             val selectedLabel = stepTypes.find { it.first == step.stepType }?.second ?: step.stepType
@@ -1094,6 +1172,14 @@ private fun EditableStepCard(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                "report" -> {
+                    Spacer(Modifier.height(8.dp))
+                    ReportPicker(
+                        reports = reports,
+                        selectedId = step.reportId,
+                        onSelect = { id -> onUpdate { it.copy(reportId = id) } },
                     )
                 }
             }

@@ -64,7 +64,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.brainfence.domain.model.Report
+import dev.brainfence.domain.model.ReportSubmission
 import dev.brainfence.domain.model.RoutineStep
+import dev.brainfence.ui.report.ReportForm
+import dev.brainfence.ui.report.ReportSubmissionSummary
 import dev.brainfence.domain.model.Task
 import org.json.JSONObject
 
@@ -98,6 +102,10 @@ fun RoutineTaskScreen(
     onRemoveStep: (stepId: String) -> Unit,
     onStartAutoRoutine: () -> Unit = {},
     onStopAutoRoutine: () -> Unit = {},
+    reportSteps: Map<String, Report?> = emptyMap(),
+    reportSubmissions: Map<String, ReportSubmission> = emptyMap(),
+    submittingReportSteps: Set<String> = emptySet(),
+    onSubmitReport: (stepId: String, answers: Map<String, String>, note: String) -> Unit = { _, _, _ -> },
     onFinish: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -232,6 +240,10 @@ fun RoutineTaskScreen(
                                 onStartTimer = { idx -> onStartTimer(item.id, idx) },
                                 onStopTimer = { idx -> onStopTimer(item.id, idx) },
                                 onRemoveStep = { onRemoveStep(item.id) },
+                                report = reportSteps[item.id],
+                                reportSubmission = reportSubmissions[item.id],
+                                isSubmittingReport = item.id in submittingReportSteps,
+                                onSubmitReport = { answers, note -> onSubmitReport(item.id, answers, note) },
                             )
                         }
                         is SupersetGroup -> {
@@ -520,6 +532,10 @@ private fun StepCard(
     onStartTimer: (setIndex: Int) -> Unit,
     onStopTimer: (setIndex: Int) -> Unit,
     onRemoveStep: () -> Unit,
+    report: Report?,
+    reportSubmission: ReportSubmission?,
+    isSubmittingReport: Boolean,
+    onSubmitReport: (answers: Map<String, String>, note: String) -> Unit,
 ) {
     val step = state.step
     val allSetsCompleted = state.sets.all { it.completed }
@@ -596,6 +612,19 @@ private fun StepCard(
                     onStart = { onStartTimer(0) },
                     onStop = { onStopTimer(0) },
                 )
+                "report" -> when {
+                    reportSubmission != null -> ReportSubmissionSummary(reportSubmission)
+                    report == null -> Text(
+                        text = "This step's report can't be found. Edit the routine to choose one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> ReportForm(
+                        report = report,
+                        isSubmitting = isSubmittingReport,
+                        onSubmit = onSubmitReport,
+                    )
+                }
             }
         }
     }

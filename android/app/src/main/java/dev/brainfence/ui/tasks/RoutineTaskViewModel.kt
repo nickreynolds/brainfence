@@ -9,16 +9,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.brainfence.data.report.ReportRepository
 import dev.brainfence.data.routine.RoutineRepository
 import dev.brainfence.data.task.TaskRepository
+import dev.brainfence.domain.model.Report
+import dev.brainfence.domain.model.ReportSubmission
 import dev.brainfence.domain.model.RoutineStep
 import dev.brainfence.domain.model.Task
+import dev.brainfence.ui.report.reportIdFromConfig
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -66,6 +71,7 @@ class RoutineTaskViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     taskRepository: TaskRepository,
     private val routineRepository: RoutineRepository,
+    private val reportRepository: ReportRepository,
     @ApplicationContext context: Context,
 ) : ViewModel() {
 
@@ -85,6 +91,26 @@ class RoutineTaskViewModel @Inject constructor(
 
     private val _supersetRounds = MutableStateFlow<Map<String, SupersetRoundState>>(emptyMap())
     val supersetRounds: StateFlow<Map<String, SupersetRoundState>> = _supersetRounds.asStateFlow()
+
+    /** The report each report step asks (null if its report was deleted), keyed by step id. */
+    val reportSteps: StateFlow<Map<String, Report?>> =
+        combine(steps, reportRepository.watchReports()) { stepList, reports ->
+            val byId = reports.associateBy { it.id }
+            stepList.filter { it.stepType == "report" }
+                .associate { step -> step.id to reportIdFromConfig(step.config)?.let(byId::get) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /**
+     * Today's submission per report step. A report step is complete exactly
+     * when one exists, independent of saved in-progress state — answers are
+     * stored the moment they're submitted, not when the routine finishes.
+     */
+    val reportSubmissions: StateFlow<Map<String, ReportSubmission>> =
+        reportRepository.watchTodaysRoutineSubmissions(taskId)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    private val _submittingReportSteps = MutableStateFlow<Set<String>>(emptySet())
+    val submittingReportSteps: StateFlow<Set<String>> = _submittingReportSteps.asStateFlow()
 
     private val _isCompleting = MutableStateFlow(false)
     val isCompleting: StateFlow<Boolean> = _isCompleting.asStateFlow()
@@ -111,6 +137,9 @@ class RoutineTaskViewModel @Inject constructor(
     private var prefilled = false
 
     init {
+        viewModelScope.launch {
+            reportSubmissions.collect { applyReportCompletions() }
+        }
         // When steps arrive, initialise UI state and pre-fill from last completion
         viewModelScope.launch {
             steps.collect { stepList ->
@@ -127,6 +156,7 @@ class RoutineTaskViewModel @Inject constructor(
                             step.id to StepUiState(step = step, sets = sets)
                         }
                         _stepStates.value = _stepStates.value + newStates
+                        applyReportCompletions()
                         saveProgress()
                     }
                     // Remove states for deleted steps
@@ -142,6 +172,38 @@ class RoutineTaskViewModel @Inject constructor(
     }
 
     private suspend fun initStepStates(stepList: List<RoutineStep>) {
+        initStepStatesFromSources(stepList)
+        applyReportCompletions()
+    }
+
+    /** Mark report steps complete iff today's submission for them exists. */
+    private fun applyReportCompletions() {
+        val submitted = reportSubmissions.value.keys
+        val states = _stepStates.value
+        val changed = states.filter { (id, state) ->
+            state.step.stepType == "report" &&
+                state.sets.firstOrNull()?.completed != (id in submitted)
+        }
+        if (changed.isEmpty()) return
+        _stepStates.value = states + changed.mapValues { (id, state) ->
+            state.copy(sets = state.sets.map { it.copy(completed = id in submitted) })
+        }
+    }
+
+    fun submitReportStep(stepId: String, answers: Map<String, String>, note: String) {
+        val report = reportSteps.value[stepId] ?: return
+        if (stepId in _submittingReportSteps.value) return
+        _submittingReportSteps.value += stepId
+        viewModelScope.launch {
+            try {
+                reportRepository.submit(report, answers, note, taskId, routineStepId = stepId)
+            } finally {
+                _submittingReportSteps.value -= stepId
+            }
+        }
+    }
+
+    private suspend fun initStepStatesFromSources(stepList: List<RoutineStep>) {
         // Try to restore in-progress session first
         if (restoreSavedProgress(stepList)) return
 
@@ -378,6 +440,10 @@ class RoutineTaskViewModel @Inject constructor(
                             json.put("completed", entry.completed)
                             val stepConfig = JSONObject(state.step.config)
                             json.put("work_seconds", stepConfig.optInt("work_seconds", 0))
+                        }
+                        "report" -> {
+                            json.put("completed", entry.completed)
+                            reportSubmissions.value[state.step.id]?.let { json.put("submission_id", it.id) }
                         }
                     }
                     json.toString()

@@ -9,7 +9,9 @@ import dev.brainfence.data.apps.InstalledApp
 import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.routine.NewRoutineStep
+import dev.brainfence.data.report.ReportRepository
 import dev.brainfence.data.routine.RoutineRepository
+import dev.brainfence.domain.model.Report
 import dev.brainfence.service.MeditationTimerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +32,8 @@ data class EditableStep(
     val defaultSets: Int = 3,
     val durationSeconds: Int = 60,
     val supersetGroup: String? = null,
+    /** For step type "report": which report the step asks. */
+    val reportId: String? = null,
 )
 
 data class TaskEditorState(
@@ -60,6 +64,9 @@ data class TaskEditorState(
     val shortSitSeconds: Int = MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
     /** Package names of companion apps that can record meditation time externally. */
     val companionApps: Set<String> = emptySet(),
+    // -- report task: which report it asks; plus every report, for pickers --
+    val reportId: String? = null,
+    val availableReports: List<Report> = emptyList(),
     // -- routine steps (sub-tasks) --
     val routineSteps: List<EditableStep> = emptyList(),
     // Step 2: Recurrence + Blocking + Availability
@@ -88,6 +95,7 @@ class TaskEditorViewModel @Inject constructor(
     private val database: PowerSyncDatabase,
     private val sessionRepository: SessionRepository,
     private val routineRepository: RoutineRepository,
+    reportRepository: ReportRepository,
     private val installedAppsProvider: InstalledAppsProvider,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -99,6 +107,11 @@ class TaskEditorViewModel @Inject constructor(
     val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            reportRepository.watchReports().collect { reports ->
+                _state.value = _state.value.copy(availableReports = reports)
+            }
+        }
         viewModelScope.launch { _installedApps.value = installedAppsProvider.load() }
         val taskId: String? = savedStateHandle["taskId"]
         if (!taskId.isNullOrBlank()) loadExistingTask(taskId)
@@ -151,6 +164,7 @@ class TaskEditorViewModel @Inject constructor(
                             defaultSets = sConfig.optInt("default_sets", 3),
                             durationSeconds = sConfig.optInt("duration_seconds", 60),
                             supersetGroup = rs.supersetGroup,
+                            reportId = sConfig.optString("report_id").takeIf { it.isNotBlank() },
                         )
                     }
                 } else emptyList()
@@ -196,6 +210,9 @@ class TaskEditorViewModel @Inject constructor(
                         vConfig.optInt("short_sit_seconds", MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS)
                     } else MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
                     routineSteps = steps,
+                    reportId = if (task.taskType == "report") {
+                        vConfig.optString("report_id").takeIf { it.isNotBlank() }
+                    } else null,
                     recurrenceType = recurrenceTypeUi,
                     weeklyDays = weeklyDays,
                     isBlockingCondition = task.isBlockingCondition,
@@ -309,6 +326,7 @@ class TaskEditorViewModel @Inject constructor(
             "routine", "workout" -> "manual"
             "journal" -> "journal"
             "shopping" -> "gps"
+            "report" -> "report"
             else -> s.verificationType
         }
         _state.value = s.copy(taskType = type, verificationType = verificationType)
@@ -473,6 +491,10 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(error = null)
     }
 
+    fun setReportId(reportId: String) {
+        _state.value = _state.value.copy(reportId = reportId)
+    }
+
     // --- Save ---
 
     fun save(onComplete: () -> Unit) {
@@ -485,6 +507,16 @@ class TaskEditorViewModel @Inject constructor(
             (s.latitude.toDoubleOrNull() == null || s.longitude.toDoubleOrNull() == null)
         ) {
             _state.value = s.copy(error = "A reminder location (latitude/longitude) is required")
+            return
+        }
+        if (s.taskType == "report" && s.reportId == null) {
+            _state.value = s.copy(error = "Choose which report this task asks")
+            return
+        }
+        if ((s.taskType == "routine" || s.taskType == "workout") &&
+            s.routineSteps.any { it.stepType == "report" && it.reportId == null }
+        ) {
+            _state.value = s.copy(error = "Choose a report for each report step")
             return
         }
         _state.value = s.copy(isSaving = true, error = null)
@@ -500,6 +532,7 @@ class TaskEditorViewModel @Inject constructor(
                     "timed" -> "duration"
                     "routine", "workout" -> null
                     "shopping" -> "gps"
+                    "report" -> "report"
                     else -> s.verificationType.takeIf { it != "manual" }
                 }
                 val verificationConfig = buildVerificationConfig(s)
@@ -644,6 +677,7 @@ class TaskEditorViewModel @Inject constructor(
         when (step.stepType) {
             "weight_reps", "just_reps" -> cfg.put("default_sets", step.defaultSets)
             "timed" -> cfg.put("duration_seconds", step.durationSeconds)
+            "report" -> step.reportId?.let { cfg.put("report_id", it) }
         }
         return cfg
     }
@@ -652,6 +686,7 @@ class TaskEditorViewModel @Inject constructor(
         val config = JSONObject()
         when {
             s.taskType == "timed" -> config.put("duration_seconds", s.durationSeconds)
+            s.taskType == "report" -> s.reportId?.let { config.put("report_id", it) }
             s.taskType == "shopping" -> {
                 config.put("latitude", s.latitude.toDoubleOrNull() ?: 0.0)
                 config.put("longitude", s.longitude.toDoubleOrNull() ?: 0.0)

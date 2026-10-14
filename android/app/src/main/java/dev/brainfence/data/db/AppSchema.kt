@@ -161,6 +161,79 @@ val AppSchema = Schema(
         ),
     ),
     Table(
+        name = "metrics",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("name"),
+            Column.text("description"),
+            Column.text("kind"),                 // 'ordinal' | 'categorical'
+            Column.text("created_at"),
+            Column.text("updated_at"),
+        ),
+    ),
+    Table(
+        name = "metric_options",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("metric_id"),
+            Column.text("label"),
+            Column.integer("sort_order"),
+            Column.text("created_at"),
+            Column.text("updated_at"),
+        ),
+    ),
+    Table(
+        name = "reports",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("name"),
+            Column.integer("include_note"),
+            Column.text("library_key"),
+            Column.text("created_at"),
+            Column.text("updated_at"),
+        ),
+    ),
+    Table(
+        name = "report_metrics",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("report_id"),
+            Column.text("metric_id"),
+            Column.integer("sort_order"),
+            Column.text("created_at"),
+        ),
+    ),
+    Table(
+        name = "report_submissions",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("report_id"),
+            Column.text("task_id"),
+            Column.text("routine_step_id"),      // set when filled in as a routine step
+            Column.text("report_name"),          // snapshot
+            Column.text("note"),
+            Column.text("submitted_at"),
+            Column.text("created_at"),
+        ),
+    ),
+    Table(
+        name = "metric_entries",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("submission_id"),
+            Column.text("metric_id"),
+            Column.text("option_id"),
+            Column.text("metric_name"),          // snapshots from here down
+            Column.text("metric_kind"),
+            Column.text("option_label"),
+            Column.integer("option_index"),
+            Column.integer("option_count"),
+            Column.integer("position"),
+            Column.text("recorded_at"),
+            Column.text("created_at"),
+        ),
+    ),
+    Table(
         name = "notes",
         columns = listOf(
             Column.text("user_id"),
