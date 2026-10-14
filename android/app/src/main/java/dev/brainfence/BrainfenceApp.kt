@@ -7,6 +7,8 @@ import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
 import dev.brainfence.data.db.SyncManager
 import dev.brainfence.service.BrainfenceService
+import dev.brainfence.service.ContemplationNotifier
+import dev.brainfence.service.ContemplationScheduler
 import dev.brainfence.service.TaskNotificationManager
 import javax.inject.Inject
 
@@ -14,11 +16,15 @@ import javax.inject.Inject
 class BrainfenceApp : Application() {
 
     @Inject lateinit var syncManager: SyncManager
+    @Inject lateinit var contemplationScheduler: ContemplationScheduler
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         syncManager.initialize()
+        // Every process start (incl. boot and app update) re-arms the next
+        // contemplation alarm — alarms don't survive a reboot.
+        contemplationScheduler.reschedule()
         try {
             BrainfenceService.start(this)
         } catch (e: IllegalStateException) {
@@ -52,5 +58,14 @@ class BrainfenceApp : Application() {
             description = getString(R.string.task_alerts_channel_description)
         }
         nm.createNotificationChannel(alertsChannel)
+
+        val contemplationsChannel = NotificationChannel(
+            ContemplationNotifier.CHANNEL_ID,
+            getString(R.string.contemplations_channel),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.contemplations_channel_description)
+        }
+        nm.createNotificationChannel(contemplationsChannel)
     }
 }

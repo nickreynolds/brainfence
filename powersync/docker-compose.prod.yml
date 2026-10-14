@@ -1,17 +1,33 @@
+# Docker keeps container stdout forever by default; on a small droplet that
+# eventually fills the disk (mongo's log alone once reached 18 GB). Cap each
+# container at 3 x 10 MB.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   mongo:
     image: mongo:7
-    command: ["mongod", "--replSet", "rs0"]
+    # --quiet drops per-connection log lines, which the healthcheck below
+    # would otherwise generate on every run.
+    command: ["mongod", "--replSet", "rs0", "--quiet"]
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped
+    logging: *default-logging
+    # Initiates the replica set on first boot (and reports health after).
+    # Runs every 5s while starting so PowerSync can connect quickly, then
+    # once a minute.
     healthcheck:
       test: >
         mongosh --quiet --eval "
         try { rs.status().ok }
         catch(e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"
-      interval: 5s
-      start_period: 10s
+      interval: 60s
+      start_period: 30s
+      start_interval: 5s
 
   powersync:
     image: journeyapps/powersync-service:latest
@@ -24,6 +40,7 @@ services:
     env_file:
       - ../.env
     restart: unless-stopped
+    logging: *default-logging
 
   caddy:
     image: caddy:2
@@ -39,6 +56,7 @@ services:
     env_file:
       - ../.env
     restart: unless-stopped
+    logging: *default-logging
 
 networks:
   default:

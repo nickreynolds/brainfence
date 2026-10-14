@@ -62,10 +62,13 @@ fun MeditationTaskScreen(
     task: Task,
     meditationConfig: MeditationConfig,
     timerState: MeditationTimerState?,
+    todaysSession: MeditationSessionSummary?,
     onStartInApp: () -> Unit,
+    onStartShortSit: () -> Unit,
     onStartCompanion: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onFinishEarly: () -> Unit,
     onCancel: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -92,20 +95,27 @@ fun MeditationTaskScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             when {
-                task.completedToday -> CompletedState()
-                timerState == null -> NotStartedState(
-                    meditationConfig = meditationConfig,
-                    onStartInApp = onStartInApp,
-                    onStartCompanion = onStartCompanion,
-                )
-                timerState.method == "companion_app" -> CompanionTrackingState(
-                    timerState = timerState,
-                    onCancel = { showCancelDialog = true },
-                )
-                else -> InAppTimerState(
+                // Checked before completedToday: a session that banked a short
+                // sit is already "completed" but may still be running.
+                timerState != null && timerState.method == "in_app_timer" -> InAppTimerState(
                     timerState = timerState,
                     onPause = onPause,
                     onResume = onResume,
+                    onFinishEarly = onFinishEarly,
+                    onCancel = { showCancelDialog = true },
+                )
+                task.completedToday -> CompletedState(todaysSession)
+                timerState == null -> NotStartedState(
+                    meditationConfig = meditationConfig,
+                    onStartInApp = onStartInApp,
+                    onStartShortSit = onStartShortSit,
+                    onStartCompanion = onStartCompanion,
+                )
+                else -> CompanionTrackingState(
+                    timerState = timerState,
+                    meditationConfig = meditationConfig,
+                    onStartInApp = onStartInApp,
+                    onStartShortSit = onStartShortSit,
                     onCancel = { showCancelDialog = true },
                 )
             }
@@ -116,7 +126,18 @@ fun MeditationTaskScreen(
         AlertDialog(
             onDismissRequest = { showCancelDialog = false },
             title = { Text("Cancel meditation?") },
-            text = { Text("Your progress will be lost.") },
+            text = {
+                val shortSit = timerState?.shortSitSeconds ?: 0
+                val elapsed = timerState?.elapsedSeconds ?: 0
+                if (timerState?.method == "in_app_timer" && shortSit > elapsed) {
+                    Text(
+                        "Your progress will be lost. Stay until " +
+                            "${formatMeditationTime(shortSit)} and it counts as a short sit.",
+                    )
+                } else {
+                    Text("Your progress will be lost.")
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showCancelDialog = false
@@ -135,7 +156,7 @@ fun MeditationTaskScreen(
 }
 
 @Composable
-private fun CompletedState() {
+private fun CompletedState(session: MeditationSessionSummary?) {
     Icon(
         imageVector = Icons.Default.CheckCircle,
         contentDescription = null,
@@ -148,12 +169,25 @@ private fun CompletedState() {
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.primary,
     )
+    if (session != null && session.actualSeconds > 0) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = if (session.isShortSit) {
+                "Short sit · ${formatMeditationTime(session.actualSeconds)}"
+            } else {
+                "Full session · ${formatMeditationTime(session.actualSeconds)}"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
 private fun NotStartedState(
     meditationConfig: MeditationConfig,
     onStartInApp: () -> Unit,
+    onStartShortSit: () -> Unit,
     onStartCompanion: () -> Unit,
 ) {
     MeditationRing(elapsed = 0, target = meditationConfig.durationSeconds)
@@ -185,6 +219,21 @@ private fun NotStartedState(
         Text("Start Meditation")
     }
 
+    if (meditationConfig.shortSitSeconds > 0) {
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(onClick = onStartShortSit) {
+            Text("Short sit (${formatMinutes(meditationConfig.shortSitSeconds)})")
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Counts for today. You'll be offered the rest afterwards.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
     if (meditationConfig.companionApps.isNotEmpty()) {
         Spacer(Modifier.height(16.dp))
         OutlinedButton(onClick = onStartCompanion) {
@@ -206,10 +255,15 @@ private fun InAppTimerState(
     timerState: MeditationTimerState,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onFinishEarly: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val elapsed = timerState.elapsedSeconds
     val remaining = (timerState.targetSeconds - elapsed).coerceAtLeast(0)
+    // A short sit counts down to its threshold first, then to the full target.
+    val inShortSitPhase = timerState.shortSitIntent && !timerState.shortSitBanked
+    val phaseTarget = if (inShortSitPhase) timerState.shortSitSeconds else timerState.targetSeconds
+    val phaseRemaining = (phaseTarget - elapsed).coerceAtLeast(0)
 
     // Navigated-away warning
     if (timerState.navigatedAway) {
@@ -240,16 +294,46 @@ private fun InAppTimerState(
         }
     }
 
-    MeditationRing(elapsed = elapsed, target = timerState.targetSeconds)
+    // Short sit done: it already counts — keep going, or finish here.
+    if (timerState.shortSitIntent && timerState.shortSitBanked) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Short sit complete — it counts for today.",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Keep going for the remaining ${formatMeditationTime(remaining)}, or finish here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+        }
+    }
+
+    MeditationRing(elapsed = elapsed, target = phaseTarget)
     Spacer(Modifier.height(24.dp))
     Text(
-        text = formatMeditationTime(remaining),
+        text = formatMeditationTime(phaseRemaining),
         style = MaterialTheme.typography.displayMedium,
         fontWeight = FontWeight.Light,
     )
     Spacer(Modifier.height(8.dp))
     Text(
-        text = if (timerState.running) "Meditating" else "Paused",
+        text = when {
+            !timerState.running -> "Paused"
+            inShortSitPhase -> "Short sit"
+            else -> "Meditating"
+        },
         style = MaterialTheme.typography.bodyMedium,
         color = if (timerState.running)
             MaterialTheme.colorScheme.tertiary
@@ -272,15 +356,24 @@ private fun InAppTimerState(
     Spacer(Modifier.height(32.dp))
 
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        OutlinedButton(
-            onClick = onCancel,
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.error,
-            ),
-        ) {
-            Icon(Icons.Default.Close, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Cancel")
+        if (timerState.shortSitBanked) {
+            // Past the threshold nothing is lost by stopping — offer Finish, not Cancel.
+            OutlinedButton(onClick = onFinishEarly) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Finish here")
+            }
+        } else {
+            OutlinedButton(
+                onClick = onCancel,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Icon(Icons.Default.Close, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Cancel")
+            }
         }
 
         if (timerState.running) {
@@ -302,6 +395,9 @@ private fun InAppTimerState(
 @Composable
 private fun CompanionTrackingState(
     timerState: MeditationTimerState,
+    meditationConfig: MeditationConfig,
+    onStartInApp: () -> Unit,
+    onStartShortSit: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val elapsed = timerState.elapsedSeconds
@@ -341,6 +437,28 @@ private fun CompanionTrackingState(
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer(Modifier.height(32.dp))
+
+    // Companion tracking starts automatically, so offer the in-app timer here
+    // too — otherwise the short sit is unreachable for companion-app tasks.
+    Text(
+        text = "Or meditate here instead",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(onClick = onStartInApp) {
+            Icon(Icons.Default.SelfImprovement, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Start timer")
+        }
+        if (meditationConfig.shortSitSeconds > 0) {
+            OutlinedButton(onClick = onStartShortSit) {
+                Text("Short sit (${formatMinutes(meditationConfig.shortSitSeconds)})")
+            }
+        }
+    }
+    Spacer(Modifier.height(24.dp))
 
     OutlinedButton(
         onClick = onCancel,
@@ -410,6 +528,10 @@ private fun appLabel(packageName: String): String {
     val parts = packageName.split(".")
     return parts.lastOrNull()?.replaceFirstChar { it.uppercase() } ?: packageName
 }
+
+/** "2 min" for whole minutes, otherwise m:ss. */
+private fun formatMinutes(totalSeconds: Int): String =
+    if (totalSeconds % 60 == 0) "${totalSeconds / 60} min" else formatMeditationTime(totalSeconds)
 
 private fun formatMeditationTime(totalSeconds: Int): String {
     val hours = totalSeconds / 3600

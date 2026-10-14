@@ -10,3 +10,12 @@ bucket_definitions:
       - SELECT * FROM step_completions WHERE user_id = bucket.user_id
       - SELECT * FROM blocking_rules WHERE user_id = bucket.user_id
       - SELECT * FROM notes WHERE user_id = bucket.user_id
+      - SELECT * FROM contemplation_decks WHERE user_id = bucket.user_id
+      - SELECT * FROM contemplations WHERE user_id = bucket.user_id
+      - SELECT * FROM contemplation_deliveries WHERE user_id = bucket.user_id
+      - SELECT * FROM metrics WHERE user_id = bucket.user_id
+      - SELECT * FROM metric_options WHERE user_id = bucket.user_id
+      - SELECT * FROM reports WHERE user_id = bucket.user_id
+      - SELECT * FROM report_metrics WHERE user_id = bucket.user_id
+      - SELECT * FROM report_submissions WHERE user_id = bucket.user_id
+      - SELECT * FROM metric_entries WHERE user_id = bucket.user_id

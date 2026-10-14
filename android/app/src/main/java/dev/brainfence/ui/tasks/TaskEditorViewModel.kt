@@ -9,7 +9,10 @@ import dev.brainfence.data.apps.InstalledApp
 import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.routine.NewRoutineStep
+import dev.brainfence.data.report.ReportRepository
 import dev.brainfence.data.routine.RoutineRepository
+import dev.brainfence.domain.model.Report
+import dev.brainfence.service.MeditationTimerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +32,8 @@ data class EditableStep(
     val defaultSets: Int = 3,
     val durationSeconds: Int = 60,
     val supersetGroup: String? = null,
+    /** For step type "report": which report the step asks. */
+    val reportId: String? = null,
 )
 
 data class TaskEditorState(
@@ -45,14 +50,23 @@ data class TaskEditorState(
     val latitude: String = "",
     val longitude: String = "",
     val radiusMeters: Int = 100,
+    /** GPS geofence mode: "enter" (arrive) or "leave" (depart). */
+    val gpsMode: String = "enter",
+    /** Enter mode only: minutes the user must stay before the task completes. */
+    val gpsMinDurationM: Int = 0,
     // -- shopping notify window (prefilled for an evening commute) --
     val notifyDays: Set<String> = setOf("mon", "tue", "wed", "thu", "fri"),
     val notifyStart: String = "15:00", // HH:MM, blank = from midnight
     val notifyEnd: String = "21:00",   // HH:MM, blank = until midnight
     // -- meditation config --
     val meditationSeconds: Int = 300,
+    /** "Middle way" short-sit threshold; 0 = off. */
+    val shortSitSeconds: Int = MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
     /** Package names of companion apps that can record meditation time externally. */
     val companionApps: Set<String> = emptySet(),
+    // -- report task: which report it asks; plus every report, for pickers --
+    val reportId: String? = null,
+    val availableReports: List<Report> = emptyList(),
     // -- routine steps (sub-tasks) --
     val routineSteps: List<EditableStep> = emptyList(),
     // Step 2: Recurrence + Blocking + Availability
@@ -81,6 +95,7 @@ class TaskEditorViewModel @Inject constructor(
     private val database: PowerSyncDatabase,
     private val sessionRepository: SessionRepository,
     private val routineRepository: RoutineRepository,
+    reportRepository: ReportRepository,
     private val installedAppsProvider: InstalledAppsProvider,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -92,6 +107,11 @@ class TaskEditorViewModel @Inject constructor(
     val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            reportRepository.watchReports().collect { reports ->
+                _state.value = _state.value.copy(availableReports = reports)
+            }
+        }
         viewModelScope.launch { _installedApps.value = installedAppsProvider.load() }
         val taskId: String? = savedStateHandle["taskId"]
         if (!taskId.isNullOrBlank()) loadExistingTask(taskId)
@@ -144,6 +164,7 @@ class TaskEditorViewModel @Inject constructor(
                             defaultSets = sConfig.optInt("default_sets", 3),
                             durationSeconds = sConfig.optInt("duration_seconds", 60),
                             supersetGroup = rs.supersetGroup,
+                            reportId = sConfig.optString("report_id").takeIf { it.isNotBlank() },
                         )
                     }
                 } else emptyList()
@@ -170,6 +191,14 @@ class TaskEditorViewModel @Inject constructor(
                         if (vConfig.has("radius_meters")) vConfig.optInt("radius_meters", 100)
                         else vConfig.optInt("radius_m", 100)
                     } else 100,
+                    // Mirrors GpsVerificationManager.parseGpsConfig's defaults so a
+                    // save round-trips the config instead of rewriting it.
+                    gpsMode = if (task.verificationType == "gps") {
+                        vConfig.optString("mode", "enter")
+                    } else "enter",
+                    gpsMinDurationM = if (task.verificationType == "gps") {
+                        vConfig.optInt("min_duration_m", 0)
+                    } else 0,
                     notifyDays = notifyWindow?.optJSONArray("days")?.let { arr ->
                         buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
                     } ?: _state.value.notifyDays,
@@ -177,7 +206,13 @@ class TaskEditorViewModel @Inject constructor(
                     notifyEnd = notifyWindow?.optString("end", "") ?: _state.value.notifyEnd,
                     meditationSeconds = if (task.verificationType == "meditation") vConfig.optInt("duration_seconds", 300) else 300,
                     companionApps = if (task.verificationType == "meditation") parseCompanionApps(vConfig) else emptySet(),
+                    shortSitSeconds = if (task.verificationType == "meditation") {
+                        vConfig.optInt("short_sit_seconds", MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS)
+                    } else MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
                     routineSteps = steps,
+                    reportId = if (task.taskType == "report") {
+                        vConfig.optString("report_id").takeIf { it.isNotBlank() }
+                    } else null,
                     recurrenceType = recurrenceTypeUi,
                     weeklyDays = weeklyDays,
                     isBlockingCondition = task.isBlockingCondition,
@@ -291,6 +326,7 @@ class TaskEditorViewModel @Inject constructor(
             "routine", "workout" -> "manual"
             "journal" -> "journal"
             "shopping" -> "gps"
+            "report" -> "report"
             else -> s.verificationType
         }
         _state.value = s.copy(taskType = type, verificationType = verificationType)
@@ -326,8 +362,20 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(radiusMeters = radius.coerceAtLeast(10))
     }
 
+    fun setGpsMode(mode: String) {
+        _state.value = _state.value.copy(gpsMode = mode)
+    }
+
+    fun setGpsMinDurationM(minutes: Int) {
+        _state.value = _state.value.copy(gpsMinDurationM = minutes.coerceAtLeast(0))
+    }
+
     fun setMeditationSeconds(seconds: Int) {
         _state.value = _state.value.copy(meditationSeconds = seconds.coerceAtLeast(1))
+    }
+
+    fun setShortSitSeconds(seconds: Int) {
+        _state.value = _state.value.copy(shortSitSeconds = seconds.coerceAtLeast(0))
     }
 
     fun toggleCompanionApp(packageName: String) {
@@ -443,6 +491,10 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(error = null)
     }
 
+    fun setReportId(reportId: String) {
+        _state.value = _state.value.copy(reportId = reportId)
+    }
+
     // --- Save ---
 
     fun save(onComplete: () -> Unit) {
@@ -455,6 +507,16 @@ class TaskEditorViewModel @Inject constructor(
             (s.latitude.toDoubleOrNull() == null || s.longitude.toDoubleOrNull() == null)
         ) {
             _state.value = s.copy(error = "A reminder location (latitude/longitude) is required")
+            return
+        }
+        if (s.taskType == "report" && s.reportId == null) {
+            _state.value = s.copy(error = "Choose which report this task asks")
+            return
+        }
+        if ((s.taskType == "routine" || s.taskType == "workout") &&
+            s.routineSteps.any { it.stepType == "report" && it.reportId == null }
+        ) {
+            _state.value = s.copy(error = "Choose a report for each report step")
             return
         }
         _state.value = s.copy(isSaving = true, error = null)
@@ -470,6 +532,7 @@ class TaskEditorViewModel @Inject constructor(
                     "timed" -> "duration"
                     "routine", "workout" -> null
                     "shopping" -> "gps"
+                    "report" -> "report"
                     else -> s.verificationType.takeIf { it != "manual" }
                 }
                 val verificationConfig = buildVerificationConfig(s)
@@ -614,6 +677,7 @@ class TaskEditorViewModel @Inject constructor(
         when (step.stepType) {
             "weight_reps", "just_reps" -> cfg.put("default_sets", step.defaultSets)
             "timed" -> cfg.put("duration_seconds", step.durationSeconds)
+            "report" -> step.reportId?.let { cfg.put("report_id", it) }
         }
         return cfg
     }
@@ -622,6 +686,7 @@ class TaskEditorViewModel @Inject constructor(
         val config = JSONObject()
         when {
             s.taskType == "timed" -> config.put("duration_seconds", s.durationSeconds)
+            s.taskType == "report" -> s.reportId?.let { config.put("report_id", it) }
             s.taskType == "shopping" -> {
                 config.put("latitude", s.latitude.toDoubleOrNull() ?: 0.0)
                 config.put("longitude", s.longitude.toDoubleOrNull() ?: 0.0)
@@ -639,9 +704,15 @@ class TaskEditorViewModel @Inject constructor(
                 config.put("latitude", lat)
                 config.put("longitude", lng)
                 config.put("radius_meters", s.radiusMeters)
+                // Always write the mode: save() replaces verification_config
+                // wholesale, so omitting it would silently demote a leave-mode
+                // task to the "enter" default on the next edit.
+                config.put("mode", s.gpsMode)
+                config.put("min_duration_m", if (s.gpsMode == "enter") s.gpsMinDurationM else 0)
             }
             s.verificationType == "meditation" -> {
                 config.put("duration_seconds", s.meditationSeconds)
+                config.put("short_sit_seconds", s.shortSitSeconds)
                 val apps = JSONArray()
                 for (pkg in s.companionApps) {
                     apps.put(JSONObject().apply {

@@ -80,7 +80,10 @@ fun TaskEditorScreen(
     onSetLongitude: (String) -> Unit,
     onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
+    onSetGpsMode: (String) -> Unit,
+    onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
+    onSetShortSitSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
     onSetNotifyStart: (String) -> Unit,
@@ -90,6 +93,7 @@ fun TaskEditorScreen(
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
+    onSetReportId: (String) -> Unit,
     onSetRecurrenceType: (String?) -> Unit,
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
@@ -198,7 +202,10 @@ fun TaskEditorScreen(
                         onSetLongitude = onSetLongitude,
                         onSetLocation = onSetLocation,
                         onSetRadiusMeters = onSetRadiusMeters,
+                        onSetGpsMode = onSetGpsMode,
+                        onSetGpsMinDurationM = onSetGpsMinDurationM,
                         onSetMeditationSeconds = onSetMeditationSeconds,
+                        onSetShortSitSeconds = onSetShortSitSeconds,
                         onToggleCompanionApp = onToggleCompanionApp,
                         onToggleNotifyDay = onToggleNotifyDay,
                         onSetNotifyStart = onSetNotifyStart,
@@ -208,6 +215,7 @@ fun TaskEditorScreen(
                         onUpdateRoutineStep = onUpdateRoutineStep,
                         onCreateSupersetGroup = onCreateSupersetGroup,
                         onRemoveSupersetGroup = onRemoveSupersetGroup,
+                        onSetReportId = onSetReportId,
                     )
                     2 -> ScheduleStep(
                         state = state,
@@ -377,6 +385,7 @@ private fun TaskTypeSelector(selected: String, onSelect: (String) -> Unit) {
         "workout" to "Workout",
         "journal" to "Journal",
         "shopping" to "Shopping List",
+        "report" to "Report",
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         types.chunked(2).forEach { row ->
@@ -424,6 +433,7 @@ private fun taskTypeDescription(type: String): String = when (type) {
     "workout" -> "Exercise tracking with sets"
     "journal" -> "Write a short entry"
     "shopping" -> "Running list with location reminder"
+    "report" -> "Answer a few quick questions"
     else -> ""
 }
 
@@ -439,7 +449,10 @@ private fun ConfigStep(
     onSetLongitude: (String) -> Unit,
     onSetLocation: (Double, Double) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
+    onSetGpsMode: (String) -> Unit,
+    onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
+    onSetShortSitSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
     onToggleNotifyDay: (String) -> Unit,
     onSetNotifyStart: (String) -> Unit,
@@ -449,6 +462,7 @@ private fun ConfigStep(
     onUpdateRoutineStep: (String, (EditableStep) -> EditableStep) -> Unit,
     onCreateSupersetGroup: (List<String>) -> Unit,
     onRemoveSupersetGroup: (String) -> Unit,
+    onSetReportId: (String) -> Unit,
 ) {
     when (state.taskType) {
         "shopping" -> ShoppingConfigContent(
@@ -466,7 +480,10 @@ private fun ConfigStep(
             onSetLatitude = onSetLatitude,
             onSetLongitude = onSetLongitude,
             onSetRadiusMeters = onSetRadiusMeters,
+            onSetGpsMode = onSetGpsMode,
+            onSetGpsMinDurationM = onSetGpsMinDurationM,
             onSetMeditationSeconds = onSetMeditationSeconds,
+            onSetShortSitSeconds = onSetShortSitSeconds,
             onToggleCompanionApp = onToggleCompanionApp,
         )
         "timed" -> TimedConfigContent(
@@ -482,6 +499,76 @@ private fun ConfigStep(
             onRemoveSupersetGroup = onRemoveSupersetGroup,
         )
         "journal" -> JournalConfigContent()
+        "report" -> ReportConfigContent(state = state, onSetReportId = onSetReportId)
+    }
+}
+
+/** Dropdown of the user's reports; reports are managed under ⋮ → Reports. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReportPicker(
+    reports: List<dev.brainfence.domain.model.Report>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = reports.firstOrNull { it.id == selectedId }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = selected?.name ?: "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Report") },
+            placeholder = { Text(if (reports.isEmpty()) "No reports yet" else "Choose a report") },
+            supportingText = {
+                Text(
+                    selected?.let { r -> r.metrics.joinToString { it.name }.ifBlank { "No metrics yet" } }
+                        ?: "Create and edit reports under ⋮ → Reports",
+                )
+            },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            reports.forEach { report ->
+                DropdownMenuItem(
+                    text = { Text(report.name) },
+                    onClick = {
+                        onSelect(report.id)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportConfigContent(state: TaskEditorState, onSetReportId: (String) -> Unit) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Completing this task asks each metric in the report. Several tasks or routine " +
+                    "steps can share one report, so their answers form one history.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item {
+            ReportPicker(
+                reports = state.availableReports,
+                selectedId = state.reportId,
+                onSelect = onSetReportId,
+            )
+        }
     }
 }
 
@@ -493,7 +580,10 @@ private fun SimpleConfigContent(
     onSetLatitude: (String) -> Unit,
     onSetLongitude: (String) -> Unit,
     onSetRadiusMeters: (Int) -> Unit,
+    onSetGpsMode: (String) -> Unit,
+    onSetGpsMinDurationM: (Int) -> Unit,
     onSetMeditationSeconds: (Int) -> Unit,
+    onSetShortSitSeconds: (Int) -> Unit,
     onToggleCompanionApp: (String) -> Unit,
 ) {
     LazyColumn(
@@ -564,6 +654,48 @@ private fun SimpleConfigContent(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    Spacer(Modifier.height(16.dp))
+                    Text("Completes When", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "enter" to "I arrive",
+                            "leave" to "I leave",
+                        ).forEach { (value, label) ->
+                            FilterChip(
+                                selected = state.gpsMode == value,
+                                onClick = { onSetGpsMode(value) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = when (state.gpsMode) {
+                            "leave" -> "Completes when you leave the area — including " +
+                                "immediately, if you are already outside it."
+                            else -> "Completes when you arrive in the area."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    if (state.gpsMode == "enter") {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = state.gpsMinDurationM.toString(),
+                            onValueChange = { it.toIntOrNull()?.let(onSetGpsMinDurationM) },
+                            label = { Text("Minimum stay (minutes)") },
+                            supportingText = { Text("0 = complete on arrival") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
             "meditation" -> {
@@ -575,6 +707,24 @@ private fun SimpleConfigContent(
                         value = minutes.toString(),
                         onValueChange = { it.toIntOrNull()?.let { m -> onSetMeditationSeconds(m * 60) } },
                         label = { Text("Duration (minutes)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val shortSitIgnored = state.shortSitSeconds > 0 &&
+                        state.shortSitSeconds >= state.meditationSeconds
+                    OutlinedTextField(
+                        value = (state.shortSitSeconds / 60).toString(),
+                        onValueChange = { it.toIntOrNull()?.let { m -> onSetShortSitSeconds(m * 60) } },
+                        label = { Text("Short sit (minutes, 0 = off)") },
+                        supportingText = {
+                            Text(
+                                if (shortSitIgnored) "Must be shorter than the full duration, or it's ignored"
+                                else "A shorter sit that still counts for the day",
+                            )
+                        },
+                        isError = shortSitIgnored,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -840,6 +990,7 @@ private fun RoutineConfigContent(
         itemsIndexed(state.routineSteps, key = { _, step -> step.id }) { _, step ->
             EditableStepCard(
                 step = step,
+                reports = state.availableReports,
                 isWorkout = state.taskType == "workout",
                 isSelectedForSuperset = step.id in selectedForSuperset,
                 onToggleSelectForSuperset = {
@@ -896,6 +1047,7 @@ private fun RoutineConfigContent(
 @Composable
 private fun EditableStepCard(
     step: EditableStep,
+    reports: List<dev.brainfence.domain.model.Report>,
     isWorkout: Boolean,
     isSelectedForSuperset: Boolean,
     onToggleSelectForSuperset: () -> Unit,
@@ -955,6 +1107,7 @@ private fun EditableStepCard(
                     "timed" to "Timed",
                     "weight_reps" to "Weight & Reps",
                     "just_reps" to "Reps Only",
+                    "report" to "Report",
                 )
             }
             val selectedLabel = stepTypes.find { it.first == step.stepType }?.second ?: step.stepType
@@ -1019,6 +1172,14 @@ private fun EditableStepCard(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                "report" -> {
+                    Spacer(Modifier.height(8.dp))
+                    ReportPicker(
+                        reports = reports,
+                        selectedId = step.reportId,
+                        onSelect = { id -> onUpdate { it.copy(reportId = id) } },
                     )
                 }
             }

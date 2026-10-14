@@ -133,7 +133,7 @@ class BrainfenceService : Service() {
     private fun handleDueCheck() {
         scope.launch {
             try {
-                gpsVerificationManager.refreshLeaveCompletions()
+                gpsVerificationManager.refreshLeaveCompletions("due-check")
                 companionUsageVerifier.reconcile()
             } catch (e: Exception) {
                 Log.w(TAG, "Due-check refresh failed", e)
@@ -244,7 +244,7 @@ class BrainfenceService : Service() {
                 breadcrumbCounter++
                 if (breadcrumbCounter % BREADCRUMB_INTERVAL_EVALS == 0) {
                     logLocationBreadcrumb()
-                    gpsVerificationManager.periodicLeaveCheck()
+                    gpsVerificationManager.refreshLeaveCompletions("periodic")
                     // Pull companion-app foreground time from Android's usage
                     // stats so the meditation tally stays accurate even when
                     // accessibility events were missed (service restart, etc.).
@@ -284,6 +284,9 @@ class BrainfenceService : Service() {
         for (task in tasks) {
             if (task.verificationType != "meditation") continue
             if (task.completedToday) continue
+            // The user chose the in-app timer (e.g. a short sit) — don't
+            // replace their session with companion tracking.
+            if (activeTimers[task.id]?.method == "in_app_timer") continue
 
             val config = task.verificationConfig?.let(MeditationTimerManager::parseMeditationConfig)
             if (config == null || config.companionApps.isEmpty()) continue

@@ -1,7 +1,13 @@
 package dev.brainfence.data.completion
 
 import com.powersync.PowerSyncDatabase
+import com.powersync.db.SqlCursor
 import dev.brainfence.data.auth.SessionRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onStart
 import java.time.Instant
 import java.util.UUID
 import javax.inject.Inject
@@ -25,7 +31,7 @@ class CompletionRepository @Inject constructor(
         verificationData: String = "{}",
         occurrenceDate: String = Instant.now().toString(),
     ) {
-        val userId = sessionRepository.currentUser?.id
+        val userId = sessionRepository.userIdForLocalWrites()
             ?: error("completeTask called while not authenticated")
         val now = Instant.now().toString()
         val id  = UUID.randomUUID().toString()
@@ -55,4 +61,46 @@ class CompletionRepository @Inject constructor(
             ),
         )
     }
+
+    /**
+     * Replace the proof data on today's completion of [taskId]. Used when a
+     * completion is recorded early (e.g. a meditation short sit) and the
+     * session carries on — the row stays, its recorded details are updated.
+     */
+    suspend fun updateTodaysVerificationData(taskId: String, verificationData: String) {
+        database.execute(
+            sql = """
+                UPDATE task_completions SET verification_data = ?
+                WHERE id = (
+                    SELECT id FROM task_completions
+                    WHERE task_id = ?
+                      AND date(completed_at, 'localtime') = date('now', 'localtime')
+                    ORDER BY completed_at DESC
+                    LIMIT 1
+                )
+            """.trimIndent(),
+            parameters = listOf(verificationData, taskId),
+        )
+    }
+
+    /** Emits the verification_data JSON of today's completion of [taskId], or null. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun watchTodaysVerificationData(taskId: String): Flow<String?> =
+        database.onChange(tables = setOf("task_completions"))
+            .onStart { emit(emptySet()) }
+            .flatMapLatest {
+                flow {
+                    val rows = database.getAll(
+                        sql = """
+                            SELECT verification_data FROM task_completions
+                            WHERE task_id = ?
+                              AND date(completed_at, 'localtime') = date('now', 'localtime')
+                            ORDER BY completed_at DESC
+                            LIMIT 1
+                        """.trimIndent(),
+                        parameters = listOf(taskId),
+                    ) { cursor: SqlCursor -> cursor.getString(0) ?: "{}" }
+                    emit(rows.firstOrNull())
+                }
+            }
 }

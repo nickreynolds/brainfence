@@ -27,6 +27,14 @@ object SupabaseModule {
         ) {
             install(Auth) {
                 sessionManager = EncryptedSessionManager(context)
+                // By default, supabase-kt stops auto-refresh when the app's last
+                // activity stops and resets the session status to Initializing
+                // until an activity starts again. Brainfence works mostly in the
+                // background (foreground service, alarms, geofences), so that left
+                // PowerSync unable to sync and background writes "signed out" for
+                // most of the day. Keep the session refreshing for the whole
+                // process lifetime instead.
+                enableLifecycleCallbacks = false
             }
             install(Postgrest)
         }

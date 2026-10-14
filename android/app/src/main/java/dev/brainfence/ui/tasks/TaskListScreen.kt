@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.ShoppingCart
@@ -108,6 +110,8 @@ fun TaskListScreen(
     onNavigateToRules: () -> Unit = {},
     onNavigateToHomeLocation: () -> Unit = {},
     onNavigateToJournalHistory: () -> Unit = {},
+    onNavigateToContemplations: () -> Unit = {},
+    onNavigateToReports: () -> Unit = {},
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -165,6 +169,16 @@ fun TaskListScreen(
                             text = { Text("Blocking rules") },
                             leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                             onClick = { showMenu = false; onNavigateToRules() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Contemplations") },
+                            leadingIcon = { Icon(Icons.Default.SelfImprovement, contentDescription = null) },
+                            onClick = { showMenu = false; onNavigateToContemplations() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Reports") },
+                            leadingIcon = { Icon(Icons.Default.Assessment, contentDescription = null) },
+                            onClick = { showMenu = false; onNavigateToReports() },
                         )
                         DropdownMenuItem(
                             text = { Text("Debug logs") },
@@ -695,6 +709,7 @@ private fun formatNextDue(nextDue: Instant, timeZone: ZoneId): String {
 private fun blockingVerificationHint(task: Task): String? = when {
     task.taskType == "routine" || task.taskType == "workout" -> "Requires routine completion"
     task.taskType == "journal" -> "Requires journal entry"
+    task.taskType == "report" -> "Requires report"
     task.verificationType == "gps" -> "Requires GPS verification"
     task.verificationType == "meditation" -> "Requires meditation session"
     task.verificationType == "duration" -> "Requires timed session"
