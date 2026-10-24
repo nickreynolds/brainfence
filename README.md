@@ -13,7 +13,7 @@ A local-first, cross-platform task/habit/note app that enforces behavioral commi
 | Platform    | Language / UI             | Local DB                                    | App Blocking Mechanism                                               |
 | ----------- | ------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
 | **Android** | Kotlin + Jetpack Compose  | SQLite (via PowerSync Kotlin SDK)           | AccessibilityService + overlay Activity                              |
-| **macOS**   | Swift + SwiftUI           | SQLite (via PowerSync Swift SDK)            | Screen Time APIs (FamilyControls / ManagedSettings / DeviceActivity) |
+| **macOS**   | Swift + SwiftUI           | SQLite (via PowerSync Swift SDK)            | NSWorkspace app monitoring + browser tab inspection (Apple Events)   |
 | **Windows** | Electron + React          | SQLite (via PowerSync Node SDK)             | Foreground-window monitor + overlay; hosts-file website blocking     |
 | **Web**     | React + Next.js (or Vite) | PGlite or IndexedDB (via PowerSync Web SDK) | Browser extension (optional, lower priority)                         |
 
@@ -409,28 +409,29 @@ The app's first-launch setup wizard should guide the user through enabling the a
 
 ### 5.3 macOS Implementation
 
-#### Screen Time APIs
+> **Screen Time is not available to macOS apps.** FamilyControls, ManagedSettings and DeviceActivity are iOS-only for third-party developers — the macOS SDK marks `AuthorizationCenter`, `FamilyActivityPicker`, `ManagedSettingsStore` and `ShieldSettings` as `@available(macOS, unavailable)`. The Mac therefore enforces blocking itself, like Android's AccessibilityService. See `macos/README.md` for details.
 
-- **FamilyControls**: Request `.individual` authorization at first launch. User grants permission to manage their own screen time.
-- **ManagedSettings**: Apply `shield.applications` and `shield.webDomainCategories` using opaque `ApplicationToken`s from the family activity picker.
-- **DeviceActivity**: Schedule monitoring intervals and register events.
-- **ShieldConfiguration**: Custom shield overlay showing which tasks need completion.
+#### App Blocking
+
+- `NSWorkspace` activation / launch notifications (plus a 2 s frontmost-app poll as a backstop): a blocked app is hidden the moment it becomes active and a floating shield shows the blocking rule(s) and unmet tasks, with one-click completion for manual tasks
+- Rules identify Mac apps by bundle ID in `blocked_apps`: `{"platform": "macos", "bundle_id": "com.hnc.Discord"}` alongside Android's `{"platform": "android", "package": "…"}` entries. Each platform's editor preserves the other platforms' entries.
 
 #### Always Running
 
-- Register as a **Login Item** (LaunchAgent plist) so the app starts on login
-- Use `NSApplication` lifecycle to resist being quit (confirm dialog with time-lock)
+- A launchd agent registered with `SMAppService` starts the app at login and relaunches it if it is force-quit or crashes (`KeepAlive.SuccessfulExit = false`)
+- `applicationShouldTerminate` refuses to quit while anything is blocking
 
 #### Anti-Bypass
 
 - Config changes time-locked (same as Android)
-- Screen Time permissions can technically be revoked in System Settings, but the friction of navigating there and understanding what to disable is substantial
+- Signing out keeps local data, so it doesn't lift blocks
+- Browsers that can't be inspected (Automation permission denied, or no AppleScript support) are blocked outright while any website is blocked
 
 ### 5.4 Website Blocking
 
 **Android**: Not needed. App-level blocking via the AccessibilityService covers the primary use case on mobile. If website blocking is desired later, a local VPN (`VpnService`) approach can be added without architectural changes.
 
-**macOS**: Screen Time API handles web domain blocking natively via `shield.webDomainCategories`. This comes "for free" alongside app blocking — the same `ManagedSettingsStore` that shields apps can also shield web domains. Worth including from the start on macOS since it's no extra work.
+**macOS**: `blocked_domains` are enforced by reading the active tab URL of Safari and Chromium-based browsers over Apple Events and navigating blocked pages away (subdomains included). Requires the per-browser Automation permission; browsers that can't be inspected are blocked while any domain is blocked.
 
 **Web**: Not directly possible from a web app. A companion browser extension could be added later if needed.
 
@@ -675,8 +676,8 @@ The bootstrap script should be idempotent (upsert by title) and should print a s
 - [ ] Blocking rules data model + CRUD UI
 - [ ] Android: AccessibilityService + foreground service + boot receiver
 - [ ] Android: Blocking overlay activity with task completion flow
-- [ ] macOS: FamilyControls authorization + ManagedSettings shielding (apps + web domains)
-- [ ] macOS: Custom ShieldConfiguration showing task requirements
+- [ ] macOS: NSWorkspace app blocking + browser tab website blocking
+- [ ] macOS: Shield panel showing task requirements
 - [ ] macOS: Login item / always-running setup
 - [ ] Anti-bypass: Time-lock on config changes (both platforms)
 - [ ] Anti-bypass: Multi-step disable flow
@@ -710,7 +711,7 @@ The bootstrap script should be idempotent (upsert by title) and should print a s
 
 ### Website Blocking Scope
 
-**Decision**: App blocking only on Android (via AccessibilityService). On macOS, web domain blocking comes for free via the same Screen Time API that handles app blocking — include it there. Android website blocking (VPN-based) can be added later if needed without architectural changes.
+**Decision**: App blocking only on Android (via AccessibilityService). On macOS, web domains are blocked via browser tab inspection (Screen Time APIs are unavailable to macOS apps). Android website blocking (VPN-based) can be added later if needed without architectural changes.
 
 ### Notes Complexity for MVP
 
