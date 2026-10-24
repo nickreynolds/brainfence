@@ -1,0 +1,97 @@
+# XcodeGen spec for the Brainfence macOS app.
+# Generate the Xcode project with:  make project   (or: xcodegen generate)
+name: Brainfence
+
+options:
+  bundleIdPrefix: dev.brainfence
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: R5878UK933
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  PowerSync:
+    url: https://github.com/powersync-ja/powersync-swift
+    exactVersion: 1.16.4
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    majorVersion: 2.55.4
+  BrainfenceCore:
+    path: BrainfenceCore
+
+targets:
+  Brainfence:
+    type: application
+    platform: macOS
+    sources:
+      - path: Brainfence
+        excludes:
+          - "Generated/**"
+          - "LaunchAgents/**"
+          - "Info.plist"
+          - "Brainfence.entitlements"
+      - path: Brainfence/Generated/Secrets.generated.swift
+        optional: true
+      - path: Brainfence/LaunchAgents/dev.brainfence.macos.agent.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
+    dependencies:
+      - package: PowerSync
+        product: PowerSync
+      - package: Supabase
+        product: Supabase
+      - package: BrainfenceCore
+    preBuildScripts:
+      - name: Generate config from .env
+        script: '"${SRCROOT}/scripts/generate-config.sh"'
+        inputFiles:
+          - "$(SRCROOT)/../.env"
+          - "$(SRCROOT)/scripts/generate-config.sh"
+        outputFiles:
+          - "$(SRCROOT)/Brainfence/Generated/Secrets.generated.swift"
+    info:
+      path: Brainfence/Info.plist
+      properties:
+        CFBundleName: Brainfence
+        CFBundleDisplayName: Brainfence
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        LSApplicationCategoryType: public.app-category.productivity
+        # Menu-bar app: no Dock icon until the main window is opened.
+        LSUIElement: true
+        NSAppleEventsUsageDescription: >-
+          Brainfence reads the address of your browser's current tab so it can
+          block the websites listed in your blocking rules.
+        NSHumanReadableCopyright: ""
+    entitlements:
+      path: Brainfence/Brainfence.entitlements
+      properties:
+        # Hardened runtime blocks Apple Events unless this is granted; needed
+        # to read browser tab URLs for website blocking.
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_NAME: Brainfence
+        PRODUCT_BUNDLE_IDENTIFIER: dev.brainfence.macos
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+      configs:
+        # Separate identity for debug builds: its own database, keychain item
+        # and defaults, and it never registers the login agent.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: dev.brainfence.macos.debug
+    scheme:
+      testTargets:
+        - package: BrainfenceCore/BrainfenceCoreTests
