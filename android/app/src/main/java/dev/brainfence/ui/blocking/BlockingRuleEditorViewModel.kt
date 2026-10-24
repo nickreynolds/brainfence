@@ -9,6 +9,7 @@ import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.task.TaskRepository
+import dev.brainfence.domain.blocking.RuleContracts
 import dev.brainfence.domain.model.Task
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -99,10 +100,8 @@ class BlockingRuleEditorViewModel @Inject constructor(
     }
 
     fun addDomain(domain: String) {
-        val trimmed = domain.trim().lowercase()
-        if (trimmed.isNotEmpty()) {
-            _state.value = _state.value.copy(blockedDomains = _state.value.blockedDomains + trimmed)
-        }
+        val normalized = RuleContracts.normalizeDomain(domain) ?: return
+        _state.value = _state.value.copy(blockedDomains = _state.value.blockedDomains + normalized)
     }
 
     fun removeDomain(domain: String) {

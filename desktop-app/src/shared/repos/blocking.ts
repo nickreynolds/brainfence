@@ -3,7 +3,7 @@
 // client must read only its own while preserving the others on write.
 
 import { Db, PLATFORM } from '../db'
-import { nowIso, parseJsonArray, parseJsonObject, parseStringArray, uuid } from '../json'
+import { canonicalJson, nowIso, parseInstant, parseJsonArray, parseJsonObject, parseStringArray, uuid } from '../json'
 import type { AppRef, BlockingRule } from '../models'
 
 export const RULE_TABLES = ['blocking_rules']
@@ -88,9 +88,8 @@ export async function scheduleRuleChange(db: Db, ruleId: string, changes: Record
 }
 
 /**
- * True if [changes] only add blocking: every set grows (across all platforms'
- * app entries), logic doesn't loosen from all→any, and the rule isn't
- * deactivated. Name and lock hours are neutral.
+ * True if [changes] can only make the rule block more, never less. Shared
+ * semantics: shared/CONTRACTS.md; cases: shared/fixtures/rule-restrictiveness.json.
  */
 export function isMoreRestrictive(current: BlockingRule, changes: Record<string, any>): boolean {
   if ('blocked_apps' in changes) {
@@ -98,31 +97,51 @@ export function isMoreRestrictive(current: BlockingRule, changes: Record<string,
     if (!current.blockedAppRefs.map(appRefKey).every((k) => next.has(k))) return false
   }
   if ('blocked_domains' in changes) {
-    const next = new Set(asArray(changes.blocked_domains).map(String))
-    if (!current.blockedDomains.every((d) => next.has(d))) return false
+    const next = new Set(asArray(changes.blocked_domains).map((d) => normalizeDomain(String(d))))
+    if (!current.blockedDomains.map(normalizeDomain).filter(Boolean).every((d) => next.has(d))) return false
   }
+  const nextLogic = 'condition_logic' in changes ? String(changes.condition_logic) : current.conditionLogic
+  if (current.conditionLogic === 'all' && nextLogic === 'any') return false
   if ('condition_task_ids' in changes) {
     const next = new Set(asArray(changes.condition_task_ids).map(String))
-    if (!current.conditionTaskIds.every((id) => next.has(id))) return false
-  }
-  if ('condition_logic' in changes) {
-    if (current.conditionLogic === 'all' && changes.condition_logic === 'any') return false
+    const now = new Set(current.conditionTaskIds)
+    const unchanged = next.size === now.size && [...now].every((id) => next.has(id))
+    if (!unchanged) {
+      // No conditions means the rule always blocks; giving it any loosens it.
+      if (now.size === 0) return false
+      if (nextLogic === 'any') {
+        // Each "any" task is a way to unblock, so only removing them is
+        // stricter. An empty set makes the rule always block.
+        if (next.size > 0 && ![...next].every((id) => now.has(id))) return false
+      } else if (![...now].every((id) => next.has(id))) {
+        return false
+      }
+    }
   }
   if ('is_active' in changes) {
     if (current.isActive && Number(changes.is_active) === 0) return false
+  }
+  if ('config_lock_hours' in changes) {
+    if (Number(changes.config_lock_hours) < current.configLockHours) return false
   }
   return true
 }
 
 /** Promote expired pending changes. Returns how many rules were updated. */
 export async function applyExpiredPendingChanges(db: Db): Promise<number> {
-  const rows = await db.getAll<{ id: string; pending_changes: string }>(
-    `SELECT id, pending_changes FROM blocking_rules
-     WHERE pending_changes IS NOT NULL AND changes_apply_at IS NOT NULL AND changes_apply_at <= ?`,
-    [nowIso()],
+  // Compared parsed, not as strings: rows replicated from Postgres spell
+  // timestamps differently ("2026-04-16 14:00:00+00") from local writes.
+  const rows = await db.getAll<{ id: string; pending_changes: string; changes_apply_at: string }>(
+    `SELECT id, pending_changes, changes_apply_at FROM blocking_rules
+     WHERE pending_changes IS NOT NULL AND changes_apply_at IS NOT NULL`,
   )
-  for (const row of rows) await applyPendingToRule(db, row.id, row.pending_changes)
-  return rows.length
+  const now = Date.now()
+  const due = rows.filter((row) => {
+    const at = parseInstant(row.changes_apply_at)
+    return at != null && at.getTime() <= now
+  })
+  for (const row of due) await applyPendingToRule(db, row.id, row.pending_changes)
+  return due.length
 }
 
 export async function cancelPendingChange(db: Db, ruleId: string): Promise<void> {
@@ -186,7 +205,10 @@ function appRefFromJson(value: unknown): AppRef | null {
 
 const isRef = (r: AppRef | null): r is AppRef => r != null
 
-/** The platform-specific identifier of an app reference. */
+/**
+ * The platform-specific identifier of an app reference; for platforms this
+ * client doesn't know, the entry's canonical JSON (shared/CONTRACTS.md).
+ */
 export function appRefKeyId(ref: AppRef): string {
   switch (ref.platform) {
     case 'windows':
@@ -194,9 +216,9 @@ export function appRefKeyId(ref: AppRef): string {
     case 'android':
       return String(ref.package ?? '')
     case 'macos':
-      return String(ref.bundle_id ?? ref.token ?? '')
+      return String(ref.bundle_id ?? '')
     default:
-      return JSON.stringify(ref)
+      return canonicalJson(ref)
   }
 }
 
@@ -210,14 +232,21 @@ export function windowsAppRef(exe: string, name?: string): AppRef {
   return ref
 }
 
-/** "https://www.Twitter.com/home" → "twitter.com". */
+/**
+ * "https://www.Twitter.com/home" → "twitter.com"; '' when nothing usable is
+ * left. Shared semantics: shared/CONTRACTS.md; cases: shared/fixtures/domains.json.
+ */
 export function normalizeDomain(input: string): string {
   let d = input.trim().toLowerCase()
-  d = d.replace(/^[a-z]+:\/\//, '')
-  d = d.split('/')[0].split('?')[0].split('#')[0]
-  d = d.replace(/:\d+$/, '')
-  d = d.replace(/^www\./, '')
-  return d.replace(/\.$/, '')
+  const scheme = d.indexOf('://')
+  if (scheme >= 0) d = d.slice(scheme + 3)
+  d = d.split(/[/?#]/)[0]
+  d = d.slice(d.lastIndexOf('@') + 1)
+  const port = d.lastIndexOf(':')
+  if (port >= 0) d = d.slice(0, port)
+  for (const prefix of ['*.', 'www.']) if (d.startsWith(prefix)) d = d.slice(prefix.length)
+  d = d.replace(/\.+$/, '')
+  return d.includes('.') ? d : ''
 }
 
 function asArray(value: unknown): any[] {

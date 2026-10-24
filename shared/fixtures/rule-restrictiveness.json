@@ -1,0 +1,143 @@
+{
+  "description": "Whether a proposed blocking-rule edit only makes blocking stricter (apply now) or could weaken it (time-lock). `rule` overrides are merged shallowly onto `base_rule`; both use the blocking_rules column names with JSON values, and `changes` uses the pending_changes shape. See shared/CONTRACTS.md.",
+  "base_rule": {
+    "blocked_apps": [
+      { "platform": "android", "package": "com.twitter.android" },
+      { "platform": "macos", "bundle_id": "com.hnc.Discord" },
+      { "platform": "windows", "exe": "discord.exe" }
+    ],
+    "blocked_domains": ["reddit.com"],
+    "condition_task_ids": ["a"],
+    "condition_logic": "all",
+    "is_active": 1,
+    "config_lock_hours": 24
+  },
+  "cases": [
+    { "name": "renaming is neutral", "changes": { "name": "Renamed" }, "more_restrictive": true },
+    { "name": "an empty change is neutral", "changes": {}, "more_restrictive": true },
+
+    {
+      "name": "adding an app on any platform is stricter",
+      "changes": { "blocked_apps": [
+        { "platform": "android", "package": "com.twitter.android" },
+        { "platform": "android", "package": "com.instagram.android" },
+        { "platform": "macos", "bundle_id": "com.hnc.Discord" },
+        { "platform": "windows", "exe": "discord.exe" }
+      ] },
+      "more_restrictive": true
+    },
+    {
+      "name": "removing an Android app is weaker",
+      "changes": { "blocked_apps": [
+        { "platform": "macos", "bundle_id": "com.hnc.Discord" },
+        { "platform": "windows", "exe": "discord.exe" }
+      ] },
+      "more_restrictive": false
+    },
+    {
+      "name": "removing a macOS app is weaker",
+      "changes": { "blocked_apps": [
+        { "platform": "android", "package": "com.twitter.android" },
+        { "platform": "windows", "exe": "discord.exe" }
+      ] },
+      "more_restrictive": false
+    },
+    {
+      "name": "removing one of several Windows apps is weaker",
+      "rule": { "blocked_apps": [
+        { "platform": "windows", "exe": "discord.exe" },
+        { "platform": "windows", "exe": "steam.exe" }
+      ] },
+      "changes": { "blocked_apps": [{ "platform": "windows", "exe": "discord.exe" }] },
+      "more_restrictive": false
+    },
+    {
+      "name": "Windows exe names compare case-insensitively",
+      "changes": { "blocked_apps": [
+        { "platform": "android", "package": "com.twitter.android" },
+        { "platform": "macos", "bundle_id": "com.hnc.Discord" },
+        { "platform": "windows", "exe": "Discord.EXE" }
+      ] },
+      "more_restrictive": true
+    },
+    {
+      "name": "a bare string and an Android object for the same package are the same app",
+      "rule": { "blocked_apps": ["com.legacy.app"] },
+      "changes": { "blocked_apps": [{ "platform": "android", "package": "com.legacy.app" }] },
+      "more_restrictive": true
+    },
+    {
+      "name": "dropping another platform's entry this client doesn't know is weaker",
+      "rule": { "blocked_apps": [
+        { "platform": "linux", "bin": "a" },
+        { "platform": "linux", "bin": "b" }
+      ] },
+      "changes": { "blocked_apps": [{ "platform": "linux", "bin": "a" }] },
+      "more_restrictive": false
+    },
+    {
+      "name": "extra fields on an entry don't change its identity",
+      "changes": { "blocked_apps": [
+        { "platform": "android", "package": "com.twitter.android", "name": "X" },
+        { "platform": "macos", "bundle_id": "com.hnc.Discord", "name": "Discord" },
+        { "platform": "windows", "exe": "discord.exe", "name": "Discord" }
+      ] },
+      "more_restrictive": true
+    },
+
+    { "name": "adding a domain is stricter", "changes": { "blocked_domains": ["reddit.com", "x.com"] }, "more_restrictive": true },
+    { "name": "removing a domain is weaker", "changes": { "blocked_domains": [] }, "more_restrictive": false },
+    { "name": "re-spelling a domain is not a removal", "changes": { "blocked_domains": ["https://www.Reddit.com/r/all"] }, "more_restrictive": true },
+
+    { "name": "all: adding a condition task is stricter", "changes": { "condition_task_ids": ["a", "b"] }, "more_restrictive": true },
+    { "name": "all: replacing a condition task is weaker", "changes": { "condition_task_ids": ["b"] }, "more_restrictive": false },
+    { "name": "all: removing every condition task is weaker", "changes": { "condition_task_ids": [] }, "more_restrictive": false },
+    { "name": "all to any is weaker", "changes": { "condition_logic": "any" }, "more_restrictive": false },
+    {
+      "name": "any to all is stricter",
+      "rule": { "condition_task_ids": ["a", "b"], "condition_logic": "any" },
+      "changes": { "condition_logic": "all" },
+      "more_restrictive": true
+    },
+    {
+      "name": "any: adding a condition task is weaker (one more way to unblock)",
+      "rule": { "condition_logic": "any" },
+      "changes": { "condition_task_ids": ["a", "b"] },
+      "more_restrictive": false
+    },
+    {
+      "name": "any: removing one of several condition tasks is stricter",
+      "rule": { "condition_task_ids": ["a", "b"], "condition_logic": "any" },
+      "changes": { "condition_task_ids": ["a"] },
+      "more_restrictive": true
+    },
+    {
+      "name": "any: removing every condition task is stricter (the rule always blocks)",
+      "rule": { "condition_task_ids": ["a", "b"], "condition_logic": "any" },
+      "changes": { "condition_task_ids": [] },
+      "more_restrictive": true
+    },
+    {
+      "name": "any: re-sending the same condition tasks is neutral",
+      "rule": { "condition_task_ids": ["a", "b"], "condition_logic": "any" },
+      "changes": { "condition_task_ids": ["b", "a"], "condition_logic": "any" },
+      "more_restrictive": true
+    },
+    {
+      "name": "giving an always-blocking rule a condition is weaker",
+      "rule": { "condition_task_ids": [] },
+      "changes": { "condition_task_ids": ["a"] },
+      "more_restrictive": false
+    },
+    {
+      "name": "switching to any while adding tasks is weaker",
+      "changes": { "condition_task_ids": ["a", "b"], "condition_logic": "any" },
+      "more_restrictive": false
+    },
+
+    { "name": "deactivating is weaker", "changes": { "is_active": 0 }, "more_restrictive": false },
+    { "name": "activating is stricter", "rule": { "is_active": 0 }, "changes": { "is_active": 1 }, "more_restrictive": true },
+    { "name": "shortening the lock is weaker", "changes": { "config_lock_hours": 1 }, "more_restrictive": false },
+    { "name": "lengthening the lock is stricter", "changes": { "config_lock_hours": 48 }, "more_restrictive": true }
+  ]
+}

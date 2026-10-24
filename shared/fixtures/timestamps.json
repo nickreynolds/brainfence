@@ -1,0 +1,15 @@
+{
+  "description": "Parsing timestamp text as it appears in synced rows: clients write ISO-8601, rows replicated from Postgres use its text form. No offset means UTC. `utc` null means unparseable. Compare parsed instants, never the strings. See shared/CONTRACTS.md.",
+  "cases": [
+    { "input": "2026-04-16T14:00:00Z", "utc": "2026-04-16T14:00:00.000Z" },
+    { "input": "2026-04-16T14:00:00.123Z", "utc": "2026-04-16T14:00:00.123Z" },
+    { "input": "2026-04-16 14:00:00+00", "utc": "2026-04-16T14:00:00.000Z" },
+    { "input": "2026-04-16 14:00:00.123+00", "utc": "2026-04-16T14:00:00.123Z" },
+    { "input": "2026-04-16T10:00:00-04:00", "utc": "2026-04-16T14:00:00.000Z" },
+    { "input": "2026-04-16 19:30:00+0530", "utc": "2026-04-16T14:00:00.000Z" },
+    { "input": "2026-04-16 14:00:00", "utc": "2026-04-16T14:00:00.000Z" },
+    { "input": "2026-04-16T14:00:00", "utc": "2026-04-16T14:00:00.000Z" },
+    { "input": "not a time", "utc": null },
+    { "input": "", "utc": null }
+  ]
+}

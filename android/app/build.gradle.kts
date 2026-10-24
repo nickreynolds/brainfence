@@ -68,6 +68,11 @@ kotlin {
     }
 }
 
+// Cross-platform test cases shared with the macOS and Windows clients.
+tasks.withType<Test>().configureEach {
+    systemProperty("brainfence.fixtures", rootProject.file("../shared/fixtures").absolutePath)
+}
+
 dependencies {
     // AndroidX
     implementation(libs.androidx.core.ktx)

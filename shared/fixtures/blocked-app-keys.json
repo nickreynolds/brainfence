@@ -1,0 +1,15 @@
+{
+  "description": "The identity of a blocked_apps / companion_apps entry: `<platform>:<id>`, used to compare entry sets. `key` null means the entry is skipped. See shared/CONTRACTS.md.",
+  "cases": [
+    { "entry": { "platform": "android", "package": "com.twitter.android" }, "key": "android:com.twitter.android" },
+    { "entry": "com.legacy.app", "key": "android:com.legacy.app" },
+    { "entry": "", "key": null },
+    { "entry": { "platform": "macos", "bundle_id": "com.hnc.Discord" }, "key": "macos:com.hnc.Discord" },
+    { "entry": { "platform": "windows", "exe": "Discord.EXE" }, "key": "windows:discord.exe" },
+    { "entry": { "platform": "windows", "exe": "steam.exe", "name": "Steam" }, "key": "windows:steam.exe" },
+    {
+      "entry": { "platform": "linux", "name": "A", "bin": "a" },
+      "key": "linux:{\"bin\":\"a\",\"name\":\"A\",\"platform\":\"linux\"}"
+    }
+  ]
+}

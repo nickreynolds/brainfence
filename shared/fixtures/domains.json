@@ -1,0 +1,24 @@
+{
+  "description": "Normalizing a user-entered blocked_domains entry. `normalized` null means the entry is unusable and ignored. A host matches a domain when it equals it or is a subdomain of it. See shared/CONTRACTS.md.",
+  "normalize": [
+    { "input": "reddit.com", "normalized": "reddit.com" },
+    { "input": "  Reddit.COM  ", "normalized": "reddit.com" },
+    { "input": "https://www.reddit.com/r/all", "normalized": "reddit.com" },
+    { "input": "http://example.com?q=1", "normalized": "example.com" },
+    { "input": "example.com#top", "normalized": "example.com" },
+    { "input": "example.com:8080", "normalized": "example.com" },
+    { "input": "https://user@host.example.com:8443/path", "normalized": "host.example.com" },
+    { "input": "*.example.com", "normalized": "example.com" },
+    { "input": "example.com.", "normalized": "example.com" },
+    { "input": "news.ycombinator.com", "normalized": "news.ycombinator.com" },
+    { "input": "localhost", "normalized": null },
+    { "input": "www.", "normalized": null },
+    { "input": "", "normalized": null }
+  ],
+  "matches": [
+    { "host": "reddit.com", "domain": "reddit.com", "matches": true },
+    { "host": "old.reddit.com", "domain": "reddit.com", "matches": true },
+    { "host": "notreddit.com", "domain": "reddit.com", "matches": false },
+    { "host": "reddit.com.evil.net", "domain": "reddit.com", "matches": false }
+  ]
+}
