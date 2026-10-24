@@ -1,0 +1,44 @@
+{
+  "name": "brainfence-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Brainfence for Windows: tasks and habits that gate access to distracting apps and websites",
+  "author": "Brainfence",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "node --import tsx --test test/*.test.ts",
+    "icons": "node scripts/make-icons.mjs",
+    "dist": "electron-vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "@powersync/common": "2.4.0",
+    "@powersync/node": "1.2.0",
+    "@supabase/supabase-js": "^2.49.4",
+    "koffi": "^3.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "dotenv": "^16.4.7",
+    "electron": "44.9.2",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "5.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  },
+  "allowScripts": {
+    "koffi@3.3.3": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  }
+}
