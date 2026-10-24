@@ -61,7 +61,7 @@ final class ShieldPresenter {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        let host = NSHostingView(rootView: ShieldView(presenter: self))
+        let host = NSHostingView(rootView: ShieldView(presenter: self).tint(Palette.primary))
         host.sizingOptions = [.preferredContentSize]
         panel.contentView = host
         return panel
@@ -188,7 +188,7 @@ struct BlockingTaskRow: View {
                     Text(hint).font(.caption).foregroundStyle(.secondary)
                 }
                 if let error {
-                    Text(error).font(.caption).foregroundStyle(.red)
+                    Text(error).font(.caption).foregroundStyle(Palette.error)
                 }
             }
             Spacer()

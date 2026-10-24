@@ -87,7 +87,7 @@ struct SignInView: View {
 
             if let error {
                 Text(error)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.error)
                     .font(.callout)
                     .frame(maxWidth: 320)
             }

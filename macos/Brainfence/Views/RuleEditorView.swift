@@ -131,7 +131,7 @@ struct RuleEditorView: View {
             Divider()
             HStack {
                 if let error {
-                    Text(error).foregroundStyle(.red).font(.callout)
+                    Text(error).foregroundStyle(Palette.error).font(.callout)
                 } else if let outcome {
                     Text(outcome).font(.callout)
                 }

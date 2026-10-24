@@ -98,7 +98,7 @@ struct PendingChangeBanner: View {
             Image(systemName: "clock.badge.exclamationmark")
             VStack(alignment: .leading) {
                 Text(message).font(.caption.weight(.medium))
-                if let error { Text(error).font(.caption).foregroundStyle(.red) }
+                if let error { Text(error).font(.caption).foregroundStyle(Palette.error) }
             }
             Spacer()
             Button("Cancel Change") {

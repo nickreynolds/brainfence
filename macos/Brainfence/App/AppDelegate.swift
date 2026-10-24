@@ -102,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "Brainfence"
             window.isReleasedWhenClosed = false
             window.setFrameAutosaveName("BrainfenceMain")
-            window.contentView = NSHostingView(rootView: RootView().environment(model))
+            window.contentView = NSHostingView(rootView: RootView().environment(model).tint(Palette.primary))
             window.center()
             NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
                 // Back to a menu-bar-only app once the window closes.

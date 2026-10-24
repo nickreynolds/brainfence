@@ -31,30 +31,6 @@ class SupabasePowerSyncConnector @Inject constructor(
     @Named("powerSyncUrl") powerSyncUrl: String,
 ) : SupabaseConnector(supabase, powerSyncUrl) {
 
-    companion object {
-        /**
-         * Map of table name → columns that must be parsed from their local JSON
-         * string into a real JSON element before upload. Covers every Postgres
-         * JSONB column and every native array column (TEXT[] / UUID[]); omitting
-         * an array column causes its writes to be rejected and reverted.
-         */
-        private val JSON_ENCODED_COLUMNS = mapOf(
-            "tasks" to setOf(
-                "recurrence_config", "verification_config", "blocking_days_of_week",
-                "tags", "blocking_rule_ids",
-            ),
-            "routine_steps" to setOf("config"),
-            "task_completions" to setOf("verification_data"),
-            "step_completions" to setOf("data"),
-            "blocking_rules" to setOf(
-                "blocked_apps", "pending_changes",
-                "blocked_domains", "condition_task_ids",
-            ),
-            "groups" to setOf("visibility_schedule"),
-            "notes" to setOf("tags", "outgoing_links"),
-        )
-    }
-
     override suspend fun uploadCrudEntry(entry: CrudEntry) {
         val jsonEncodedCols = JSON_ENCODED_COLUMNS[entry.table]
         if (jsonEncodedCols == null || entry.opData == null) {

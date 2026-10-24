@@ -68,7 +68,7 @@ private struct SyncDetails: View {
         LabeledContent("Last synced", value: status.lastSyncedAt?.formatted(date: .abbreviated, time: .standard) ?? "Never")
         if let error = status.anyError {
             LabeledContent("Error") {
-                Text(String(describing: error)).font(.caption).foregroundStyle(.red).lineLimit(4)
+                Text(String(describing: error)).font(.caption).foregroundStyle(Palette.error).lineLimit(4)
             }
         }
         LabeledContent("Tasks / rules on this Mac", value: "\(model.engine.tasks.count) / \(model.engine.rules.count)")
@@ -76,7 +76,7 @@ private struct SyncDetails: View {
             LabeledContent("Last evaluated", value: refreshed.formatted(date: .omitted, time: .standard))
         }
         if let error = model.engine.lastError {
-            Text(error).font(.caption).foregroundStyle(.red)
+            Text(error).font(.caption).foregroundStyle(Palette.error)
         }
     }
 }

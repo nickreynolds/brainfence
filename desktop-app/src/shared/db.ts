@@ -4,6 +4,8 @@
  * Repositories in ./repos depend only on this, so the same SQL runs in both.
  */
 
+import { TABLES } from './schema.generated'
+
 export interface SqlStatement {
   sql: string
   params?: unknown[]
@@ -29,11 +31,7 @@ export async function requireUserId(db: Db): Promise<string> {
 export const bool = (value: boolean): number => (value ? 1 : 0)
 
 /** Every synced table — used to fan out change notifications. */
-export const SYNCED_TABLES = [
-  'groups', 'tasks', 'routine_steps', 'shopping_items', 'task_completions', 'step_completions',
-  'blocking_rules', 'notes', 'contemplation_decks', 'contemplations', 'contemplation_deliveries',
-  'metrics', 'metric_options', 'reports', 'report_metrics', 'report_submissions', 'metric_entries',
-] as const
+export const SYNCED_TABLES = Object.keys(TABLES) as (keyof typeof TABLES)[]
 
 /** This client's platform key in platform-tagged JSON (blocked_apps, companion_apps). */
 export const PLATFORM = 'windows'

@@ -7,27 +7,14 @@ import Foundation
 /// as JSON *text*, and BOOLEANs as 0/1. Uploaded verbatim, a JSONB column ends
 /// up holding a JSON string instead of an object, and an array column is
 /// rejected outright — and a rejected write is rolled back locally on the next
-/// sync, so edits silently revert. Every such column must be listed here.
-/// Keep in sync with android/…/data/db/SupabasePowerSyncConnector.kt.
+/// sync, so edits silently revert. Every such column must be marked with an
+/// `encoding` in shared/schema.json, which generates `SchemaColumns`.
 public enum UploadNormalizer {
     /// table → columns whose local text must be parsed into JSON (JSONB and arrays).
-    public static let jsonColumns: [String: Set<String>] = [
-        "tasks": ["recurrence_config", "verification_config", "blocking_days_of_week", "tags", "blocking_rule_ids"],
-        "routine_steps": ["config"],
-        "task_completions": ["verification_data"],
-        "step_completions": ["data"],
-        "blocking_rules": ["blocked_apps", "pending_changes", "blocked_domains", "condition_task_ids"],
-        "groups": ["visibility_schedule"],
-        "notes": ["tags", "outgoing_links"],
-    ]
+    public static let jsonColumns = SchemaColumns.json
 
     /// table → BOOLEAN columns stored locally as 0/1.
-    public static let booleanColumns: [String: Set<String>] = [
-        "tasks": ["is_blocking_condition", "home_only_blocking"],
-        "blocking_rules": ["is_active"],
-        "contemplation_decks": ["is_enabled"],
-        "reports": ["include_note"],
-    ]
+    public static let booleanColumns = SchemaColumns.boolean
 
     public static func normalize(table: String, values: [String: JSONValue]) -> [String: JSONValue] {
         let json = jsonColumns[table] ?? []

@@ -15,7 +15,17 @@ definitions and test cases instead:
 
 Run `npm run codegen` from the repo root after editing `schema.json` or
 `tokens.json`, and commit the generated files. `npm run codegen:check` fails if
-they are out of date.
+they are out of date. Generated files (don't edit by hand):
+
+| Client | From `schema.json` | From `tokens.json` |
+| --- | --- | --- |
+| Android | `data/db/AppSchema.kt` (schema + `JSON_ENCODED_COLUMNS`) | `ui/theme/Color.kt` |
+| Windows | `src/shared/schema.generated.ts` | `src/renderer/src/tokens.css` |
+| macOS | `Brainfence/Sync/AppSchema.swift`, `BrainfenceCore/…/SchemaColumns.swift` | `Brainfence/Theme/Palette.swift` |
+
+The palette starts as the Material 3 baseline that Android was already
+rendering (Compose material3 1.3.1 defaults, plus Android's original light
+`primary`). Change it in `tokens.json` to restyle every client at once.
 
 ## Platform-tagged app entries
 
