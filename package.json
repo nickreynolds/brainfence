@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "bootstrap": "npx tsx dev/bootstrap.ts",
-    "bootstrap:full": "npx tsx dev/bootstrap-full.ts"
+    "bootstrap:full": "npx tsx dev/bootstrap-full.ts",
+    "codegen": "node shared/codegen.mjs",
+    "codegen:check": "node shared/codegen.mjs --check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4"

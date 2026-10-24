@@ -2,6 +2,7 @@ package dev.brainfence.data.blocking
 
 import com.powersync.PowerSyncDatabase
 import com.powersync.db.SqlCursor
+import dev.brainfence.domain.blocking.RuleContracts
 import dev.brainfence.domain.model.BlockingRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -135,9 +136,9 @@ class BlockingRepository @Inject constructor(
     /**
      * Schedule a change to a blocking rule with a time-lock delay.
      *
-     * If the change is strictly more restrictive (adds blocked apps/domains,
-     * adds condition tasks, tightens logic, or activates the rule) it is
-     * applied immediately — the time-lock only protects against weakening.
+     * If the change can only make the rule stricter (see
+     * [RuleContracts.isMoreRestrictive]) it is applied immediately — the
+     * time-lock only protects against weakening.
      *
      * @param ruleId     The blocking rule to modify.
      * @param changes    A JSON object describing the new values, e.g.
@@ -145,7 +146,7 @@ class BlockingRepository @Inject constructor(
      */
     suspend fun scheduleRuleChange(ruleId: String, changes: JSONObject) {
         val current = getRuleById(ruleId)
-        if (current != null && isMoreRestrictive(current, changes)) {
+        if (current != null && RuleContracts.isMoreRestrictive(snapshot(current), changes)) {
             // More restrictive — apply immediately, no time-lock
             applyPendingToRule(ruleId, changes.toString())
             return
@@ -169,53 +170,23 @@ class BlockingRepository @Inject constructor(
     }
 
     /**
-     * Returns true if the proposed [changes] are strictly more restrictive
-     * than the [current] rule — meaning they only add blocking, never remove it.
-     *
-     * A change is more restrictive when ALL of the following hold for each
-     * field present in changes:
-     * - blocked_apps: new set is a superset of the current set
-     * - blocked_domains: new set is a superset of the current set
-     * - condition_task_ids: new set is a superset of the current set
-     * - condition_logic: "any" → "all" is more restrictive; "all" → "any" is not
-     * - is_active: 0 → 1 is more restrictive; 1 → 0 is not
-     * - name / config_lock_hours: neutral, ignored
+     * [rule] with every platform's blocked apps: [BlockingRule.blockedApps]
+     * holds only Android packages, but removing another platform's app is a
+     * weakening too.
      */
-    private fun isMoreRestrictive(current: BlockingRule, changes: JSONObject): Boolean {
-        if (changes.has("blocked_apps")) {
-            val newApps = parseBlockedApps(changes.get("blocked_apps").let {
-                if (it is JSONArray) it.toString() else it.toString()
-            }).toSet()
-            if (!newApps.containsAll(current.blockedApps.toSet())) return false
-        }
-
-        if (changes.has("blocked_domains")) {
-            val newDomains = parseJsonStringArray(changes.get("blocked_domains").let {
-                if (it is JSONArray) it.toString() else it.toString()
-            }).toSet()
-            if (!newDomains.containsAll(current.blockedDomains.toSet())) return false
-        }
-
-        if (changes.has("condition_task_ids")) {
-            val newIds = parseJsonStringArray(changes.get("condition_task_ids").let {
-                if (it is JSONArray) it.toString() else it.toString()
-            }).toSet()
-            if (!newIds.containsAll(current.conditionTaskIds.toSet())) return false
-        }
-
-        if (changes.has("condition_logic")) {
-            val newLogic = changes.getString("condition_logic")
-            // "any" → "all" is more restrictive; "all" → "any" is less
-            if (current.conditionLogic == "all" && newLogic == "any") return false
-        }
-
-        if (changes.has("is_active")) {
-            val newActive = changes.getInt("is_active") != 0
-            // Deactivating is less restrictive
-            if (current.isActive && !newActive) return false
-        }
-
-        return true
+    private suspend fun snapshot(rule: BlockingRule): RuleContracts.RuleSnapshot {
+        val blockedApps = database.getOptional(
+            sql = "SELECT blocked_apps FROM blocking_rules WHERE id = ?",
+            parameters = listOf(rule.id),
+        ) { cursor -> cursor.getString(0) ?: "[]" }
+        return RuleContracts.RuleSnapshot(
+            blockedAppKeys   = RuleContracts.appKeys(blockedApps),
+            blockedDomains   = rule.blockedDomains,
+            conditionTaskIds = rule.conditionTaskIds.toSet(),
+            conditionLogic   = rule.conditionLogic,
+            isActive         = rule.isActive,
+            configLockHours  = rule.configLockHours,
+        )
     }
 
     /**
@@ -225,18 +196,20 @@ class BlockingRepository @Inject constructor(
      * @return number of rules that had pending changes applied.
      */
     suspend fun applyExpiredPendingChanges(): Int {
-        val now = Instant.now().toString()
+        // Compared parsed, not as strings: rows replicated from Postgres spell
+        // timestamps differently ("2026-04-16 14:00:00+00") from local writes.
+        val now = Instant.now()
         val rules = database.getAll(
             sql = """
-                SELECT id, pending_changes
+                SELECT id, pending_changes, changes_apply_at
                 FROM blocking_rules
                 WHERE pending_changes IS NOT NULL
                   AND changes_apply_at IS NOT NULL
-                  AND changes_apply_at <= ?
             """.trimIndent(),
-            parameters = listOf(now),
         ) { cursor ->
-            Pair(cursor.getString(0)!!, cursor.getString(1)!!)
+            Triple(cursor.getString(0)!!, cursor.getString(1)!!, cursor.getString(2))
+        }.filter { (_, _, applyAt) ->
+            RuleContracts.parseTimestamp(applyAt)?.let { !it.isAfter(now) } ?: false
         }
 
         for ((id, pendingJson) in rules) {

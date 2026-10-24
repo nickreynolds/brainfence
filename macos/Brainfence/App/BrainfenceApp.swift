@@ -8,6 +8,7 @@ struct BrainfenceApp: App {
         MenuBarExtra {
             MenuBarContent()
                 .environment(delegate.model)
+                .tint(Palette.primary)
         } label: {
             MenuBarIcon(engine: delegate.model.engine)
         }

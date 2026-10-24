@@ -54,15 +54,29 @@ function parseLoose(json: string | null | undefined): any {
 
 /**
  * Parses timestamps as PowerSync stores them: ISO-8601 ("2026-10-23T12:00:00Z")
- * or Postgres text ("2026-10-23 12:00:00.123+00"). Null if unparseable.
+ * or Postgres text ("2026-10-23 12:00:00.123+00"). No offset means UTC. Null
+ * if unparseable. Cases: shared/fixtures/timestamps.json.
  */
 export function parseInstant(value: string | null | undefined): Date | null {
-  if (!value) return null
-  let s = value.trim().replace(' ', 'T')
-  // "+00" / "-05" offsets → "+00:00"
-  s = s.replace(/([+-]\d{2})$/, '$1:00')
-  const d = new Date(s)
+  const m = value?.trim().match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)(\.\d+)?(Z|[+-]\d{2}(?::?\d{2})?)?$/i)
+  if (!m) return null
+  const [, date, time, fraction, zone] = m
+  // Date only takes milliseconds, and offsets only as ±HH:MM.
+  const ms = fraction ? fraction.slice(0, 4).padEnd(4, '0') : ''
+  let offset = 'Z'
+  if (zone && !/^z$/i.test(zone)) offset = zone.length === 3 ? `${zone}:00` : `${zone.slice(0, 3)}:${zone.slice(-2)}`
+  const d = new Date(`${date}T${time}${ms}${offset}`)
   return isNaN(d.getTime()) ? null : d
+}
+
+/** JSON with object keys sorted and no whitespace: a stable identity for an entry. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const fields = Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson((value as any)[k])}`)
+    return `{${fields.join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
 }
 
 export function nowIso(): string {

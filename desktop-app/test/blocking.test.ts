@@ -4,7 +4,7 @@ import { at, rule, task } from './helpers'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluateBlocking } from '../src/shared/blocking'
-import { isMoreRestrictive, mapRule, normalizeDomain } from '../src/shared/repos/blocking'
+import { mapRule } from '../src/shared/repos/blocking'
 
 const manual = (overrides = {}) => task({ id: 'task-2', title: 'Manual task', availableFrom: null, dueAt: null, ...overrides })
 const blocked = (r: ReturnType<typeof evaluateBlocking>) => r.blockedApps
@@ -77,28 +77,4 @@ test('rules read only this platform\'s apps, keeping the others', () => {
   assert.equal(r.blockedAppRefs.length, 3)
   assert.deepEqual(r.blockedDomains, ['reddit.com'])
   assert.deepEqual(r.conditionTaskIds, ['a', 'b'])
-})
-
-test('time-lock: only strictly more restrictive changes skip the lock', () => {
-  const current = rule({
-    blockedAppRefs: [{ platform: 'android', package: 'com.x' }, { platform: 'windows', exe: 'discord.exe' }],
-    blockedDomains: ['reddit.com'], conditionTaskIds: ['t1'], conditionLogic: 'any',
-  })
-  const apps = current.blockedAppRefs
-  assert.equal(isMoreRestrictive(current, { blocked_apps: [...apps, { platform: 'windows', exe: 'steam.exe' }] }), true)
-  // Dropping another platform's app is a weakening too.
-  assert.equal(isMoreRestrictive(current, { blocked_apps: [apps[1]] }), false)
-  assert.equal(isMoreRestrictive(current, { blocked_domains: [] }), false)
-  assert.equal(isMoreRestrictive(current, { condition_task_ids: ['t1', 't2'] }), true)
-  assert.equal(isMoreRestrictive(current, { condition_task_ids: [] }), false)
-  assert.equal(isMoreRestrictive(current, { condition_logic: 'all' }), true)
-  assert.equal(isMoreRestrictive(rule({ conditionLogic: 'all' }), { condition_logic: 'any' }), false)
-  assert.equal(isMoreRestrictive(current, { is_active: 0 }), false)
-  assert.equal(isMoreRestrictive(current, { name: 'renamed' }), true)
-})
-
-test('domain normalisation', () => {
-  assert.equal(normalizeDomain('https://www.Twitter.com/home?x=1'), 'twitter.com')
-  assert.equal(normalizeDomain(' reddit.com:443 '), 'reddit.com')
-  assert.equal(normalizeDomain('news.ycombinator.com.'), 'news.ycombinator.com')
 })

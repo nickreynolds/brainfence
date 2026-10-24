@@ -1,0 +1,186 @@
+{
+  "description": "Synced tables as stored locally by PowerSync (`id` is implicit). `type` is the local SQLite column type. `encoding: json` marks JSONB and Postgres array columns, stored locally as JSON text and parsed before upload; `encoding: boolean` marks BOOLEAN columns, stored locally as 0/1. Run `npm run codegen` after editing. See shared/CONTRACTS.md.",
+  "tables": {
+    "groups": [
+      {"name": "user_id", "type": "text"},
+      {"name": "name", "type": "text"},
+      {"name": "color", "type": "text"},
+      {"name": "icon", "type": "text"},
+      {"name": "visibility_schedule", "type": "text", "encoding": "json"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "tasks": [
+      {"name": "user_id", "type": "text"},
+      {"name": "title", "type": "text"},
+      {"name": "description", "type": "text"},
+      {"name": "task_type", "type": "text"},
+      {"name": "status", "type": "text"},
+      {"name": "recurrence_type", "type": "text"},
+      {"name": "recurrence_config", "type": "text", "encoding": "json"},
+      {"name": "verification_type", "type": "text"},
+      {"name": "verification_config", "type": "text", "encoding": "json"},
+      {"name": "tags", "type": "text", "encoding": "json"},
+      {"name": "group_id", "type": "text"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "is_blocking_condition", "type": "integer", "encoding": "boolean"},
+      {"name": "blocking_rule_ids", "type": "text", "encoding": "json"},
+      {"name": "available_from", "type": "text", "note": "HH:MM \u2014 when task becomes completable"},
+      {"name": "due_at", "type": "text", "note": "HH:MM \u2014 when task becomes overdue / triggers blocking"},
+      {"name": "home_only_blocking", "type": "integer", "encoding": "boolean", "note": "1 = only block when user is at configured home location"},
+      {"name": "blocking_days_of_week", "type": "text", "encoding": "json", "note": "JSON array of \"mon\"\u2026\"sun\". Empty = block every day."},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "routine_steps": [
+      {"name": "user_id", "type": "text"},
+      {"name": "task_id", "type": "text"},
+      {"name": "title", "type": "text"},
+      {"name": "step_order", "type": "integer"},
+      {"name": "step_type", "type": "text"},
+      {"name": "config", "type": "text", "encoding": "json"},
+      {"name": "superset_group", "type": "text"},
+      {"name": "description", "type": "text", "note": "optional notes shown with the step"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "shopping_items": [
+      {"name": "user_id", "type": "text"},
+      {"name": "task_id", "type": "text"},
+      {"name": "title", "type": "text"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "completed_at", "type": "text", "note": "null = still to buy"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "task_completions": [
+      {"name": "task_id", "type": "text"},
+      {"name": "user_id", "type": "text"},
+      {"name": "completed_at", "type": "text"},
+      {"name": "occurrence_date", "type": "text"},
+      {"name": "verification_data", "type": "text", "encoding": "json"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "step_completions": [
+      {"name": "user_id", "type": "text"},
+      {"name": "task_completion_id", "type": "text"},
+      {"name": "routine_step_id", "type": "text"},
+      {"name": "set_number", "type": "integer"},
+      {"name": "data", "type": "text", "encoding": "json"},
+      {"name": "completed_at", "type": "text"}
+    ],
+    "blocking_rules": [
+      {"name": "user_id", "type": "text"},
+      {"name": "name", "type": "text"},
+      {"name": "blocked_apps", "type": "text", "encoding": "json"},
+      {"name": "blocked_domains", "type": "text", "encoding": "json"},
+      {"name": "condition_task_ids", "type": "text", "encoding": "json"},
+      {"name": "condition_logic", "type": "text"},
+      {"name": "config_lock_hours", "type": "integer"},
+      {"name": "pending_changes", "type": "text", "encoding": "json"},
+      {"name": "changes_apply_at", "type": "text"},
+      {"name": "is_active", "type": "integer", "encoding": "boolean"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "contemplation_decks": [
+      {"name": "user_id", "type": "text"},
+      {"name": "name", "type": "text"},
+      {"name": "description", "type": "text"},
+      {"name": "ordering", "type": "text", "note": "'sequential' | 'random'"},
+      {"name": "response_type", "type": "text", "note": "'none' | 'affirm'"},
+      {"name": "response_label", "type": "text"},
+      {"name": "weight", "type": "integer"},
+      {"name": "is_enabled", "type": "integer", "encoding": "boolean"},
+      {"name": "library_key", "type": "text", "note": "set when added from the built-in library"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "contemplations": [
+      {"name": "user_id", "type": "text"},
+      {"name": "deck_id", "type": "text"},
+      {"name": "title", "type": "text"},
+      {"name": "body", "type": "text"},
+      {"name": "attribution", "type": "text"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "contemplation_deliveries": [
+      {"name": "user_id", "type": "text"},
+      {"name": "deck_id", "type": "text"},
+      {"name": "contemplation_id", "type": "text"},
+      {"name": "title", "type": "text", "note": "snapshot at delivery time"},
+      {"name": "body", "type": "text"},
+      {"name": "attribution", "type": "text"},
+      {"name": "delivered_at", "type": "text"},
+      {"name": "response", "type": "text", "note": "null | 'affirmed'"},
+      {"name": "responded_at", "type": "text"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "metrics": [
+      {"name": "user_id", "type": "text"},
+      {"name": "name", "type": "text"},
+      {"name": "description", "type": "text"},
+      {"name": "kind", "type": "text", "note": "'ordinal' | 'categorical'"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "metric_options": [
+      {"name": "user_id", "type": "text"},
+      {"name": "metric_id", "type": "text"},
+      {"name": "label", "type": "text"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "reports": [
+      {"name": "user_id", "type": "text"},
+      {"name": "name", "type": "text"},
+      {"name": "include_note", "type": "integer", "encoding": "boolean"},
+      {"name": "library_key", "type": "text"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
+    "report_metrics": [
+      {"name": "user_id", "type": "text"},
+      {"name": "report_id", "type": "text"},
+      {"name": "metric_id", "type": "text"},
+      {"name": "sort_order", "type": "integer"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "report_submissions": [
+      {"name": "user_id", "type": "text"},
+      {"name": "report_id", "type": "text"},
+      {"name": "task_id", "type": "text"},
+      {"name": "routine_step_id", "type": "text", "note": "set when filled in as a routine step"},
+      {"name": "report_name", "type": "text", "note": "snapshot"},
+      {"name": "note", "type": "text"},
+      {"name": "submitted_at", "type": "text"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "metric_entries": [
+      {"name": "user_id", "type": "text"},
+      {"name": "submission_id", "type": "text"},
+      {"name": "metric_id", "type": "text"},
+      {"name": "option_id", "type": "text"},
+      {"name": "metric_name", "type": "text", "note": "snapshots from here down"},
+      {"name": "metric_kind", "type": "text"},
+      {"name": "option_label", "type": "text"},
+      {"name": "option_index", "type": "integer"},
+      {"name": "option_count", "type": "integer"},
+      {"name": "position", "type": "integer"},
+      {"name": "recorded_at", "type": "text"},
+      {"name": "created_at", "type": "text"}
+    ],
+    "notes": [
+      {"name": "user_id", "type": "text"},
+      {"name": "title", "type": "text"},
+      {"name": "content", "type": "text"},
+      {"name": "tags", "type": "text", "encoding": "json"},
+      {"name": "group_id", "type": "text"},
+      {"name": "outgoing_links", "type": "text", "encoding": "json"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ]
+  }
+}

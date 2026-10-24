@@ -129,7 +129,7 @@ private struct TaskRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 if let error {
-                    Text(error).font(.caption).foregroundStyle(.red)
+                    Text(error).font(.caption).foregroundStyle(Palette.error)
                 }
             }
 
