@@ -81,6 +81,21 @@ public enum JSONValue: Sendable, Hashable, Codable {
         }
     }
 
+    /// Numeric view, accepting numeric strings (like JavaScript's Number()).
+    public var doubleValue: Double? {
+        switch self {
+        case .int(let i): return Double(i)
+        case .double(let d): return d
+        case .string(let s): return Double(s.trimmingCharacters(in: .whitespaces))
+        default: return nil
+        }
+    }
+
+    public var boolValue: Bool? {
+        if case .bool(let b) = self { return b }
+        return nil
+    }
+
     public var arrayValue: [JSONValue]? {
         if case .array(let a) = self { return a }
         return nil
@@ -107,5 +122,14 @@ extension JSONValue {
 
     public static func array(of strings: [String]) -> JSONValue {
         .array(strings.map(JSONValue.string))
+    }
+
+    /// The first of [keys] that is present and not null, like a chain of `??`
+    /// over a JSON object's fields.
+    public func first(_ keys: String...) -> JSONValue? {
+        for key in keys {
+            if let value = self[key], !value.isNull { return value }
+        }
+        return nil
     }
 }

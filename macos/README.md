@@ -34,14 +34,20 @@ settings — so a dev build never interferes with the installed app.
 BrainfenceCore/   Swift package: pure logic, unit-tested with `swift test`
                   recurrence engine, time gates, blocking evaluator (ports of the
                   Android domain layer), rule time-lock semantics, PowerSync upload
-                  normalization, domain matching
+                  normalization, domain matching, task editor, routine sessions,
+                  timers, reports, contemplation scheduling, task notifications
 Brainfence/
   App/            entry point, AppDelegate (quit guard, single instance), AppModel
                   (composition root), login agent
   Sync/           PowerSync schema, Supabase connector, auth session
-  Data/           task / completion / blocking-rule repositories, installed apps
+  Data/           repositories (tasks, completions, routines, shopping & journal,
+                  reports, contemplations, blocking rules), installed apps
   Blocking/       BlockingEngine (evaluation loop), AppEnforcer, WebEnforcer, shield
-  Views/          SwiftUI: sign-in, Today, Blocking Rules, Settings, menu bar
+  Services/       timers (duration / meditation / companion apps), notifications,
+                  contemplation scheduler, debug log
+  Views/          SwiftUI: sign-in / sign-up, tasks and their screens, task editor,
+                  journal, reports, contemplations, blocking rules, debug, settings,
+                  menu bar
   LaunchAgents/   launchd agent plist bundled into Contents/Library/LaunchAgents
 project.yml       XcodeGen spec (the .xcodeproj is generated, not committed)
 ```
@@ -58,7 +64,7 @@ way Android does with its AccessibilityService.
   (`evaluateBlocking`): a rule blocks when it is active and its condition tasks
   aren't met; a task only causes blocking once past its `due_at`; unknown
   condition tasks fail closed; `home_only_blocking` tasks block as if at home
-  (home presence isn't tracked on the Mac yet); `blocking_days_of_week` is
+  (location is a phone feature, see below); `blocking_days_of_week` is
   honoured. It re-evaluates on every PowerSync change, re-reads everything from
   SQLite every 60 s (the correctness floor, also catching midnight), fires a
   precise timer at the next `due_at` / `available_from`, and refreshes on wake
@@ -84,7 +90,8 @@ way Android does with its AccessibilityService.
 - **Time-locked edits** — anything that could loosen a rule (removing apps or
   sites, changing condition tasks, any→all logic, deactivating, shortening the
   lock) is staged in `pending_changes` for `config_lock_hours` (default 24 h);
-  strictly-tighter edits apply immediately. Rules can't be deleted from the Mac.
+  strictly-tighter edits apply immediately. Only inactive rules can be
+  deleted; deleting an active one deactivates it, which is time-locked.
 - **Quit guard** — ⌘Q / Quit is refused while anything is blocking (logout and
   shutdown are allowed).
 - **Relaunch** — installed in /Applications, the app registers a launchd agent
@@ -95,20 +102,20 @@ way Android does with its AccessibilityService.
 
 ## Sync notes
 
-- `Sync/AppSchema.swift` mirrors `android/…/data/db/AppSchema.kt`. When a
-  migration adds a JSONB, array or boolean column, add it to
-  `BrainfenceCore/…/UploadNormalizer.swift` too, or uploads of it are rejected
-  and the local write reverts on the next sync.
+- `Sync/AppSchema.swift` and `BrainfenceCore/…/SchemaColumns.swift` are
+  generated from `shared/schema.json` (`npm run codegen` at the repo root).
 - Uploads that Postgres rejects permanently (constraint / type / RLS errors)
-  are skipped so they don't block the queue, and listed under Settings →
-  Rejected uploads.
+  are skipped so they don't block the queue, and listed on the Debug screen.
 - The local database lives at
   `~/Library/Application Support/<bundle id>/powersync.db`.
 
+## Location features
+
+GPS tasks, shopping-list arrival reminders and home presence are phone
+features (see `FEATURES.md`). The Mac still treats GPS and home-only tasks as
+blocking conditions, and shows what they need, but they're completed by the
+phone; the block lifts as soon as that completion syncs.
+
 ## Not on the Mac yet
 
-Completion flows other than manual / one-click (routines & workouts, GPS,
-duration and meditation timers, journal, reports, shopping) are done on the
-phone — the Mac shows what each task needs and unblocks as soon as the
-completion syncs. Also not ported: task editing, notes, contemplations,
-notifications, home-location tracking.
+Notes, groups and search aren't built on any platform yet (see `FEATURES.md`).

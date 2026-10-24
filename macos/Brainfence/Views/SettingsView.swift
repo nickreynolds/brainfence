@@ -45,12 +45,9 @@ struct SettingsView: View {
 
             if !model.uploadLog.items.isEmpty {
                 Section("Rejected uploads") {
-                    ForEach(model.uploadLog.items) { item in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.summary).font(.caption.monospaced())
-                            Text(item.error).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
-                        }
-                    }
+                    Text("\(plural(model.uploadLog.items.count, "upload")) rejected by the server. Details are under Debug.")
+                        .font(.caption)
+                    Button("Show Debug Log") { model.navigation.section = .debug }
                 }
             }
         }

@@ -51,6 +51,9 @@ private struct RuleRow: View {
     let edit: () -> Void
     @Environment(AppModel.self) private var model
 
+    @State private var confirmingDelete = false
+    @State private var error: String?
+
     private var isBlocking: Bool { model.engine.state.activeBlocks.contains { $0.rule.id == rule.id } }
 
     var body: some View {
@@ -64,6 +67,27 @@ private struct RuleRow: View {
                 }
                 Spacer()
                 Button("Edit", action: edit)
+                Button(rule.isActive ? "Deactivate…" : "Delete…", role: .destructive) { confirmingDelete = true }
+            }
+            .confirmationDialog(rule.isActive ? "Deactivate rule?" : "Delete rule?", isPresented: $confirmingDelete) {
+                Button(rule.isActive ? "Deactivate" : "Delete", role: .destructive) {
+                    Task {
+                        do {
+                            _ = try await model.deleteOrDeactivate(rule)
+                            error = nil
+                        } catch {
+                            self.error = error.localizedDescription
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(rule.isActive
+                    ? "“\(rule.name)” will stop blocking once its \(rule.configLockHours)-hour lock expires. After that you can delete it."
+                    : "“\(rule.name)” will be permanently deleted.")
+            }
+            if let error {
+                Text(error).font(.caption).foregroundStyle(Palette.error)
             }
             Text(BlockedTargetsSummary(rule: rule).text)
                 .font(.caption)

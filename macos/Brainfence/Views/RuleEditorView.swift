@@ -50,7 +50,7 @@ struct RuleEditorView: View {
                     }
                     Button("Add Apps…") { showingAppPicker = true }
                     if let other = rule?.otherPlatformApps, !other.isEmpty {
-                        Text("Also blocks \(other.count) phone app\(other.count == 1 ? "" : "s") — edit those on your phone.")
+                        Text("Also blocks \(plural(other.count, "app")) on your other devices — edit those there.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -214,7 +214,7 @@ struct RuleEditorView: View {
 }
 
 /// Multi-select list of installed apps, with search and a Finder fallback.
-private struct AppPickerView: View {
+struct AppPickerView: View {
     let selected: Set<String>
     let onAdd: ([String]) -> Void
 
