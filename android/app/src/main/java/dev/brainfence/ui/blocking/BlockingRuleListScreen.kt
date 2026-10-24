@@ -2,6 +2,7 @@ package dev.brainfence.ui.blocking
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
@@ -104,12 +106,20 @@ fun BlockingRuleListScreen(
                             Text(parts.joinToString(" \u00b7 ").ifEmpty { "No apps or domains" })
                         },
                         trailingContent = {
-                            if (item.hasPendingChanges) {
-                                Icon(
-                                    imageVector = Icons.Default.Schedule,
-                                    contentDescription = "Pending changes",
-                                    tint = MaterialTheme.colorScheme.tertiary,
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (item.hasPendingChanges) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = "Pending changes",
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                    )
+                                }
+                                IconButton(onClick = { deleteTarget = item }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = if (item.rule.isActive) "Deactivate rule" else "Delete rule",
+                                    )
+                                }
                             }
                         },
                     )
@@ -121,13 +131,21 @@ fun BlockingRuleListScreen(
     deleteTarget?.let { item ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete rule?") },
-            text = { Text("\"${item.rule.name}\" will be permanently deleted.") },
+            title = { Text(if (item.rule.isActive) "Deactivate rule?" else "Delete rule?") },
+            text = {
+                Text(
+                    if (item.rule.isActive) {
+                        "\"${item.rule.name}\" will stop blocking once its ${item.rule.configLockHours}-hour lock expires. After that you can delete it."
+                    } else {
+                        "\"${item.rule.name}\" will be permanently deleted."
+                    },
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     onDeleteRule(item.rule.id)
                     deleteTarget = null
-                }) { Text("Delete") }
+                }) { Text(if (item.rule.isActive) "Deactivate" else "Delete") }
             },
             dismissButton = {
                 TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }

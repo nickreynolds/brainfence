@@ -64,6 +64,12 @@ object RuleContracts {
         return d.takeIf { '.' in it }
     }
 
+    /** True if [host] is [domain] (normalized) or one of its subdomains. */
+    fun hostMatches(host: String, domain: String): Boolean {
+        val h = host.lowercase()
+        return h == domain || h.endsWith(".$domain")
+    }
+
     /**
      * True if [changes] (the pending_changes shape) can only make [current]
      * block more, never less — so it may skip the time-lock.

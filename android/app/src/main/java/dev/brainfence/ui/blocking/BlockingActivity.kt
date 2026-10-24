@@ -54,6 +54,10 @@ class BlockingActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_BLOCKED_PACKAGE = "blocked_package"
+        /** Set when a website (this normalized domain) is blocked in EXTRA_BLOCKED_PACKAGE. */
+        const val EXTRA_BLOCKED_DOMAIN = "blocked_domain"
+        /** Set when EXTRA_BLOCKED_PACKAGE is a browser that can't be checked. */
+        const val EXTRA_UNSUPPORTED_BROWSER = "unsupported_browser"
     }
 
     private val viewModel: BlockingViewModel by viewModels()
@@ -62,15 +66,7 @@ class BlockingActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Resolve app label from package name
-        val packageName = intent.getStringExtra(EXTRA_BLOCKED_PACKAGE) ?: ""
-        val appLabel = try {
-            val appInfo = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(appInfo).toString()
-        } catch (_: Exception) {
-            packageName
-        }
-        viewModel.setAppLabel(appLabel)
+        viewModel.setTarget(targetOf(intent))
 
         setContent {
             BrainfenceTheme {
@@ -93,6 +89,30 @@ class BlockingActivity : ComponentActivity() {
                     },
                 )
             }
+        }
+    }
+
+    /** The overlay is single-top: a new block reuses it with a new intent. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.setTarget(targetOf(intent))
+    }
+
+    private fun targetOf(intent: Intent): BlockTarget {
+        val packageName = intent.getStringExtra(EXTRA_BLOCKED_PACKAGE) ?: ""
+        // Resolve app label from package name
+        val label = try {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(appInfo).toString()
+        } catch (_: Exception) {
+            packageName
+        }
+        val domain = intent.getStringExtra(EXTRA_BLOCKED_DOMAIN)
+        return when {
+            domain != null -> BlockTarget.Website(domain, label)
+            intent.getBooleanExtra(EXTRA_UNSUPPORTED_BROWSER, false) -> BlockTarget.UnsupportedBrowser(packageName, label)
+            else -> BlockTarget.App(packageName, label)
         }
     }
 
@@ -137,7 +157,7 @@ private fun BlockingOverlayScreen(
             Spacer(Modifier.height(16.dp))
 
             Text(
-                text = "${state.appLabel} is blocked",
+                text = state.headline,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
