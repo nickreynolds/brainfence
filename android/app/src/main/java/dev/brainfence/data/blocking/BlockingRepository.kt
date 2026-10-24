@@ -65,6 +65,25 @@ class BlockingRepository @Inject constructor(
                 }
             }
 
+    /**
+     * The rule's blocked_apps entries for platforms other than Android (e.g.
+     * {"platform":"windows","exe":"discord.exe"}). Rules sync across devices,
+     * so saving from this editor must carry these over rather than drop them.
+     */
+    suspend fun getOtherPlatformBlockedApps(ruleId: String): JSONArray {
+        val raw = database.getOptional(
+            sql = "SELECT blocked_apps FROM blocking_rules WHERE id = ?",
+            parameters = listOf(ruleId),
+        ) { cursor -> cursor.getString(0) ?: "[]" } ?: return JSONArray()
+        val out = JSONArray()
+        val array = try { JSONArray(raw) } catch (_: Exception) { return out }
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            if (item.optString("platform") != "android") out.put(item)
+        }
+        return out
+    }
+
     suspend fun getRuleById(ruleId: String): BlockingRule? =
         database.getOptional(
             sql = "SELECT $RULES_COLUMNS FROM blocking_rules WHERE id = ?",

@@ -1,0 +1,30 @@
+appId: dev.brainfence.desktop
+productName: Brainfence
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: resources
+    to: .
+    filter: ['*.png', '*.ico', '*.wav']
+# PowerSync's SQLite worker and native extension, and koffi's binary, must live
+# outside the asar archive to be loadable.
+asarUnpack:
+  - node_modules/@powersync/**
+  - node_modules/koffi/**
+  - node_modules/@koromix/**
+protocols:
+  - name: Brainfence
+    schemes: [brainfence]
+win:
+  target: nsis
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Brainfence

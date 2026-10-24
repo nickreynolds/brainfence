@@ -14,6 +14,7 @@ A local-first, cross-platform task/habit/note app that enforces behavioral commi
 | ----------- | ------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
 | **Android** | Kotlin + Jetpack Compose  | SQLite (via PowerSync Kotlin SDK)           | AccessibilityService + overlay Activity                              |
 | **macOS**   | Swift + SwiftUI           | SQLite (via PowerSync Swift SDK)            | Screen Time APIs (FamilyControls / ManagedSettings / DeviceActivity) |
+| **Windows** | Electron + React          | SQLite (via PowerSync Node SDK)             | Foreground-window monitor + overlay; hosts-file website blocking     |
 | **Web**     | React + Next.js (or Vite) | PGlite or IndexedDB (via PowerSync Web SDK) | Browser extension (optional, lower priority)                         |
 
 Each client is fully native to its platform. No cross-platform UI framework — the platform-specific blocking mechanisms, background services, and OS integration all demand native access. The tradeoff is more UI code to maintain, but the app's core value proposition depends on deep OS integration that frameworks like React Native or Flutter can't provide without extensive bridging.

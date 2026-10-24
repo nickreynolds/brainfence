@@ -129,7 +129,9 @@ class BlockingRuleEditorViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val blockedApps = JSONArray().apply {
+                // Keep other platforms' entries (e.g. Windows apps) — this editor
+                // only manages Android packages.
+                val blockedApps = (if (ruleId != null) blockingRepository.getOtherPlatformBlockedApps(ruleId) else JSONArray()).apply {
                     s.selectedApps.forEach { pkg ->
                         put(JSONObject().apply {
                             put("platform", "android")

@@ -66,6 +66,8 @@ data class TaskEditorState(
     val shortSitSeconds: Int = MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
     /** Package names of companion apps that can record meditation time externally. */
     val companionApps: Set<String> = emptySet(),
+    /** Other platforms' companion_apps entries (JSON array), carried over on save. */
+    val otherPlatformCompanionApps: String = "[]",
     // -- report task: which report it asks; plus every report, for pickers --
     val reportId: String? = null,
     val availableReports: List<Report> = emptyList(),
@@ -209,6 +211,7 @@ class TaskEditorViewModel @Inject constructor(
                     notifyEnd = notifyWindow?.optString("end", "") ?: _state.value.notifyEnd,
                     meditationSeconds = if (task.verificationType == "meditation") vConfig.optInt("duration_seconds", 300) else 300,
                     companionApps = if (task.verificationType == "meditation") parseCompanionApps(vConfig) else emptySet(),
+                    otherPlatformCompanionApps = if (task.verificationType == "meditation") otherPlatformCompanionApps(vConfig) else "[]",
                     shortSitSeconds = if (task.verificationType == "meditation") {
                         vConfig.optInt("short_sit_seconds", MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS)
                     } else MeditationTimerManager.DEFAULT_SHORT_SIT_SECONDS,
@@ -250,6 +253,17 @@ class TaskEditorViewModel @Inject constructor(
             }
         }
         return out
+    }
+
+    /** companion_apps entries tagged with a platform other than Android, as a JSON array. */
+    private fun otherPlatformCompanionApps(vConfig: JSONObject): String {
+        val arr = vConfig.optJSONArray("companion_apps") ?: return "[]"
+        val out = JSONArray()
+        for (i in 0 until arr.length()) {
+            val entry = arr.optJSONObject(i) ?: continue
+            if (entry.optString("platform", "") != "android") out.put(entry)
+        }
+        return out.toString()
     }
 
     /**
@@ -722,7 +736,7 @@ class TaskEditorViewModel @Inject constructor(
             s.verificationType == "meditation" -> {
                 config.put("duration_seconds", s.meditationSeconds)
                 config.put("short_sit_seconds", s.shortSitSeconds)
-                val apps = JSONArray()
+                val apps = runCatching { JSONArray(s.otherPlatformCompanionApps) }.getOrDefault(JSONArray())
                 for (pkg in s.companionApps) {
                     apps.put(JSONObject().apply {
                         put("platform", "android")
