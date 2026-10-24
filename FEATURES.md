@@ -13,6 +13,7 @@ Update it in the same change as any feature work.
 | ➖ | Not applicable on this platform (reason in the note) |
 | 📋 | Planned, not started on any platform |
 | ⚠️ | Implemented, but differs from the parity policy (see the note) |
+| ➕ | Allowed exception to the parity policy (see the note) |
 
 Last reviewed: 2026-10-24.
 
@@ -45,13 +46,14 @@ Last reviewed: 2026-10-24.
 ## Location (mobile)
 
 Desktop apps still respect location-based tasks, so those tasks keep blocking
-there. They just can't complete them. See [Parity policy](#parity-policy).
+there. The Mac doesn't complete them. Windows does, from the PC's location, as
+an allowed exception. See [Parity policy](#parity-policy).
 
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
-| GPS tasks: arrive / leave / stay | ✅ | ⚠️ | ➖ | Windows completes them from the Windows location service, which the policy reserves for mobile. The Mac shows them and blocks on them; the phone completes them. |
-| Shopping list arrival reminders | ✅ | ⚠️ | ➖ | Windows reminds on arrival using desktop location. |
-| Home location and home-only blocking | ✅ | ⚠️ | ➖ | Windows tracks presence from desktop location. The Mac treats the user as at home (strict). |
+| GPS tasks: arrive / leave / stay | ✅ | ➕ | ➖ | Windows completes them from the Windows location service (allowed exception). The Mac shows them and blocks on them; the phone completes them. |
+| Shopping list arrival reminders | ✅ | ➕ | ➖ | Windows reminds on arrival using desktop location (allowed exception). |
+| Home location and home-only blocking | ✅ | ➕ | ➖ | Windows tracks presence from desktop location (allowed exception). The Mac treats the user as at home (strict). |
 
 ## Blocking
 
@@ -68,7 +70,7 @@ there. They just can't complete them. See [Parity policy](#parity-policy).
 | Time-locked loosening edits, cancelling pending changes | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` |
 | Other platforms' app entries kept when editing | ✅ | ✅ | ✅ | |
 | Starts at login / always running | ✅ | ✅ | ✅ | Android: foreground service and boot receiver. Windows: login item and tray. Mac: launchd agent. |
-| Resists quitting | ➖ | 🟡 | ✅ | Android: the system manages the service. Windows asks for confirmation but doesn't relaunch if killed. Mac refuses to quit while blocking and relaunches if killed. |
+| Resists quitting | ➖ | 🟡 | ✅ | Android: the system manages the service. Windows asks for confirmation but doesn't relaunch if killed. Mac refuses to quit while blocking and relaunches if killed. **Wanted on every platform:** refusing to quit while blocking, and relaunching if killed. Windows is next (planned). |
 | Multi-step disable flow | 📋 | 📋 | 📋 | |
 
 ## Contemplations, reports and tools
@@ -102,5 +104,5 @@ there. They just can't complete them. See [Parity policy](#parity-policy).
   rules live in `shared/CONTRACTS.md`, with test cases in `shared/fixtures`.
 - **Exceptions** are limited to:
   - Things a platform can't do. Say why in the notes column, and get as close as the platform allows.
-  - **Location features are mobile-only.** Desktop apps still treat location-based tasks as conditions, so they block until done, but they don't complete them, track home presence or send arrival reminders.
+  - **Location features are mobile-only.** Desktop apps still treat location-based tasks as conditions, so they block until done, but they don't complete them, track home presence or send arrival reminders. The one allowed exception is Windows, which also uses the PC's location for these.
 - A missing platform shows as ❌ here until it ships.

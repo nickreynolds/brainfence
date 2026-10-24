@@ -19,7 +19,7 @@ the same piece of work.** A change that adds or changes user-facing behavior on
 one client isn't done until the others have it too. The only exceptions:
 
 - **Things a platform can't do.** Get as close as the platform allows, and note the reason in `FEATURES.md`.
-- **Location features are mobile-only.** Windows and macOS still treat location-based tasks (GPS tasks, home-only blocking) as blocking conditions, but they don't complete them, track home presence or send arrival reminders.
+- **Location features are mobile-only.** Desktop clients still treat location-based tasks (GPS tasks, home-only blocking) as blocking conditions, but they don't complete them, track home presence or send arrival reminders. Exception: Windows already uses the PC's location for these, and that's allowed to stay. Don't add it to macOS.
 
 If one platform can't be finished in the same change (for example, its toolchain isn't available), say so explicitly and mark the gap ❌ in `FEATURES.md`. Don't leave it for someone to discover.
 
