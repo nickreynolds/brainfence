@@ -55,6 +55,13 @@ final class SessionStore {
         try await client.auth.signIn(email: email, password: password)
     }
 
+    /// Creates an account. Returns true when the user is signed in right
+    /// away, false when the project requires confirming the email first.
+    func signUp(email: String, password: String) async throws -> Bool {
+        let response = try await client.auth.signUp(email: email, password: password)
+        return response.session != nil
+    }
+
     func signOut() async {
         do {
             try await client.auth.signOut()

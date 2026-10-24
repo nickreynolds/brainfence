@@ -192,7 +192,13 @@ struct BlockingTaskRow: View {
                 }
             }
             Spacer()
-            if let task, task.isQuickCompletable {
+            if let task, task.opensTaskScreen, !task.isLocationTask {
+                Button("Open") {
+                    model.shield.dismiss()
+                    model.open(taskId: task.id)
+                }
+                .help("Complete it in Brainfence")
+            } else if let task, task.isQuickCompletable {
                 Button(isCompleting ? "Completing…" : "Complete") {
                     isCompleting = true
                     Task {

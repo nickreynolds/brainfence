@@ -20,7 +20,15 @@ data class BlockingState(
     val rulesByApp: Map<String, List<BlockingRule>>,
     /** Maps each blocked package to the task IDs that are actively unmet (causing the block). */
     val unmetTaskIdsByApp: Map<String, Set<String>> = emptyMap(),
-)
+    /** Maps each blocked domain (normalized) to the rule(s) that block it. */
+    val rulesByDomain: Map<String, List<BlockingRule>> = emptyMap(),
+    /** Maps each blocked domain (normalized) to the unmet task IDs causing the block. */
+    val unmetTaskIdsByDomain: Map<String, Set<String>> = emptyMap(),
+) {
+    /** The blocked domain [host] falls under, if any (subdomains included). */
+    fun blockedDomainFor(host: String): String? =
+        blockedDomains.firstOrNull { RuleContracts.hostMatches(host, it) }
+}
 
 /**
  * Whether the user is currently within their configured home radius.
@@ -65,6 +73,8 @@ fun evaluateBlocking(
     val blockedDomains = mutableSetOf<String>()
     val rulesByApp = mutableMapOf<String, MutableList<BlockingRule>>()
     val unmetTaskIdsByApp = mutableMapOf<String, MutableSet<String>>()
+    val rulesByDomain = mutableMapOf<String, MutableList<BlockingRule>>()
+    val unmetTaskIdsByDomain = mutableMapOf<String, MutableSet<String>>()
 
     val taskById = tasks.associateBy { it.id }
 
@@ -75,14 +85,18 @@ fun evaluateBlocking(
 
         // Rule is active and conditions NOT met → block
         blockedApps.addAll(rule.blockedApps)
-        blockedDomains.addAll(rule.blockedDomains)
+        for (domain in rule.blockedDomains.mapNotNull(RuleContracts::normalizeDomain).distinct()) {
+            blockedDomains.add(domain)
+            rulesByDomain.getOrPut(domain) { mutableListOf() }.add(rule)
+            unmetTaskIdsByDomain.getOrPut(domain) { mutableSetOf() }.addAll(unmetIds)
+        }
         for (app in rule.blockedApps) {
             rulesByApp.getOrPut(app) { mutableListOf() }.add(rule)
             unmetTaskIdsByApp.getOrPut(app) { mutableSetOf() }.addAll(unmetIds)
         }
     }
 
-    return BlockingState(blockedApps, blockedDomains, rulesByApp, unmetTaskIdsByApp)
+    return BlockingState(blockedApps, blockedDomains, rulesByApp, unmetTaskIdsByApp, rulesByDomain, unmetTaskIdsByDomain)
 }
 
 /**

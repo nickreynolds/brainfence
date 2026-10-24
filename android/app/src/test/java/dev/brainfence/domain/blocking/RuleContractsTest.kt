@@ -66,6 +66,11 @@ class RuleContractsTest {
             val input = case.getString("input")
             assertEquals(input, case.nullableString("normalized"), RuleContracts.normalizeDomain(input))
         }
+        for (case in fixture("domains.json").getJSONArray("matches").objects()) {
+            val host = case.getString("host")
+            val domain = case.getString("domain")
+            assertEquals("$host / $domain", case.getBoolean("matches"), RuleContracts.hostMatches(host, domain))
+        }
     }
 
     @Test

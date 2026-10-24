@@ -18,27 +18,15 @@ struct RootView: View {
 }
 
 struct MainView: View {
-    enum Section: String, CaseIterable, Identifiable {
-        case today = "Today"
-        case rules = "Blocking Rules"
-        case settings = "Settings"
-
-        var id: String { rawValue }
-        var icon: String {
-            switch self {
-            case .today: "checklist"
-            case .rules: "lock.shield"
-            case .settings: "gearshape"
-            }
-        }
-    }
-
-    @State private var section: Section = .today
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var navigation = model.navigation
         NavigationSplitView {
-            List(Section.allCases, selection: $section) { s in
+            List(AppNavigation.Section.allCases, selection: Binding<AppNavigation.Section?>(
+                get: { navigation.section },
+                set: { if let s = $0 { navigation.section = s } }
+            )) { s in
                 Label(s.rawValue, systemImage: s.icon).tag(s)
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)
@@ -47,11 +35,18 @@ struct MainView: View {
                     .padding(12)
             }
         } detail: {
-            switch section {
-            case .today: TodayView()
+            switch navigation.section {
+            case .tasks: TasksView()
+            case .journal: NavigationStack { JournalHistoryView() }
+            case .reports: ReportsView()
+            case .contemplations: ContemplationsView()
             case .rules: RulesView()
+            case .debug: NavigationStack { DebugView() }
             case .settings: SettingsView()
             }
+        }
+        .sheet(item: $navigation.editor) { target in
+            TaskEditorView(taskId: target.taskId)
         }
     }
 }
@@ -60,17 +55,21 @@ struct SignInView: View {
     @Environment(AppModel.self) private var model
     @State private var email = ""
     @State private var password = ""
+    @State private var isSigningUp = false
     @State private var isWorking = false
     @State private var error: String?
+    @State private var notice: String?
 
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "lock.shield")
                 .font(.system(size: 48))
                 .foregroundStyle(.tint)
-            Text("Sign in to Brainfence")
+            Text(isSigningUp ? "Create a Brainfence account" : "Sign in to Brainfence")
                 .font(.title2.weight(.semibold))
-            Text("Use the same account as on your phone. Your tasks and blocking rules sync automatically.")
+            Text(isSigningUp
+                ? "Use this account on all your devices. Your tasks and blocking rules sync automatically."
+                : "Use the same account as on your phone. Your tasks and blocking rules sync automatically.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 320)
@@ -80,7 +79,7 @@ struct SignInView: View {
                     .textContentType(.username)
                 SecureField("Password", text: $password)
                     .textContentType(.password)
-                    .onSubmit(signIn)
+                    .onSubmit(submit)
             }
             .formStyle(.columns)
             .frame(width: 300)
@@ -91,24 +90,46 @@ struct SignInView: View {
                     .font(.callout)
                     .frame(maxWidth: 320)
             }
+            if let notice {
+                Text(notice)
+                    .font(.callout)
+                    .frame(maxWidth: 320)
+            }
 
-            Button(action: signIn) {
-                if isWorking { ProgressView().controlSize(.small) } else { Text("Sign In") }
+            Button(action: submit) {
+                if isWorking { ProgressView().controlSize(.small) } else { Text(isSigningUp ? "Create Account" : "Sign In") }
             }
             .keyboardShortcut(.defaultAction)
             .disabled(isWorking || email.isEmpty || password.isEmpty)
+
+            Button(isSigningUp ? "Already have an account? Sign in" : "No account yet? Create one") {
+                isSigningUp.toggle()
+                error = nil
+                notice = nil
+            }
+            .buttonStyle(.link)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func signIn() {
+    private func submit() {
         guard !email.isEmpty, !password.isEmpty else { return }
         isWorking = true
         error = nil
+        notice = nil
+        let email = email.trimmingCharacters(in: .whitespaces)
         Task {
             do {
-                try await model.session.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
+                if isSigningUp {
+                    let signedIn = try await model.session.signUp(email: email, password: password)
+                    if !signedIn {
+                        notice = "Check your email to confirm your account, then sign in."
+                        isSigningUp = false
+                    }
+                } else {
+                    try await model.session.signIn(email: email, password: password)
+                }
             } catch {
                 self.error = error.localizedDescription
             }

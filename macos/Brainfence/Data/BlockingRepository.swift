@@ -84,6 +84,12 @@ struct BlockingRepository: Sendable {
         return .scheduled(applyAt: applyAt)
     }
 
+    /// Deletes an inactive rule. Active rules must be deactivated first (a
+    /// time-locked change), or deleting would be a way around the lock.
+    func deleteRule(id: String) async throws {
+        try await db.execute(sql: "DELETE FROM blocking_rules WHERE id = ? AND is_active = 0", parameters: [id])
+    }
+
     func cancelPendingChange(ruleId: String) async throws {
         try await db.execute(
             sql: "UPDATE blocking_rules SET pending_changes = NULL, changes_apply_at = NULL, updated_at = ? WHERE id = ?",

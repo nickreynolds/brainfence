@@ -292,6 +292,12 @@ fun BlockingRuleEditorScreen(
             // --- Blocked Domains ---
             item(key = "domains_header") {
                 SectionHeader("Blocked Domains")
+                Text(
+                    text = "Subdomains are included. Sites are blocked in Chrome, Firefox, Samsung Internet, Edge, Brave, Opera, Vivaldi and DuckDuckGo; other browsers are blocked entirely while any site is blocked.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
             }
 
             if (state.blockedDomains.isNotEmpty()) {

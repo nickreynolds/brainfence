@@ -13,6 +13,7 @@ Update it in the same change as any feature work.
 | ➖ | Not applicable on this platform (reason in the note) |
 | 📋 | Planned, not started on any platform |
 | ⚠️ | Implemented, but differs from the parity policy (see the note) |
+| ➕ | Allowed exception to the parity policy (see the note) |
 
 Last reviewed: 2026-10-24.
 
@@ -21,64 +22,65 @@ Last reviewed: 2026-10-24.
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
 | Email sign-in | ✅ | ✅ | ✅ | |
-| Sign-up | ✅ | ✅ | ❌ | Mac only signs in to an existing account. |
+| Sign-up | ✅ | ✅ | ✅ | |
 | Offline-first sync (PowerSync + Supabase) | ✅ | ✅ | ✅ | Schema generated from `shared/schema.json`. |
 
 ## Tasks
 
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
-| Task list (Active / Done / Upcoming) | ✅ | ✅ | 🟡 | Mac has a Today view only. |
-| Create, edit and delete tasks | ✅ | ✅ | ❌ | |
+| Task list (Active / Done / Upcoming) | ✅ | ✅ | ✅ | |
+| Create and edit tasks (wizard with every task type) | ✅ | ✅ | ✅ | Desktops enter a location as latitude / longitude. |
 | Recurrence (daily, selected days, weekly) | ✅ | ✅ | ✅ | |
 | Time-of-day gates (`available_from` / `due_at`) | ✅ | ✅ | ✅ | |
 | Manual completion | ✅ | ✅ | ✅ | |
-| Duration timer tasks | ✅ | ✅ | ❌ | |
-| Meditation timer (in-app session, bells) | ✅ | ✅ | ❌ | |
-| Meditation via companion apps | ✅ | ✅ | ❌ | Each platform has its own `companion_apps` entries. |
-| Routine / workout runner (weight × reps, checkboxes, timed steps, rest, supersets, pre-fill from last time, report steps) | ✅ | ✅ | ❌ | |
-| Journal tasks and journal history | ✅ | ✅ | ❌ | |
-| Report tasks (metric questionnaires) | ✅ | ✅ | ❌ | |
-| Shopping list tasks | ✅ | ✅ | ❌ | Arrival reminders are a location feature (below). |
-| Task notifications ("ready", "blocking soon") | ✅ | ✅ | ❌ | |
+| Duration timer tasks | ✅ | ✅ | ✅ | |
+| Meditation timer (in-app session, short sit, bells) | ✅ | ✅ | ✅ | |
+| Meditation via companion apps | ✅ | ✅ | ✅ | Each platform has its own `companion_apps` entries. |
+| Routine / workout runner (weight × reps, checkboxes, timed steps, rest, supersets, pre-fill from last time, report steps, automatic interval routines) | ✅ | ✅ | ✅ | |
+| Journal tasks and journal history | ✅ | ✅ | ✅ | |
+| Report tasks (metric questionnaires) | ✅ | ✅ | ✅ | |
+| Shopping list tasks | ✅ | ✅ | ✅ | Arrival reminders are a location feature (below). |
+| Task notifications ("ready", "blocking soon") | ✅ | ✅ | ✅ | |
 
 ## Location (mobile)
 
 Desktop apps still respect location-based tasks, so those tasks keep blocking
-there. They just can't complete them. See [Parity policy](#parity-policy).
+there. The Mac doesn't complete them. Windows does, from the PC's location, as
+an allowed exception. See [Parity policy](#parity-policy).
 
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
-| GPS tasks: arrive / leave / stay | ✅ | ⚠️ | ➖ | Windows completes them from the Windows location service, which the policy reserves for mobile. |
-| Shopping list arrival reminders | ✅ | ⚠️ | ➖ | Windows reminds on arrival using desktop location. |
-| Home location and home-only blocking | ✅ | ⚠️ | ➖ | Windows tracks presence from desktop location. The Mac treats the user as at home (strict). |
+| GPS tasks: arrive / leave / stay | ✅ | ➕ | ➖ | Windows completes them from the Windows location service (allowed exception). The Mac shows them and blocks on them; the phone completes them. |
+| Shopping list arrival reminders | ✅ | ➕ | ➖ | Windows reminds on arrival using desktop location (allowed exception). |
+| Home location and home-only blocking | ✅ | ➕ | ➖ | Windows tracks presence from desktop location (allowed exception). The Mac treats the user as at home (strict). |
 
 ## Blocking
 
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
 | Blocking rules: create and edit, with app picker | ✅ | ✅ | ✅ | |
-| Delete rules | ⚠️ | ✅ | ❌ | Windows only deletes inactive rules (deactivating is time-locked). Android deletes active rules instantly, which skips the time-lock. Mac can't delete. |
+| Delete rules | ✅ | ✅ | ✅ | Only inactive rules are deleted. Deleting an active rule deactivates it, which is time-locked. |
 | Shared blocking evaluator (all/any logic, `due_at`, blocking days, fail closed on unknown tasks) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` |
 | App blocking | ✅ | ✅ | ✅ | Android: AccessibilityService and overlay. Windows: foreground-window polling and overlay. Mac: NSWorkspace and shield panel. |
 | Blocking screen lists the rule and its unmet tasks | ✅ | ✅ | ✅ | |
-| Complete tasks from the blocking screen | ✅ | ✅ | 🟡 | Mac: manual tasks only. |
-| Website blocking (`blocked_domains`) | ❌ | ✅ | ✅ | Windows: hosts file. Mac: browser tab inspection. Android is deferred; a local VPN (`VpnService`) could do it. |
+| Complete tasks from the blocking screen | ✅ | ✅ | ✅ | One click for simple tasks; the others open their screen. |
+| Website blocking (`blocked_domains`) | ✅ | ✅ | ✅ | Android: browser address bars, read by the accessibility service. Windows: hosts file. Mac: browser tab inspection. Android and the Mac block browsers they can't check while any site is blocked. |
 | Blocking status indicator | ✅ | ✅ | ✅ | Android: home card and ongoing notification. Windows: tray. Mac: menu bar. |
 | Time-locked loosening edits, cancelling pending changes | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` |
 | Other platforms' app entries kept when editing | ✅ | ✅ | ✅ | |
 | Starts at login / always running | ✅ | ✅ | ✅ | Android: foreground service and boot receiver. Windows: login item and tray. Mac: launchd agent. |
-| Resists quitting | ➖ | 🟡 | ✅ | Android: the system manages the service. Windows asks for confirmation but doesn't relaunch if killed. Mac refuses to quit while blocking and relaunches if killed. |
+| Resists quitting | ➖ | 🟡 | ✅ | Android: the system manages the service. Windows asks for confirmation but doesn't relaunch if killed. Mac refuses to quit while blocking and relaunches if killed. **Wanted on every platform:** refusing to quit while blocking, and relaunching if killed. Windows is next (planned). |
 | Multi-step disable flow | 📋 | 📋 | 📋 | |
 
 ## Contemplations, reports and tools
 
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
-| Contemplation decks, library and scheduled delivery | ✅ | ✅ | ❌ | |
-| Contemplation notifications with "affirm" | ✅ | ✅ | ❌ | |
-| Reports and metrics: editor, library, history | ✅ | ✅ | ❌ | |
-| Debug log screen | ✅ | ✅ | 🟡 | Mac Settings lists rejected uploads only. |
+| Contemplation decks, library and scheduled delivery | ✅ | ✅ | ✅ | The schedule is per device. |
+| Contemplation notifications with "affirm" | ✅ | ✅ | ✅ | |
+| Reports and metrics: editor, library, history | ✅ | ✅ | ✅ | |
+| Debug log screen | ✅ | ✅ | ✅ | |
 
 ## Planned (no client yet)
 
@@ -87,13 +89,14 @@ there. They just can't complete them. See [Parity policy](#parity-policy).
 | Notes: markdown, wikilinks, backlinks | 📋 | 📋 | 📋 | The `notes` table syncs already. README §7. |
 | Groups with visibility schedules, and tags | 📋 | 📋 | 📋 | The `groups` table syncs already. |
 | Full-text search across notes and tasks | 📋 | 📋 | 📋 | |
+| Delete or archive tasks | 📋 | 📋 | 📋 | No client can remove a task yet. |
 | Web client (notes and admin) | | | | Lower priority. It would be a fourth platform. |
 
 ## Platform-specific (not parity items)
 
 - **Android:** accessibility service setup wizard; exact-alarm and usage-access permission prompts.
 - **Windows:** one-time UAC prompt for hosts-file access; Settings screen (launch at login, minimize blocked windows).
-- **macOS:** Automation permission per browser; option to block browsers that can't report their URL.
+- **macOS:** Automation permission per browser; option to block browsers that can't report their URL; notification permission.
 
 ## Parity policy
 
@@ -101,5 +104,5 @@ there. They just can't complete them. See [Parity policy](#parity-policy).
   rules live in `shared/CONTRACTS.md`, with test cases in `shared/fixtures`.
 - **Exceptions** are limited to:
   - Things a platform can't do. Say why in the notes column, and get as close as the platform allows.
-  - **Location features are mobile-only.** Desktop apps still treat location-based tasks as conditions, so they block until done, but they don't complete them, track home presence or send arrival reminders.
+  - **Location features are mobile-only.** Desktop apps still treat location-based tasks as conditions, so they block until done, but they don't complete them, track home presence or send arrival reminders. The one allowed exception is Windows, which also uses the PC's location for these.
 - A missing platform shows as ❌ here until it ships.

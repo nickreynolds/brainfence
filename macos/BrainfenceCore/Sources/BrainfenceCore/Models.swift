@@ -72,14 +72,21 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
         self.lastCompletionAt = lastCompletionAt
     }
 
-    /// Whether this task can be completed with a single click on the Mac.
-    /// Everything else needs its dedicated flow (routine steps, GPS, timers, …),
-    /// which currently lives on Android.
-    public var isQuickCompletable: Bool {
-        let flowTypes: Set<String> = ["routine", "workout", "journal", "report", "shopping", "meditation", "timed"]
-        if flowTypes.contains(taskType) { return false }
-        return verificationType == nil || verificationType == "manual" || verificationType == "time_gate"
+    /// Whether completing this task needs its own screen (a timer, routine,
+    /// entry, report, list or location) rather than a single click. Matches
+    /// Android's onTaskTap mapping.
+    public var opensTaskScreen: Bool {
+        if taskType == "shopping" { return true }
+        if ["gps", "duration", "meditation"].contains(verificationType ?? "") { return true }
+        return ["routine", "workout", "journal", "report", "timed"].contains(taskType)
     }
+
+    /// Whether this task can be completed with a single click.
+    public var isQuickCompletable: Bool { !opensTaskScreen }
+
+    /// Location tasks are verified on the phone; desktops respect them but
+    /// can't complete them.
+    public var isLocationTask: Bool { verificationType == "gps" }
 
     /// Short description of what completing this task requires, for tasks that
     /// can't be quick-completed. Matches Android's blockingVerificationHint.
@@ -88,11 +95,10 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
         case ("routine", _), ("workout", _): return "Requires routine completion"
         case ("journal", _): return "Requires journal entry"
         case ("report", _): return "Requires report"
-        case ("shopping", _): return "Requires shopping trip"
-        case (_, "gps"): return "Requires GPS verification"
+        case (_, "gps"): return "Requires GPS verification on your phone"
         case (_, "meditation"): return "Requires meditation session"
-        case (_, "duration"): return "Requires timed session"
-        default: return isQuickCompletable ? nil : "Complete on your phone"
+        case (_, "duration"), ("timed", _): return "Requires timed session"
+        default: return nil
         }
     }
 }
