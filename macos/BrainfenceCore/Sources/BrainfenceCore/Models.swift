@@ -99,7 +99,8 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
 
 /// One entry of `blocking_rules.blocked_apps`, e.g.
 /// `{"platform":"android","package":"com.twitter.android"}` or
-/// `{"platform":"macos","bundle_id":"com.hnc.Discord"}`.
+/// `{"platform":"macos","bundle_id":"com.hnc.Discord"}` or
+/// `{"platform":"windows","exe":"discord.exe"}`.
 ///
 /// The original JSON element is kept in `raw` so editing a rule on one
 /// platform round-trips the other platforms' entries (and any extra fields)
@@ -107,9 +108,12 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
 public struct BlockedApp: Sendable, Hashable {
     public static let android = "android"
     public static let macOS = "macos"
+    public static let windows = "windows"
 
     public let platform: String
-    /// Android package name or macOS bundle identifier.
+    /// Android package name, macOS bundle identifier or lowercased Windows exe
+    /// name. For unrecognized platforms, the entry's JSON, so distinct entries
+    /// never share a key.
     public let identifier: String
     public let raw: JSONValue
 
@@ -141,7 +145,8 @@ public struct BlockedApp: Sendable, Hashable {
                 let identifier: String = switch platform {
                 case android: o["package"]?.stringValue ?? ""
                 case macOS: o["bundle_id"]?.stringValue ?? ""
-                default: o["package"]?.stringValue ?? o["bundle_id"]?.stringValue ?? ""
+                case windows: o["exe"]?.stringValue?.lowercased() ?? ""
+                default: item.jsonString
                 }
                 return BlockedApp(platform: platform, identifier: identifier, raw: item)
             case .string(let s) where !s.isEmpty:

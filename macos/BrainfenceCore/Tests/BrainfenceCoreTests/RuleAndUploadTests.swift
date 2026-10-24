@@ -12,6 +12,18 @@ final class BlockedAppParsingTests: XCTestCase {
         XCTAssertEqual(apps[1].raw["token"], .string("abc"), "extra fields must survive a round trip")
     }
 
+    func testWindowsAndUnknownPlatformsHaveDistinctKeys() {
+        let apps = BlockedApp.parseList(#"""
+        [{"platform":"windows","exe":"Discord.exe"},
+         {"platform":"windows","exe":"steam.exe"},
+         {"platform":"linux","bin":"a"},
+         {"platform":"linux","bin":"b"}]
+        """#)
+        XCTAssertEqual(apps[0].key, "windows:discord.exe", "matches the Windows client's appRefKey")
+        XCTAssertEqual(apps[1].key, "windows:steam.exe")
+        XCTAssertEqual(Set(apps.map(\.key)).count, 4)
+    }
+
     func testBlankOrInvalidIsEmpty() {
         XCTAssertTrue(BlockedApp.parseList(nil).isEmpty)
         XCTAssertTrue(BlockedApp.parseList("null").isEmpty)
@@ -46,6 +58,13 @@ final class RuleChangeTests: XCTestCase {
     func testRemovingAnyPlatformsAppIsWeaker() {
         XCTAssertFalse(RuleChange(blockedApps: [.macOS(bundleID: "com.x")]).isMoreRestrictive(than: rule()))
         XCTAssertFalse(RuleChange(blockedApps: [android]).isMoreRestrictive(than: rule()))
+    }
+
+    func testRemovingOneOfSeveralWindowsAppsIsWeaker() {
+        let windows = BlockedApp.parseList(#"[{"platform":"windows","exe":"discord.exe"},{"platform":"windows","exe":"steam.exe"}]"#)
+        let current = BlockingRule(id: "r", name: "R", blockedApps: windows, blockedDomains: [],
+                                   conditionTaskIds: ["a"], conditionLogic: "all")
+        XCTAssertFalse(RuleChange(blockedApps: [windows[0]]).isMoreRestrictive(than: current))
     }
 
     func testDomainNormalizationIsNotAWeakening() {
