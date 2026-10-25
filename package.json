@@ -4,6 +4,7 @@
   "scripts": {
     "bootstrap": "npx tsx dev/bootstrap.ts",
     "bootstrap:full": "npx tsx dev/bootstrap-full.ts",
+    "brand": "node branding/build.mjs && node branding/teaser/build.mjs",
     "codegen": "node shared/codegen.mjs",
     "codegen:check": "node shared/codegen.mjs --check"
   },
