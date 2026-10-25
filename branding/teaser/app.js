@@ -1,0 +1,891 @@
+// The teaser. Every frame is a pure function of time t (seconds), drawn as
+// one SVG by React; the soundtrack is the clock while playing.
+(() => {
+  const { useState, useEffect, useRef } = React;
+  const html = htm.bind(React.createElement);
+  const D = window.BF_DATA;
+  const TL = window.BF_TIMELINE;
+  const { T, BEAT, BAR } = TL;
+  const W = 1920;
+  const H = 1080;
+
+  const C = {
+    void: '#0B0A10', void2: '#1E1A29', ink: '#F4F1FA', hot: '#FF2D7A', cold: '#18E0FF', lime: '#D7FF1F',
+    deep: '#0F2E26', moss: '#1E4D3A', leaf: '#7BC67E', leaf2: '#4E9F5D', sun: '#F6C453', ember: '#F08A3C', cream: '#F3EBD3',
+  };
+  const FONT = {
+    ui: '"Chakra Petch", Bahnschrift, "Arial Narrow", sans-serif',
+    body: '"IBM Plex Sans Condensed", "Arial Narrow", sans-serif',
+    mono: '"IBM Plex Mono", Consolas, monospace',
+  };
+
+  // ---------- math ----------
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const prog = (t, a, b) => clamp((t - a) / (b - a));
+  const ease = {
+    out: (x) => 1 - (1 - x) ** 3,
+    in: (x) => x ** 3,
+    inOut: (x) => (x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2),
+    back: (x) => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2,
+  };
+  const hash = (n) => {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const mix = (a, b, t) => '#' + hex(a).map((v, i) => Math.round(lerp(v, hex(b)[i], clamp(t))).toString(16).padStart(2, '0')).join('');
+  const appear = (t, start, dur = 0.45) => ease.out(prog(t, start, start + dur));
+
+  // ---------- Fence Stencil type ----------
+  const SKEW = Math.tan((12 * Math.PI) / 180);
+  function units(text) {
+    let x = 0;
+    for (const ch of text.toUpperCase()) x += (D.glyphs[ch] || D.glyphs[' ']).w + 0.8;
+    return x - 0.8 + 6 * SKEW;
+  }
+  // x, y is the top-left (or top-centre with anchor="middle") of the caps.
+  function Stencil({ text, x, y, u, color, ghost = 0, anchor = 'start', opacity = 1, weight = 1 }) {
+    const w = units(text) * u;
+    const x0 = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
+    const paths = [];
+    let cx = 0;
+    for (const ch of text.toUpperCase()) {
+      const g = D.glyphs[ch] || D.glyphs[' '];
+      if (g.d) paths.push(html`<path key=${paths.length} transform=${`translate(${cx} 0)`} d=${g.d} />`);
+      cx += g.w + 0.8;
+    }
+    const layer = (stroke, dx, key) => html`<g key=${key} transform=${`translate(${x0 + dx} ${y}) scale(${u}) translate(${6 * SKEW} 0) skewX(-12)`}
+      fill="none" stroke=${stroke} strokeWidth=${weight} strokeLinecap="square" strokeLinejoin="miter" strokeMiterlimit="1.5">${paths}</g>`;
+    return html`<g opacity=${opacity}>
+      ${ghost ? [layer(C.hot, -ghost, 'a'), layer(C.cold, ghost, 'b')] : null}
+      ${layer(color, 0, 'c')}
+    </g>`;
+  }
+  const fitU = (text, width, max) => Math.min(max, width / units(text));
+
+  // ---------- scene geometry ----------
+  // A pose places guy-space point (512, 600) at screen (x, y) with scale s.
+  const POSE = { chaos: [960, 650, 0.9], steps: [470, 640, 0.76], end: [500, 600, 0.84] };
+  function pose(t) {
+    const a = ease.inOut(prog(t, T.drop + 0.5, T.step1 + 0.25));
+    const b = ease.inOut(prog(t, T.end - 0.3, T.end + 0.6));
+    return [0, 1, 2].map((k) => lerp(lerp(POSE.chaos[k], POSE.steps[k], a), POSE.end[k], b));
+  }
+  const toScreen = ([x, y, s], gx, gy) => [x + (gx - 512) * s, y + (gy - 600) * s];
+
+  const LATTICE = (() => {
+    let d = '';
+    for (let o = -H; o < W + H; o += 96) d += `M${o} 0l${H} ${H}M${o + H} 0l${-H} ${H}`;
+    return d;
+  })();
+
+  const RAYS = Array.from({ length: 18 }, (_, i) => {
+    const a = (i / 18) * Math.PI * 2;
+    const w = 0.045;
+    return `M0 0L${Math.cos(a - w) * 1400} ${Math.sin(a - w) * 1400}L${Math.cos(a + w) * 1400} ${Math.sin(a + w) * 1400}Z`;
+  }).join('');
+
+  const BUILDINGS = (() => {
+    const out = [];
+    // Wider than the frame so the row can wrap seamlessly while he walks.
+    for (let x = -30, i = 0; x < W + 260; i++) {
+      const w = 80 + hash(i * 3.1) * 120;
+      const h = 120 + hash(i * 7.7) * 260 + (Math.abs(x - 960) < 420 ? -60 : 40);
+      out.push({ x, w, h, i, trees: hash(i * 5.3) > 0.45 });
+      x += w + 8;
+    }
+    return out;
+  })();
+
+  // Crown edge from the brand kit's chainlink crown, for vines and flowers.
+  const CROWN_TOP = [[322, 230], [368, 390], [417, 300], [464, 390], [512, 180], [560, 390], [607, 300], [656, 390], [702, 230]];
+  const PEAKS = CROWN_TOP.filter((_, i) => i % 2 === 0);
+  const EYES = ['M372 632L474 629L474 649L372 652Z', 'M550 627L652 624L652 644L550 647Z'];
+  const LEAVES = (() => {
+    const out = [];
+    CROWN_TOP.slice(0, -1).forEach(([x1, y1], i) => {
+      const [x2, y2] = CROWN_TOP[i + 1];
+      const ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+      for (const f of [0.3, 0.7]) out.push({ x: lerp(x1, x2, f), y: lerp(y1, y2, f), rot: ang + (f < 0.5 ? -55 : 55) + 180 * (i % 2), k: out.length });
+    });
+    for (let x = 330; x <= 700; x += 46) out.push({ x, y: 470 + (x % 92 ? -6 : 6), rot: x % 92 ? -130 : 50, k: out.length });
+    return out;
+  })();
+  const VINE = 'M' + CROWN_TOP.map(([x, y]) => `${x} ${y}`).join('L');
+  const LEAF = 'M0 0C9 -11 27 -12 38 0C27 12 9 11 0 0Z';
+
+  // ---------- app glyphs (feed, video, ...) in a 100×100 box ----------
+  function AppGlyph({ kind, color }) {
+    const s = { fill: color };
+    switch (kind) {
+      case 'feed':
+        return html`<g ...${s}><rect x="22" y="24" width="56" height="12" rx="4"/><rect x="22" y="44" width="56" height="12" rx="4"/><rect x="22" y="64" width="38" height="12" rx="4"/></g>`;
+      case 'video':
+        return html`<g><rect x="18" y="26" width="64" height="48" rx="10" fill="none" stroke=${color} strokeWidth="8"/><path d="M44 38L62 50L44 62Z" fill=${color}/></g>`;
+      case 'shop':
+        return html`<g><path d="M26 40H74L70 80H30Z" fill=${color}/><path d="M38 42V34C38 22 62 22 62 34V42" fill="none" stroke=${color} strokeWidth="7"/></g>`;
+      case 'chat':
+        return html`<path d="M20 26H80V64H48L32 78V64H20Z" fill=${color}/>`;
+      case 'news':
+        return html`<g ...${s}><rect x="20" y="22" width="26" height="26" rx="3"/><rect x="52" y="24" width="28" height="8"/><rect x="52" y="38" width="28" height="8"/><rect x="20" y="56" width="60" height="8"/><rect x="20" y="70" width="44" height="8"/></g>`;
+      default:
+        return html`<g ...${s}><rect x="24" y="44" width="34" height="12" rx="3"/><rect x="35" y="33" width="12" height="34" rx="3"/><circle cx="68" cy="42" r="6"/><circle cx="76" cy="56" r="6"/></g>`;
+    }
+  }
+  const KIND_LABEL = { feed: 'FEED', video: 'VIDEO', shop: 'SHOP', chat: 'CHAT', news: 'NEWS', game: 'GAMES' };
+  const TILE = { feed: C.ember, video: '#E5544B', game: '#8B6FD6', news: '#3E7CB1', shop: '#E2A93B', chat: '#3FAE8F' };
+
+  // ---------- layers ----------
+  function Background({ calm }) {
+    return html`<g>
+      <rect width=${W} height=${H} fill=${C.void} />
+      <path d=${LATTICE} stroke=${C.void2} strokeWidth="3" fill="none" opacity=${1 - calm} />
+      <rect width=${W} height=${H} fill="url(#calmSky)" opacity=${calm} />
+    </g>`;
+  }
+
+  function Sun({ t, calm, ps }) {
+    if (calm <= 0) return null;
+    const rise = ease.out(prog(t, T.drop + 0.1, T.drop + 2.6));
+    const [cx, cy0] = toScreen(ps, 512, 470);
+    const cy = cy0 + (1 - rise) * 760;
+    const r = 380 * ps[2];
+    return html`<g opacity=${calm}>
+      <path d=${RAYS} transform=${`translate(${cx} ${cy}) rotate(${t * 4})`} fill=${C.cream} opacity="0.1" />
+      <circle cx=${cx} cy=${cy} r=${r * 1.3} fill=${C.sun} opacity="0.13" />
+      <circle cx=${cx} cy=${cy} r=${r} fill="url(#sunFill)" mask="url(#sunBars)" />
+    </g>`;
+  }
+
+  function Rings({ t, ps, calm }) {
+    if (calm >= 1) return null;
+    const [cx, cy] = toScreen(ps, 512, 600);
+    return html`<g opacity=${1 - calm} fill="none" strokeDasharray="60 34">
+      ${[420, 520, 640].map((r, i) => html`<circle key=${r} cx=${cx} cy=${cy} r=${r * ps[2]} stroke=${i === 1 ? '#3A1530' : C.void2} strokeWidth="18"
+        transform=${`rotate(${t * (i % 2 ? -14 : 9)} ${cx} ${cy})`} />`)}
+    </g>`;
+  }
+
+  // Step 3's morning walk: the city slides past while the route draws.
+  const SPAN = BUILDINGS.reduce((m, b) => Math.max(m, b.x + b.w), 0) + 38;
+  const walkShift = (t) => Math.max(0, Math.min(t, TL.checks[3]) - TL.walkStart) * 320;
+
+  function Skyline({ t, calm, fi }) {
+    const body = mix('#120F1A', '#163B30', calm);
+    const shift = walkShift(t);
+    return html`<g>
+      ${BUILDINGS.map((b0) => {
+        const x = ((((b0.x - shift + b0.w + 40) % SPAN) + SPAN) % SPAN) - b0.w - 40;
+        const b = { ...b0, x };
+        const y = H - b.h;
+        const grow = ease.back(prog(t, T.drop + 0.4 + (b.i % 9) * 0.07, T.drop + 1.1 + (b.i % 9) * 0.07));
+        const wins = [];
+        const cols = Math.floor((b.w - 24) / 28);
+        for (let r = 0; r < 6; r++) {
+          for (let c = 0; c < cols; c++) {
+            const id = b.i * 100 + r * 10 + c;
+            if (hash(id) < 0.5) continue;
+            const flick = hash(id + fi * 0.37) > 0.82;
+            const color = calm > 0.5 ? C.sun : hash(id * 1.9) > 0.5 ? C.hot : C.cold;
+            const op = calm > 0.5 ? 0.55 : flick ? 0.15 : 0.75;
+            wins.push(html`<rect key=${id} x=${b.x + 14 + c * 28} y=${y + 26 + r * 34} width="14" height="16" fill=${color} opacity=${op} />`);
+          }
+        }
+        const roof = calm <= 0 ? null : b.trees
+          ? html`<g transform=${`translate(${b.x + b.w / 2} ${y}) scale(${grow})`}>
+              <circle cx="-22" cy="-14" r="20" fill=${C.leaf2} /><circle cx="14" cy="-22" r="26" fill=${C.leaf} /><circle cx="34" cy="-8" r="14" fill=${C.leaf2} />
+            </g>`
+          : html`<g transform=${`translate(${b.x + b.w / 2} ${y}) scale(${grow})`}>
+              <path d="M-40 0L-30 -26H4L-6 0Z M2 0L12 -26H46L36 0Z" fill="#2B4C7E" stroke=${C.cream} strokeWidth="2" />
+            </g>`;
+        return html`<g key=${b.i}><rect x=${b.x} y=${y} width=${b.w} height=${b.h} fill=${body} />${wins}${roof}</g>`;
+      })}
+    </g>`;
+  }
+
+  function NoteCard({ x, y, n, scale = 1, opacity = 1, ghost = 0 }) {
+    const tone = [C.hot, C.cold, C.lime][n.tone];
+    return html`<g transform=${`translate(${x} ${y}) rotate(${n.rot}) scale(${scale})`} opacity=${opacity}>
+      ${ghost ? html`<g fill="none" strokeWidth="3">
+        <rect x=${-210 - ghost} y="-48" width="420" height="96" rx="14" stroke=${C.hot} />
+        <rect x=${-210 + ghost} y="-48" width="420" height="96" rx="14" stroke=${C.cold} />
+      </g>` : null}
+      <rect x="-210" y="-48" width="420" height="96" rx="14" fill="#16121F" stroke=${tone} strokeWidth="3" />
+      <rect x="-194" y="-32" width="64" height="64" rx="12" fill=${tone} />
+      <g transform="translate(-194 -32) scale(0.64)"><${AppGlyph} kind=${n.kind} color=${C.void} /></g>
+      <text x="-114" y="-8" fill=${tone} fontFamily=${FONT.mono} fontSize="16" letterSpacing="2">${KIND_LABEL[n.kind]} · NOW</text>
+      <text x="-114" y="24" fill=${C.ink} fontFamily=${FONT.ui} fontSize="26" fontWeight="600">${n.label}</text>
+    </g>`;
+  }
+
+  function Notes({ t, hp }) {
+    if (t < T.chaos || t > T.build + 0.6) return null;
+    const out = [];
+    for (const n of TL.notes) {
+      const p = (t - n.t) / n.dur;
+      if (p < 0 || p > 1.4) continue;
+      const sx = hp[0] + Math.cos(n.ang) * 1300;
+      const sy = hp[1] + Math.sin(n.ang) * 820;
+      const ex = hp[0] + Math.cos(n.ang) * 170;
+      const ey = hp[1] + Math.sin(n.ang) * 120;
+      if (p <= 1) {
+        const e = ease.in(p);
+        out.push(html`<${NoteCard} key=${n.i} n=${n} x=${lerp(sx, ex, e)} y=${lerp(sy, ey, e)} scale=${lerp(0.85, 1.05, e)} ghost=${6 + e * 12} />`);
+      } else {
+        const q = (p - 1) / 0.4;
+        out.push(html`<${NoteCard} key=${n.i} n=${n} x=${ex} y=${ey} scale=${1.05 + q * 0.6} opacity=${1 - q} ghost=${20 * (1 - q)} />`);
+        out.push(html`<g key=${'b' + n.i} transform=${`translate(${ex} ${ey})`} opacity=${1 - q}>
+          ${[0, 1, 2, 3, 4, 5, 6, 7].map((k) => {
+            const a = (k / 8) * Math.PI * 2 + n.ang;
+            return html`<line key=${k} x1=${Math.cos(a) * 40 * (1 + q * 3)} y1=${Math.sin(a) * 40 * (1 + q * 3)} x2=${Math.cos(a) * 80 * (1 + q * 4)} y2=${Math.sin(a) * 80 * (1 + q * 4)}
+              stroke=${k % 2 ? C.hot : C.cold} strokeWidth="6" />`;
+          })}
+        </g>`);
+      }
+    }
+    return html`<g>${out}</g>`;
+  }
+
+  // The last wave: apps circle in during the build and get blasted off when the crown lands.
+  function Orbit({ t, hp }) {
+    if (t < T.build || t > T.drop + 1) return null;
+    const inP = ease.out(prog(t, T.build, T.drop));
+    const blast = ease.out(prog(t, T.drop, T.drop + 0.9));
+    return html`<g>
+      ${Array.from({ length: 8 }, (_, i) => {
+        const a = (i / 8) * Math.PI * 2 + 0.4 + t * 0.35 * (1 - blast);
+        const r = lerp(1300, 470, inP) + blast * 1400;
+        const n = { i, rot: (hash(i) - 0.5) * 20, label: TL.LABELS[(i * 5 + 3) % TL.LABELS.length], kind: TL.KINDS[i % 6], tone: i % 3 };
+        return html`<${NoteCard} key=${i} n=${n} x=${hp[0] + Math.cos(a) * r * 1.3} y=${hp[1] + Math.sin(a) * r * 0.78} opacity=${1 - blast} ghost=${10 + blast * 30} />`;
+      })}
+    </g>`;
+  }
+
+  // Words flash on the snares; each act has its own vocabulary. Act 3 has the clock instead.
+  const WORDS = {
+    notify: ['PING', 'REPLY', 'LIKE', 'FOLLOW', 'NEW'],
+    scroll: ['SCROLL', 'NEXT', 'ONE MORE', 'REFRESH', 'AUTOPLAY', 'KEEP GOING'],
+  };
+  function Words({ t }) {
+    if (t < T.chaos + BEAT || t > T.time) return null;
+    const k = Math.floor((t - T.chaos - BEAT) / (2 * BEAT));
+    const dt = t - (T.chaos + BEAT + k * 2 * BEAT);
+    if (dt > BEAT * 1.3) return null;
+    const list = t < T.scroll ? WORDS.notify : WORDS.scroll;
+    const u = 18 + hash(k * 4.1) * 22;
+    const x = 300 + hash(k * 1.7) * 1320;
+    const y = 220 + hash(k * 2.9) * 520;
+    return html`<g transform=${`rotate(${(hash(k * 6.1) - 0.5) * 16} ${x} ${y})`}>
+      <${Stencil} text=${list[k % list.length]} x=${x} y=${y - 3 * u} u=${u} color=${C.ink} ghost=${12} anchor="middle" opacity=${0.8 * (1 - dt / (BEAT * 1.3))} />
+    </g>`;
+  }
+
+  // Act 2: three endless feed columns, scrolling faster and faster.
+  const scrollOffset = (t) => {
+    const dt = Math.max(0, t - T.scroll);
+    return 620 * dt + 300 * dt * dt;
+  };
+  const CARD = 340;
+  function FeedCard({ x, y, seed }) {
+    const tone = [C.hot, C.cold, C.lime][Math.floor(hash(seed) * 3)];
+    const video = hash(seed * 2.3) > 0.55;
+    const likes = (1 + hash(seed * 3.7) * 98).toFixed(1) + 'K';
+    return html`<g transform=${`translate(${x} ${y})`}>
+      <rect width="400" height="310" rx="16" fill="#16121F" stroke=${tone} strokeWidth="3" />
+      <circle cx="34" cy="34" r="16" fill=${tone} />
+      <rect x="60" y="24" width=${80 + hash(seed * 5.1) * 90} height="10" rx="5" fill="#3A3450" />
+      <rect x="60" y="40" width="70" height="8" rx="4" fill="#2A2538" />
+      <rect x="16" y="64" width="368" height="180" rx="10" fill=${tone} opacity="0.22" />
+      ${video
+        ? html`<path d="M178 122L230 154L178 186Z" fill=${tone} />`
+        : html`<circle cx=${80 + hash(seed * 6.6) * 240} cy="154" r=${30 + hash(seed * 7.7) * 40} fill=${tone} opacity="0.6" />`}
+      <path d="M30 274c-10-10-2-22 8-16c10-6 18 6 8 16l-8 8z" fill=${C.hot} />
+      <text x="62" y="282" fill=${C.ink} fontFamily=${FONT.mono} fontSize="18">${likes}</text>
+      <rect x="150" y="266" width="26" height="18" rx="5" fill="none" stroke="#5A5470" strokeWidth="3" />
+      <rect x="300" y="268" width="84" height="14" rx="7" fill="#2A2538" />
+    </g>`;
+  }
+  function Feed({ t }) {
+    if (t < T.scroll - 0.2 || t > T.time + 0.3) return null;
+    const o = prog(t, T.scroll - 0.2, T.scroll + 0.2) * (1 - prog(t, T.time - 0.1, T.time + 0.3));
+    const off = scrollOffset(t);
+    const speed = 620 + 600 * Math.max(0, t - T.scroll);
+    return html`<g opacity=${o * 0.9}>
+      ${[[300, -8, 1], [960, 0, 1.2], [1620, 8, 0.9]].map(([cx, rot, rate], c) => {
+        const colOff = off * rate + c * 150;
+        const first = Math.floor(colOff / CARD) - 1;
+        const cards = [];
+        for (let k = first; k < first + 5; k++) {
+          const y = k * CARD - colOff;
+          // Motion smear: a faint copy trailing below, longer as it speeds up.
+          cards.push(html`<g key=${k} opacity="0.35" transform=${`translate(0 ${speed * 0.03})`}><${FeedCard} x=${cx - 200} y=${y} seed=${k * 7 + c * 101} /></g>`);
+          cards.push(html`<${FeedCard} key=${'c' + k} x=${cx - 200} y=${y} seed=${k * 7 + c * 101} />`);
+        }
+        return html`<g key=${c} transform=${`rotate(${rot} ${cx} 540)`}>${cards}</g>`;
+      })}
+    </g>`;
+  }
+
+  // Act 3: the clock races from 7:02 to 9:40 while the hands spin round the head.
+  function Clock({ t, ps }) {
+    if (t < T.time - 0.1 || t > T.build + 0.4) return null;
+    const o = prog(t, T.time - 0.1, T.time + 0.15) * (1 - prog(t, T.build, T.build + 0.4));
+    const minutes = Math.round(lerp(7 * 60 + 2, 9 * 60 + 40, ease.in(prog(t, T.time, T.build - 0.2))));
+    const text = `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+    const [cx, cy] = toScreen(ps, 512, 640);
+    const s = ps[2];
+    const hand = (len, deg, w, color) => {
+      const a = ((deg - 90) * Math.PI) / 180;
+      return html`<line x1=${cx} y1=${cy} x2=${cx + Math.cos(a) * len * s} y2=${cy + Math.sin(a) * len * s} stroke=${color} strokeWidth=${w} strokeLinecap="round" />`;
+    };
+    const u = 32;
+    return html`<g opacity=${o}>
+      ${Array.from({ length: 12 }, (_, i) => {
+        const a = (i / 12) * Math.PI * 2;
+        const r1 = 470 * s;
+        const r2 = (i % 3 ? 510 : 540) * s;
+        return html`<line key=${i} x1=${cx + Math.cos(a) * r1} y1=${cy + Math.sin(a) * r1} x2=${cx + Math.cos(a) * r2} y2=${cy + Math.sin(a) * r2} stroke=${C.ink} strokeWidth=${i % 3 ? 6 : 12} opacity="0.5" />`;
+      })}
+      ${hand(440, (minutes % 60) * 6, 14, C.hot)}
+      ${hand(330, (minutes % 720) * 0.5, 22, C.cold)}
+      <${Stencil} text=${text} x=${W / 2} y=${200} u=${u} color=${C.ink} ghost=${10} anchor="middle" opacity="0.92" />
+    </g>`;
+  }
+
+  function Captions({ t, energy, fi }) {
+    const list = [
+      { a: 0.1, b: T.chaos, text: "IT'S 7:02 AM." },
+      { a: T.chaos, b: T.scroll - 0.05, text: 'YOU PICKED IT UP FOR ONE THING.' },
+      { a: T.scroll, b: T.time - 0.05, text: 'THEN THE FEED TOOK OVER.' },
+      { a: T.time, b: T.build - 0.08, text: 'WHERE DID THE MORNING GO?' },
+      { a: T.build, b: T.drop - BEAT / 2, text: 'WHAT IF IT WAITED FOR YOU?' },
+    ];
+    const c = list.find((x) => t >= x.a && t < x.b);
+    if (!c) return null;
+    const shown = c.text.slice(0, Math.ceil(c.text.length * prog(t, c.a, c.a + 0.55)));
+    const u = fitU(c.text, 1640, 13);
+    const jx = (hash(fi * 1.31) - 0.5) * 24 * energy;
+    return html`<g transform=${`translate(${jx} 0)`}>
+      <rect x="0" y="54" width=${W} height=${6 * u + 44} fill=${C.void} opacity="0.55" />
+      <${Stencil} text=${shown} x=${W / 2 - (units(c.text) * u) / 2} y=${76} u=${u} color=${C.ink} ghost=${4 + energy * 10} />
+    </g>`;
+  }
+
+  function DropTitle({ t }) {
+    if (t < T.drop || t > T.step1 + 0.3) return null;
+    const o = appear(t, T.drop, 0.15) * (1 - prog(t, T.step1 - 0.2, T.step1 + 0.3));
+    const u = 15;
+    const total = units('BRAINFENCE ON') * u;
+    const x0 = W / 2 - total / 2;
+    return html`<g opacity=${o}>
+      <${Stencil} text="BRAINFENCE" x=${x0} y=${84} u=${u} color=${C.ink} ghost=${8 * (1 - prog(t, T.drop, T.drop + 0.6))} />
+      <${Stencil} text="ON" x=${x0 + (units('BRAINFENCE ') - 6 * SKEW) * u} y=${84} u=${u} color=${C.lime} />
+    </g>`;
+  }
+
+  function Guy({ t, ps, energy, fi, jitter, calm }) {
+    const [x, y, s] = ps;
+    const tf = `translate(${x - 512 * s + jitter[0]} ${y - 600 * s + jitter[1]}) scale(${s})`;
+    const g = lerp(4, 1.5, calm) + energy * (8 + hash(fi * 1.3) * 22);
+    const gy = energy * (hash(fi * 2.1) - 0.5) * 12;
+    const ghost = (sil, dx, dy) => html`
+      <g fill=${C.hot} stroke=${C.hot} strokeWidth="0" transform=${`translate(${-dx} ${dy})`} dangerouslySetInnerHTML=${{ __html: sil }} />
+      <g fill=${C.cold} stroke=${C.cold} strokeWidth="0" transform=${`translate(${dx} ${-dy})`} dangerouslySetInnerHTML=${{ __html: sil }} />`;
+
+    let crown = null;
+    if (t >= T.build) {
+      const fall = prog(t, T.build, T.drop);
+      const cy = t < T.drop ? lerp(-860, 0, ease.in(fall)) : 0;
+      const land = t >= T.drop ? Math.exp(-(t - T.drop) * 9) : 0;
+      const cg = t < T.drop ? 18 + fall * 20 : g + land * 50;
+      const vine = ease.inOut(prog(t, T.drop + 0.8, T.drop + 2.6));
+      crown = html`<g>
+        ${t < T.drop ? html`<rect x="300" y=${cy - 2400} width="424" height="2400" fill=${C.lime} opacity=${0.12 + fall * 0.2} />` : null}
+        <g transform=${`translate(0 ${cy}) translate(512 520) scale(${1 + land * 0.08} ${1 - land * 0.14}) translate(-512 -520)`}>
+          ${ghost(D.crown.sil, cg, 0)}
+          <g dangerouslySetInnerHTML=${{ __html: D.crown.art }} />
+          ${calm > 0 ? html`<g>
+            <path d=${VINE} pathLength="1" fill="none" stroke=${C.leaf2} strokeWidth="7" strokeDasharray="1" strokeDashoffset=${1 - vine} strokeLinecap="round" />
+            ${LEAVES.map((l) => {
+              const sc = ease.back(prog(t, T.drop + 1 + l.k * 0.05, T.drop + 1.5 + l.k * 0.05));
+              return sc <= 0 ? null : html`<path key=${l.k} d=${LEAF} transform=${`translate(${l.x} ${l.y}) rotate(${l.rot}) scale(${sc})`} fill=${l.k % 3 ? C.leaf : C.leaf2} stroke=${C.deep} strokeWidth="3" />`;
+            })}
+            ${[0, 2, 4].map((i, k) => {
+              const sc = ease.back(prog(t, T.step1 + k * 0.15, T.step1 + 0.5 + k * 0.15));
+              const [px, py] = PEAKS[i];
+              return sc <= 0 ? null : html`<g key=${i} transform=${`translate(${px} ${py - 30}) scale(${sc})`}>
+                ${[0, 1, 2, 3, 4].map((j) => html`<circle key=${j} cx=${Math.cos((j / 5) * 6.283) * 15} cy=${Math.sin((j / 5) * 6.283) * 15} r="11" fill=${C.cream} stroke=${C.deep} strokeWidth="3" />`)}
+                <circle r="9" fill=${C.sun} />
+              </g>`;
+            })}
+          </g>` : null}
+        </g>
+        ${land > 0.02 ? PEAKS.map(([px, py], i) => {
+          const q = 1 - land;
+          const a = -Math.PI / 2 + (i - 2) * 0.5;
+          return html`<path key=${'s' + i} d="M0 -26L7 0L0 26L-7 0Z" fill=${C.lime}
+            transform=${`translate(${px + Math.cos(a) * q * 220} ${py + Math.sin(a) * q * 220}) rotate(${(a * 180) / Math.PI + 90}) scale(${2 * land + 0.4})`} />`;
+        }) : null}
+      </g>`;
+    }
+
+    const eyeColor = energy > 0 && hash(fi * 3.3) > 0.55 ? C.hot : C.lime;
+    // During the scroll act his visor shows the feed instead of eyes.
+    const feed = prog(t, T.scroll, T.scroll + 0.3) * (1 - prog(t, T.time - 0.2, T.time + 0.1));
+    const visorOff = scrollOffset(t) * 0.12;
+    return html`<g transform=${tf}>
+      ${ghost(D.guy.sil, g, gy)}
+      <g dangerouslySetInnerHTML=${{ __html: D.guy.art }} />
+      ${feed > 0
+        ? html`<g clipPath="url(#visorClip)" opacity=${feed}>
+            ${Array.from({ length: 9 }, (_, i) => html`<rect key=${i} x=${300 + hash(i) * 80} y=${598 + ((((i * 12 - visorOff) % 108) + 108) % 108)}
+              width=${120 + hash(i * 3) * 300} height="6" rx="3" fill=${i % 3 ? C.cold : C.ink} opacity="0.85" />`)}
+          </g>`
+        : html`<g fill=${eyeColor} transform=${`translate(${energy * (hash(fi * 4.4) - 0.5) * 30} 0)`}>${EYES.map((d) => html`<path key=${d} d=${d} />`)}</g>`}
+      ${crown}
+    </g>`;
+  }
+
+  // ---------- explainer ----------
+  const COL = 880;
+  const TASKS = [
+    { label: 'Meditate', tag: '10 MIN TIMER' },
+    { label: 'Workout', tag: 'ROUTINE' },
+    { label: 'Journal', tag: '3 PROMPTS' },
+    { label: 'Morning walk', tag: 'GPS: THE PARK' },
+  ];
+
+  // Map card for the morning walk: home to the park along the streets.
+  const ROUTE = [[70, 300], [70, 236], [214, 236], [214, 150], [352, 150], [352, 96], [476, 96]];
+  const ROUTE_D = 'M' + ROUTE.map(([x, y]) => `${x} ${y}`).join('L');
+  const ROUTE_LEN = ROUTE.slice(1).map((p, i) => Math.hypot(p[0] - ROUTE[i][0], p[1] - ROUTE[i][1]));
+  const ROUTE_TOTAL = ROUTE_LEN.reduce((a, b) => a + b, 0);
+  function routeAt(f) {
+    let d = f * ROUTE_TOTAL;
+    for (let i = 0; i < ROUTE_LEN.length; i++) {
+      if (d <= ROUTE_LEN[i]) {
+        const k = d / ROUTE_LEN[i];
+        return [lerp(ROUTE[i][0], ROUTE[i + 1][0], k), lerp(ROUTE[i][1], ROUTE[i + 1][1], k)];
+      }
+      d -= ROUTE_LEN[i];
+    }
+    return ROUTE[ROUTE.length - 1];
+  }
+
+  function WalkMap({ t, x, y }) {
+    const w = 560;
+    const h = 360;
+    const f = ease.inOut(prog(t, TL.walkStart, TL.checks[3] - 0.1));
+    const [px, py] = routeAt(f);
+    const arrived = t >= TL.checks[3];
+    const pulse = (t * 1.6) % 1;
+    return html`<g transform=${`translate(${x} ${y})`}>
+      <path d=${chamfer(0, 0, w, h, 22)} fill=${C.cream} />
+      <clipPath id="mapClip"><rect x="14" y="14" width=${w - 28} height=${h - 28} rx="8" /></clipPath>
+      <g clipPath="url(#mapClip)">
+        <rect x="14" y="14" width=${w - 28} height=${h - 28} fill="#E6DCBE" />
+        <g fill=${C.leaf} opacity="0.75"><circle cx="470" cy="70" r="70" /><circle cx="530" cy="120" r="60" /><circle cx="410" cy="40" r="44" /></g>
+        <g fill=${C.leaf2}>${[[440, 60], [500, 50], [520, 110], [462, 124], [548, 70]].map(([cx, cy]) => html`<circle key=${cx} cx=${cx} cy=${cy} r="10" />`)}</g>
+        <path d="M70 0V360M214 0V360M352 0V360M0 96H560M0 150H560M0 236H560M0 300H560" stroke="#FBF6E8" strokeWidth="18" />
+        <path d=${ROUTE_D} fill="none" stroke=${C.ember} strokeWidth="10" opacity="0.25" strokeDasharray="4 14" strokeLinecap="round" />
+        <path d=${ROUTE_D} pathLength="1" fill="none" stroke=${C.ember} strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray="1" strokeDashoffset=${1 - f} />
+        <path d="M52 312L70 296L88 312V330H52Z" fill=${C.deep} />
+        <g transform="translate(476 96)">
+          <path d="M0 0V-44" stroke=${C.deep} strokeWidth="5" />
+          <path d="M2 -44H30L22 -35L30 -26H2Z" fill=${arrived ? C.lime : C.cream} stroke=${C.deep} strokeWidth="3" />
+        </g>
+        ${arrived ? null : html`<circle cx=${px} cy=${py} r=${14 + pulse * 30} fill="none" stroke=${C.deep} strokeWidth="3" opacity=${1 - pulse} />`}
+        <circle cx=${px} cy=${py} r="14" fill=${C.deep} stroke=${C.lime} strokeWidth="5" />
+      </g>
+      <rect x="28" y="28" width="196" height="38" rx="19" fill=${C.deep} />
+      <text x="126" y="53" textAnchor="middle" fill=${C.lime} fontFamily=${FONT.mono} fontSize="18" letterSpacing="1.5">MORNING WALK</text>
+      ${arrived
+        ? html`<g><rect x=${w - 214} y=${h - 64} width="186" height="40" rx="20" fill=${C.lime} />
+            <text x=${w - 121} y=${h - 37} textAnchor="middle" fill=${C.deep} fontFamily=${FONT.mono} fontWeight="500" fontSize="18" letterSpacing="1.5">ARRIVED ✓</text></g>`
+        : html`<text x=${w - 32} y=${h - 36} textAnchor="end" fill=${C.deep} fontFamily=${FONT.ui} fontWeight="700" fontSize="34">${(f * 1.4).toFixed(1)} km</text>`}
+    </g>`;
+  }
+  const APPS = ['feed', 'video', 'game', 'news', 'shop', 'chat'];
+
+  function StepHead({ n, title, lines, t, start }) {
+    const a = appear(t, start);
+    const u = fitU(title, 1800 - COL - 110, 10);
+    return html`<g transform=${`translate(${(1 - a) * 60} 0)`} opacity=${a}>
+      <rect x=${COL} y="118" width="80" height="80" fill=${C.lime} />
+      <${Stencil} text=${String(n)} x=${COL + 40} y=${158 - 3 * 8} u=${8} color=${C.deep} anchor="middle" weight=${1.15} />
+      <${Stencil} text=${title} x=${COL + 110} y=${158 - 3 * u} u=${u} color=${C.cream} />
+      ${lines.map((l, i) => html`<text key=${i} x=${COL} y=${270 + i * 44} fill=${C.cream} opacity="0.86" fontFamily=${FONT.body} fontSize="34">${l}</text>`)}
+    </g>`;
+  }
+
+  const chamfer = (x, y, w, h, c = 18) => `M${x + c} ${y}H${x + w}V${y + h - c}L${x + w - c} ${y + h}H${x}V${y + c}Z`;
+
+  function Check({ x, y, size, done }) {
+    return html`<g>
+      <rect x=${x} y=${y} width=${size} height=${size} rx="8" fill=${done > 0 ? C.lime : 'none'} stroke=${C.deep} strokeWidth="5" />
+      ${done > 0 ? html`<path d=${`M${x + size * 0.22} ${y + size * 0.52}L${x + size * 0.42} ${y + size * 0.72}L${x + size * 0.8} ${y + size * 0.3}`} pathLength="1"
+        fill="none" stroke=${C.deep} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1" strokeDashoffset=${1 - done} />` : null}
+    </g>`;
+  }
+
+  function TaskList({ t, start, x, y, w, rowH, font, checks }) {
+    return html`<g>
+      ${TASKS.map((task, i) => {
+        const a = appear(t, start + 0.15 + i * BEAT / 2, 0.35);
+        const done = checks ? ease.out(prog(t, checks[i], checks[i] + 0.25)) : 0;
+        const ry = y + i * (rowH + 14);
+        return html`<g key=${i} transform=${`translate(${(1 - a) * 80} 0)`} opacity=${a}>
+          <path d=${chamfer(x, ry, w, rowH)} fill=${mix(C.cream, '#E4F7B0', done)} />
+          <${Check} x=${x + 24} y=${ry + (rowH - rowH * 0.5) / 2} size=${rowH * 0.5} done=${done} />
+          <text x=${x + 40 + rowH * 0.5} y=${ry + rowH / 2 + font * 0.35} fill=${C.deep} fontFamily=${FONT.ui} fontWeight="600" fontSize=${font}>${task.label}</text>
+          ${w > 600 ? html`<g>
+            <rect x=${x + w - 250} y=${ry + rowH / 2 - 20} width="224" height="40" rx="20" fill=${C.deep} />
+            <text x=${x + w - 138} y=${ry + rowH / 2 + 7} fill=${C.lime} textAnchor="middle" fontFamily=${FONT.mono} fontSize="19" letterSpacing="1.5">${task.tag}</text>
+          </g>` : null}
+        </g>`;
+      })}
+    </g>`;
+  }
+
+  // App grid behind a chain-link fence. fence: 0 open (out of frame) … 1 shut.
+  function FencedApps({ t, x, y, tile, gap, fence, lockOpen, dim, id }) {
+    const w = tile * 3 + gap * 2;
+    const h = tile * 2 + gap;
+    const pad = tile * 0.18;
+    let mesh = '';
+    for (let o = -h; o < w + h; o += tile * 0.28) mesh += `M${x + o} ${y - pad}l${h + 2 * pad} ${h + 2 * pad}M${x + o + h + 2 * pad} ${y - pad}l${-h - 2 * pad} ${h + 2 * pad}`;
+    const fy = (1 - fence) * -(h + 3 * pad);
+    const L = tile * 0.55;
+    return html`<g>
+      ${APPS.map((k, i) => {
+        const tx = x + (i % 3) * (tile + gap);
+        const ty = y + Math.floor(i / 3) * (tile + gap);
+        return html`<g key=${k}>
+          <rect x=${tx} y=${ty} width=${tile} height=${tile} rx=${tile * 0.22} fill=${TILE[k]} />
+          <g transform=${`translate(${tx + tile * 0.12} ${ty + tile * 0.06}) scale(${(tile * 0.76) / 100})`}><${AppGlyph} kind=${k} color=${C.cream} /></g>
+          <text x=${tx + tile / 2} y=${ty + tile * 0.9} textAnchor="middle" fill=${C.cream} fontFamily=${FONT.mono} fontSize=${tile * 0.1} letterSpacing="1">${KIND_LABEL[k]}</text>
+        </g>`;
+      })}
+      <rect x=${x - pad} y=${y - pad} width=${w + 2 * pad} height=${h + 2 * pad} rx="12" fill=${C.deep} opacity=${dim} />
+      <clipPath id=${id}><rect x=${x - pad} y=${y - pad} width=${w + 2 * pad} height=${h + 2 * pad} /></clipPath>
+      <g clipPath=${`url(#${id})`}>
+        <g transform=${`translate(0 ${fy})`}>
+          <path d=${mesh} fill="none" stroke=${C.void} strokeWidth=${tile * 0.07} opacity="0.7" />
+          <path d=${mesh} fill="none" stroke="#CDD0DC" strokeWidth=${tile * 0.035} />
+          <rect x=${x - pad} y=${y - pad} width=${w + 2 * pad} height=${tile * 0.09} fill="#9095A8" />
+        </g>
+      </g>
+      ${fence > 0.05 ? html`<g transform=${`translate(${x + w / 2} ${y + h / 2}) scale(${ease.back(clamp(fence))})`}>
+        <path d=${`M${-L * 0.32} ${-L * 0.05}V${-L * 0.38}C${-L * 0.32} ${-L * 0.8} ${L * 0.32} ${-L * 0.8} ${L * 0.32} ${-L * 0.38}V${-L * 0.05}`}
+          fill="none" stroke=${C.deep} strokeWidth=${L * 0.14} transform=${`translate(0 ${-lockOpen * L * 0.3})`} />
+        <path d=${chamfer(-L / 2, -L * 0.1, L, L * 0.72, L * 0.12)} fill=${C.lime} stroke=${C.deep} strokeWidth=${L * 0.05} />
+        <circle cy=${L * 0.2} r=${L * 0.08} fill=${C.deep} />
+        <rect x=${-L * 0.03} y=${L * 0.2} width=${L * 0.06} height=${L * 0.16} fill=${C.deep} />
+      </g>` : null}
+    </g>`;
+  }
+
+  function Steps({ t }) {
+    if (t < T.step1 - 0.1 || t > T.end + 0.2) return null;
+    const win = (a, b) => appear(t, a, 0.35) * (1 - prog(t, b - 0.3, b));
+    const o1 = win(T.step1, T.step2);
+    const o2 = win(T.step2, T.step3);
+    const o3 = win(T.step3, T.end);
+    const open = ease.inOut(prog(t, TL.unlock, TL.unlock + 0.5));
+    return html`<g>
+      ${o1 > 0 ? html`<g opacity=${o1}>
+        <${StepHead} n=${1} title="SET YOUR TASKS" t=${t} start=${T.step1}
+          lines=${['Habits, workouts, meditation, journaling,', 'or just getting somewhere on time.']} />
+        <${TaskList} t=${t} start=${T.step1} x=${COL} y=${400} w=${900} rowH=${112} font=${42} />
+      </g>` : null}
+      ${o2 > 0 ? html`<g opacity=${o2}>
+        <${StepHead} n=${2} title="APPS STAY FENCED IN" t=${t} start=${T.step2}
+          lines=${['Pick the apps and websites that eat your day.', "They stay blocked until today's tasks are done."]} />
+        <g opacity=${appear(t, T.step2 + 0.1)}>
+          <${FencedApps} id="fenceA" t=${t} x=${COL + 120} y=${430} tile=${200} gap=${36} fence=${ease.out(prog(t, T.step2 + 0.5, T.step2 + 1.1))}
+            lockOpen=${0} dim=${0.35 * prog(t, T.step2 + 0.5, T.step2 + 1.1)} />
+        </g>
+      </g>` : null}
+      ${o3 > 0 ? html`<g opacity=${o3}>
+        <${StepHead} n=${3} title="DO THE WORK. GET THEM BACK." t=${t} start=${T.step3}
+          lines=${['Walk to the park and GPS ticks it off for you.', 'Loosening a rule is time-locked: no impulse unlocks.']} />
+        <g opacity=${appear(t, T.step3 + 0.1)}><${WalkMap} t=${t} x=${COL} y=${370} /></g>
+        <${TaskList} t=${t} start=${T.step3 - 0.3} x=${1470} y=${370} w=${330} rowH=${62} font=${25} checks=${TL.checks} />
+        <g opacity=${appear(t, T.step3 + 0.2)}>
+          <${FencedApps} id="fenceB" t=${t} x=${1487} y=${700} tile=${92} gap=${12} fence=${1 - open} lockOpen=${open} dim=${0.35 * (1 - open)} />
+        </g>
+        ${open > 0 ? html`<g opacity=${open}>
+          <${Stencil} text="UNLOCKED" x=${COL} y=${775} u=${9} color=${C.lime} />
+        </g>` : null}
+      </g>` : null}
+    </g>`;
+  }
+
+  function EndCard({ t }) {
+    if (t < T.end) return null;
+    const x = 1000;
+    const u = fitU('BRAINFENCE', 820, 18);
+    // Advance past "BRAIN" plus tracking: the space glyph is 2 units wide.
+    const fenceX = x + (units('BRAIN ') - 6 * SKEW - 2) * u;
+    const a1 = appear(t, T.end + 0.2, 0.5);
+    const a2 = appear(t, T.end + 0.7);
+    const a3 = appear(t, T.end + 1.3);
+    const a4 = appear(t, T.end + 1.8);
+    const g = 10 * (1 - prog(t, T.end + 0.2, T.end + 1));
+    return html`<g>
+      <g opacity=${a1} transform=${`translate(${(1 - a1) * 80} 0)`}>
+        <${Stencil} text="BRAIN" x=${x} y=${330} u=${u} color=${C.cream} ghost=${g} />
+        <${Stencil} text="FENCE" x=${fenceX} y=${330} u=${u} color=${C.lime} ghost=${g} />
+      </g>
+      <g opacity=${a2}><${Stencil} text="PROTECT YOUR HEAD." x=${x + 4} y=${500} u=${7.5} color=${C.cream} /></g>
+      <text x=${x + 4} y=${650} opacity=${a3} fill=${C.cream} fontFamily=${FONT.ui} fontWeight="600" fontSize="48">Keep the phone. Lose the autopilot.</text>
+      <text x=${x + 4} y=${730} opacity=${a4} fill=${C.cream} fontFamily=${FONT.mono} fontSize="26" letterSpacing="5">ANDROID · WINDOWS · MACOS · SYNCED</text>
+    </g>`;
+  }
+
+  function Pollen({ t, calm }) {
+    if (calm <= 0) return null;
+    return html`<g opacity=${calm * 0.7}>
+      ${Array.from({ length: 36 }, (_, i) => {
+        const sp = 30 + hash(i * 9.1) * 50;
+        const y = H + 40 - (((t - T.drop) * sp + hash(i * 3.7) * H) % (H + 80));
+        const x = hash(i * 1.3) * W + Math.sin(t * 0.8 + i) * 30;
+        return html`<circle key=${i} cx=${x} cy=${y} r=${2 + hash(i * 5.5) * 4} fill=${i % 4 ? C.cream : C.sun} />`;
+      })}
+    </g>`;
+  }
+
+  function Defs({ fi, warp }) {
+    return html`<defs>
+      <g dangerouslySetInnerHTML=${{ __html: D.defs }} />
+      <linearGradient id="calmSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#0E2C24" /><stop offset="0.5" stopColor="#1D5140" />
+        <stop offset="0.82" stopColor="#B99A4A" /><stop offset="1" stopColor="#F2C66A" />
+      </linearGradient>
+      <linearGradient id="sunFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#FFE08A" /><stop offset="1" stopColor=${C.ember} />
+      </linearGradient>
+      <mask id="sunBars" maskContentUnits="objectBoundingBox">
+        <rect width="1" height="1" fill="#fff" />
+        ${[0.56, 0.64, 0.71, 0.78, 0.84, 0.9, 0.95].map((y, i) => html`<rect key=${y} y=${y} width="1" height=${0.012 + i * 0.006} fill="#000" />`)}
+      </mask>
+      <clipPath id="visorClip"><path d="M270 614L754 600L754 670L270 684Z" /></clipPath>
+      <pattern id="scan" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="2" fill="#000" /></pattern>
+      <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.75">
+        <stop offset="0.55" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity="0.85" />
+      </radialGradient>
+      <filter id="warp" filterUnits="userSpaceOnUse" x="-80" y="-80" width=${W + 160} height=${H + 160}>
+        <feTurbulence type="fractalNoise" baseFrequency="0.0015 0.09" numOctaves="1" seed=${fi % 97} result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale=${warp} xChannelSelector="R" yChannelSelector="B" />
+      </filter>
+      <filter id="static" filterUnits="userSpaceOnUse" x="0" y="0" width=${W} height=${H}>
+        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="1" seed=${fi % 13} />
+        <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.6 -0.5" />
+      </filter>
+    </defs>`;
+  }
+
+  function Frame({ t }) {
+    const fi = Math.floor(t * 24);
+    const calm = ease.inOut(prog(t, T.drop, T.drop + 1.8));
+    const energy = t < T.chaos ? 0.3 : t < T.drop ? lerp(0.45, 1, prog(t, T.chaos, T.drop)) : 0;
+    const sinceSnare = t >= T.chaos && t < T.build ? (t - T.chaos - BEAT + 4 * BAR) % (2 * BEAT) : 9;
+    const spike = Math.exp(-sinceSnare * 14);
+    const flash = t >= T.drop ? 1 - prog(t, T.drop, T.drop + 0.5) : 0;
+    const warp = t < T.drop ? energy * 22 + spike * 46 + (t > T.build ? prog(t, T.build, T.drop) * 30 : 0) : flash * 70;
+    const ps = pose(t);
+    const hp = toScreen(ps, 512, 640);
+
+    // Head knocks back when a notification hits.
+    let jx = 0;
+    let jy = 0;
+    for (const n of TL.notes) {
+      const dt = t - (n.t + n.dur);
+      if (dt >= 0 && dt < 0.25) {
+        const k = Math.exp(-dt * 18) * 16;
+        jx -= Math.cos(n.ang) * k;
+        jy -= Math.sin(n.ang) * k;
+      }
+    }
+
+    // Walking: a bob on every beat while the city scrolls past.
+    const walking = 1 - prog(t, TL.checks[3] - 0.2, TL.checks[3]);
+    if (t > TL.walkStart && walking > 0) jy -= Math.abs(Math.sin((Math.PI * (t - TL.walkStart)) / BEAT)) * 16 * walking;
+
+    const scene = html`<g>
+      <${Background} calm=${calm} />
+      <${Sun} t=${t} calm=${calm} ps=${ps} />
+      <${Rings} t=${t} ps=${ps} calm=${calm} />
+      <${Skyline} t=${t} calm=${calm} fi=${fi} />
+      <${Pollen} t=${t} calm=${calm} />
+      <${Feed} t=${t} />
+      <${Words} t=${t} />
+      <${Clock} t=${t} ps=${ps} />
+      <${Guy} t=${t} ps=${ps} energy=${energy} fi=${fi} jitter=${[jx, jy]} calm=${calm} />
+      <${Notes} t=${t} hp=${hp} />
+      <${Orbit} t=${t} hp=${hp} />
+      <${Steps} t=${t} />
+      <${EndCard} t=${t} />
+    </g>`;
+
+    const intro = t < T.chaos ? 1 - prog(t, 0, T.chaos) * 0.6 : 0;
+    return html`<svg viewBox=${`0 0 ${W} ${H}`} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Brainfence teaser">
+      <${Defs} fi=${fi} warp=${warp} />
+      <g filter=${warp > 0.5 ? 'url(#warp)' : undefined}>${scene}</g>
+      ${intro > 0 ? html`<rect width=${W} height=${H} filter="url(#static)" opacity=${intro * (0.35 + hash(fi) * 0.25)} />` : null}
+      <${Captions} t=${t} energy=${energy} fi=${fi} />
+      <${DropTitle} t=${t} />
+      <rect width=${W} height=${H} fill="url(#scan)" opacity=${lerp(0.22, 0.06, calm)} />
+      <rect width=${W} height=${H} fill="url(#vignette)" opacity=${lerp(0.9, 0.45, calm)} />
+      ${flash > 0 ? html`<rect width=${W} height=${H} fill="#FFFFFF" opacity=${flash} />` : null}
+      ${flash > 0 ? html`<circle cx=${hp[0]} cy=${hp[1] - 120} r=${80 + (1 - flash) * 1400} fill="none" stroke=${C.lime} strokeWidth=${40 * flash} />` : null}
+    </svg>`;
+  }
+
+  // ---------- player ----------
+  const fmt = (s) => `0:${String(Math.floor(s)).padStart(2, '0')}`;
+
+  // Offline rendering needs no click, so mix the soundtrack while the poster shows.
+  const soundtrack = (async () => {
+    try {
+      return await window.BF_MUSIC.render();
+    } catch (e) {
+      console.error('Soundtrack failed to render; the teaser will play silent.', e);
+      return null;
+    }
+  })();
+  const POSTER = T.end + 2.6;
+
+  function App() {
+    // #t12.6 in the URL opens on that frame.
+    const [t, setT] = useState(() => {
+      const m = /^#t([\d.]+)$/.exec(location.hash);
+      return m ? clamp(parseFloat(m[1]), 0, T.length - 0.001) : POSTER;
+    });
+    const [mode, setMode] = useState(() => (location.hash ? 'paused' : 'idle')); // idle | loading | playing | paused | ended
+    const [muted, setMuted] = useState(false);
+    const a = useRef({ ctx: null, buffer: null, src: null, gain: null, base: 0, at: 0 });
+    const raf = useRef(0);
+
+    // The page clock drives the picture. The audio context's clock can sit at
+    // zero (suspended context, no output device), which would freeze the film.
+    const clockNow = () => performance.now() / 1000;
+    const now = () => a.current.base + clockNow() - a.current.at;
+
+    function stopSource() {
+      cancelAnimationFrame(raf.current);
+      if (a.current.src) {
+        try { a.current.src.stop(); } catch (e) { /* already stopped */ }
+        a.current.src = null;
+      }
+    }
+
+    function start(from) {
+      stopSource();
+      const A = a.current;
+      if (A.ctx && A.buffer) {
+        const src = A.ctx.createBufferSource();
+        src.buffer = A.buffer;
+        src.connect(A.gain);
+        src.start(0, from);
+        A.src = src;
+      }
+      A.base = from;
+      A.at = clockNow();
+      setMode('playing');
+      const tick = () => {
+        const nt = now();
+        if (nt >= T.length) {
+          stopSource();
+          setT(T.length - 0.001);
+          setMode('ended');
+          return;
+        }
+        setT(nt);
+        raf.current = requestAnimationFrame(tick);
+      };
+      raf.current = requestAnimationFrame(tick);
+    }
+
+    async function play(from) {
+      const A = a.current;
+      if (!A.ctx) {
+        try {
+          A.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          A.gain = A.ctx.createGain();
+          A.gain.gain.value = muted ? 0 : 1;
+          A.gain.connect(A.ctx.destination);
+        } catch (e) {
+          A.ctx = null;
+        }
+      }
+      if (A.ctx && A.ctx.state === 'suspended') A.ctx.resume();
+      if (A.ctx && !A.buffer) {
+        setMode('loading');
+        A.buffer = await soundtrack;
+      }
+      start(from);
+    }
+
+    function pause() {
+      const nt = now();
+      stopSource();
+      setT(nt);
+      setMode('paused');
+    }
+
+    const toggle = () => {
+      if (mode === 'playing') pause();
+      else if (mode === 'idle' || mode === 'ended') play(0);
+      else if (mode === 'paused') play(t);
+    };
+
+    function seek(v) {
+      if (mode === 'playing') start(v);
+      else {
+        setT(v);
+        if (mode === 'idle' || mode === 'ended') setMode('paused');
+      }
+    }
+
+    useEffect(() => {
+      if (a.current.gain) a.current.gain.gain.value = muted ? 0 : 1;
+    }, [muted]);
+
+    useEffect(() => {
+      const onKey = (e) => {
+        if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+          e.preventDefault();
+          toggle();
+        }
+      };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    });
+
+    useEffect(() => () => stopSource(), []);
+
+    const overlay = mode === 'idle' || mode === 'ended' || mode === 'loading';
+    return html`<div class="player">
+      <div class="stage">
+        <${Frame} t=${t} />
+        ${overlay ? html`<button class="big" id="big-play" type="button" onClick=${toggle} disabled=${mode === 'loading'}>
+          <span class="tri" aria-hidden="true"></span>
+          <span>${mode === 'loading' ? 'Mixing the soundtrack…' : mode === 'ended' ? 'Play again' : 'Play the teaser'}</span>
+          <small>30 seconds · sound on</small>
+        </button>` : null}
+      </div>
+      <div class="bar">
+        <button id="toggle" type="button" onClick=${toggle} disabled=${mode === 'loading'}>${mode === 'playing' ? 'Pause' : 'Play'}</button>
+        <input id="scrub" type="range" min="0" max=${T.length} step="0.01" value=${t} aria-label="Position"
+          onInput=${(e) => seek(parseFloat(e.target.value))} />
+        <span class="time">${fmt(Math.min(t, T.length - 0.001))} / 0:30</span>
+        <button id="mute" type="button" onClick=${() => setMuted(!muted)} aria-pressed=${muted}>${muted ? 'Unmute' : 'Mute'}</button>
+      </div>
+    </div>`;
+  }
+
+  ReactDOM.createRoot(document.getElementById('teaser')).render(html`<${App} />`);
+})();
