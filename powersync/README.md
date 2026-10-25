@@ -283,6 +283,8 @@ Unsure where the config is mounted from? `docker inspect powersync-powersync-1 -
 
 Order matters: the server must know about a table **before** an app build writes to it, or uploads to it fail and can hold up the upload queue (including task completions).
 
+**Shortcut:** `npm run deploy` (repo root) does steps 1 and 3 in that order. It pushes migrations with `supabase db push`, then uploads `sync-rules.yaml` over SSH if it changed, restarts PowerSync and checks its logs. `npm run deploy -- --dry-run` shows the pending migrations and the sync-rules diff without changing anything. It needs this checkout linked (`supabase link`), the DB password via `SUPABASE_DB_URL` in `.env`, and SSH access to the droplet (see `.env.example` for overrides).
+
 1. **Migration** — add a file under `supabase/migrations/`, then from the repo root: `supabase db push`
 2. **Client schema** — add the table/columns to `android/.../data/db/AppSchema.kt`. Any JSONB or `TEXT[]`/`UUID[]` column must also go in `JSON_ENCODED_COLUMNS` in `SupabasePowerSyncConnector.kt`, or writes to it silently revert.
 3. **Sync rules** — add the table to `sync-rules.yaml`, get it onto the droplet, and restart:

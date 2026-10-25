@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
@@ -112,6 +113,7 @@ fun TaskListScreen(
     onNavigateToJournalHistory: () -> Unit = {},
     onNavigateToContemplations: () -> Unit = {},
     onNavigateToReports: () -> Unit = {},
+    onNavigateToSetupGuide: () -> Unit = {},
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -179,6 +181,11 @@ fun TaskListScreen(
                             text = { Text("Reports") },
                             leadingIcon = { Icon(Icons.Default.Assessment, contentDescription = null) },
                             onClick = { showMenu = false; onNavigateToReports() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Setup guide") },
+                            leadingIcon = { Icon(Icons.Default.Explore, contentDescription = null) },
+                            onClick = { showMenu = false; onNavigateToSetupGuide() },
                         )
                         DropdownMenuItem(
                             text = { Text("Debug logs") },

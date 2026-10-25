@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -40,6 +41,12 @@ import dev.brainfence.ui.debug.DebugScreen
 import dev.brainfence.ui.debug.DebugViewModel
 import dev.brainfence.ui.journal.JournalHistoryScreen
 import dev.brainfence.ui.journal.JournalHistoryViewModel
+import dev.brainfence.domain.onboarding.OnboardingRoute
+import dev.brainfence.ui.onboarding.DeviceSetupScreen
+import dev.brainfence.ui.onboarding.DeviceSetupViewModel
+import dev.brainfence.ui.onboarding.GuideScreen
+import dev.brainfence.ui.onboarding.GuideViewModel
+import dev.brainfence.ui.onboarding.OnboardingGateViewModel
 import dev.brainfence.ui.tasks.DurationTaskScreen
 import dev.brainfence.ui.tasks.DurationTaskViewModel
 import dev.brainfence.ui.tasks.GpsTaskScreen
@@ -100,6 +107,8 @@ private object Routes {
     const val HOME_LOCATION     = "settings/home-location"
     const val CONTEMPLATIONS    = "settings/contemplations"
     const val CONTEMPLATION_DECK = "settings/contemplations/deck/{deckId}"
+    const val GUIDE             = "onboarding/guide"
+    const val DEVICE_SETUP      = "onboarding/device-setup"
 }
 
 @Composable
@@ -198,6 +207,16 @@ fun BrainfenceNavGraph(
         }
         composable(Routes.HOME) {
             val taskViewModel: TaskListViewModel = hiltViewModel()
+            val onboardingGate: OnboardingGateViewModel = hiltViewModel()
+            // Once per process, after the first sync: the setup guide for a new
+            // account, or this phone's setup for one set up elsewhere.
+            LaunchedEffect(Unit) {
+                when (onboardingGate.decide()) {
+                    OnboardingRoute.GUIDE -> navController.navigate(Routes.GUIDE)
+                    OnboardingRoute.DEVICE_SETUP -> navController.navigate(Routes.DEVICE_SETUP)
+                    else -> Unit
+                }
+            }
             val activeTasks        by taskViewModel.activeTasks.collectAsStateWithLifecycle()
             val completedTasks     by taskViewModel.completedTasks.collectAsStateWithLifecycle()
             val upcomingTasks      by taskViewModel.upcomingTasks.collectAsStateWithLifecycle()
@@ -244,13 +263,14 @@ fun BrainfenceNavGraph(
                 },
                 onConfirmComplete        = taskViewModel::confirmComplete,
                 onDismissComplete        = taskViewModel::dismissComplete,
-                onSignOut                = taskViewModel::signOut,
+                onSignOut                = { onboardingGate.reset(); taskViewModel.signOut() },
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
                 onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
                 onNavigateToJournalHistory = { navController.navigate(Routes.JOURNAL_HISTORY) },
                 onNavigateToContemplations = { navController.navigate(Routes.CONTEMPLATIONS) },
                 onNavigateToReports = { navController.navigate(Routes.REPORTS) },
+                onNavigateToSetupGuide = { navController.navigate(Routes.GUIDE) },
                 onCreateTask             = { navController.navigate("task/editor") },
                 onEditTask               = { task -> navController.navigate("task/editor?taskId=${task.id}") },
             )
@@ -623,6 +643,51 @@ fun BrainfenceNavGraph(
                 onCancelPendingChanges = viewModel::cancelPendingChanges,
                 onClearError = viewModel::clearError,
                 onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.GUIDE) {
+            val viewModel: GuideViewModel = hiltViewModel()
+            val guideState by viewModel.state.collectAsStateWithLifecycle()
+            val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
+            val plan = remember(guideState, installedApps) { viewModel.plan(guideState) }
+            val leave: () -> Unit = { navController.popBackStack(Routes.HOME, inclusive = false) }
+            GuideScreen(
+                state = guideState,
+                plan = plan,
+                installedApps = installedApps,
+                onNext = viewModel::next,
+                onBack = viewModel::back,
+                onSkip = { viewModel.skip(leave) },
+                onSetStarter = viewModel::setStarter,
+                onSetWindow = viewModel::setWindow,
+                onSetHome = viewModel::setHome,
+                onSetStore = viewModel::setStore,
+                onToggleCompanionApp = viewModel::toggleCompanionApp,
+                onToggleBlockedApp = viewModel::toggleBlockedApp,
+                onToggleDomain = viewModel::toggleDomain,
+                onAddDomain = viewModel::addDomain,
+                onCreate = viewModel::create,
+                onFinish = leave,
+            )
+        }
+        composable(Routes.DEVICE_SETUP) {
+            val viewModel: DeviceSetupViewModel = hiltViewModel()
+            val setupState by viewModel.state.collectAsStateWithLifecycle()
+            val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
+            val deferredPlan = remember(setupState) { viewModel.deferredPlan(setupState) }
+            val leave: () -> Unit = { navController.popBackStack(Routes.HOME, inclusive = false) }
+            DeviceSetupScreen(
+                state = setupState,
+                deferredPlan = deferredPlan,
+                installedApps = installedApps,
+                onToggleBlockedApp = viewModel::toggleBlockedApp,
+                onToggleCompanionApp = viewModel::toggleCompanionApp,
+                onSetKeep = viewModel::setKeep,
+                onSetHome = viewModel::setHome,
+                onSetStore = viewModel::setStore,
+                onSetDeliverContemplations = viewModel::setDeliverContemplations,
+                onSkip = { viewModel.finish(skip = true, onDone = leave) },
+                onDone = { viewModel.finish(skip = false, onDone = leave) },
             )
         }
         composable(Routes.HOME_LOCATION) {

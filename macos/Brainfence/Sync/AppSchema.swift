@@ -181,6 +181,19 @@ let AppSchema = Schema(
         .text("recorded_at"),
         .text("created_at"),
     ]),
+    Table(name: "onboarding", columns: [
+        .text("user_id"),                   // one row per user: id = user_id
+        .text("status"),                    // 'completed' | 'dismissed'
+        .text("deferred_steps"),            // json — starters left for a device with location
+        .text("blocking_rule_id"),
+        .text("meditation_task_id"),
+        .text("android_setup_at"),
+        .text("windows_setup_at"),
+        .text("macos_setup_at"),
+        .text("completed_at"),
+        .text("created_at"),
+        .text("updated_at"),
+    ]),
     Table(name: "notes", columns: [
         .text("user_id"),
         .text("title"),

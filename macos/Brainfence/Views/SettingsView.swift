@@ -22,6 +22,13 @@ struct SettingsView: View {
                 SyncDetails()
             }
 
+            Section("Setup guide") {
+                Button("Run Setup Guide…") { model.showOnboarding(.guide) }
+                Text("Walks through how Brainfence works and adds the starter tasks and blocking rule again. Your existing tasks are kept.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Keep Brainfence running") {
                 LabeledContent("Login agent", value: model.launchAgent.statusDescription)
                 HStack {

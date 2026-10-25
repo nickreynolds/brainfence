@@ -19,3 +19,4 @@ bucket_definitions:
       - SELECT * FROM report_metrics WHERE user_id = bucket.user_id
       - SELECT * FROM report_submissions WHERE user_id = bucket.user_id
       - SELECT * FROM metric_entries WHERE user_id = bucket.user_id
+      - SELECT * FROM onboarding WHERE user_id = bucket.user_id

@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { completeTask, getActiveTasks, getTodaysVerificationData, updateTodaysVerificationData } from '../src/shared/repos/tasks'
 import {
-  applyExpiredPendingChanges, cancelPendingChange, createRule, getRule, scheduleRuleChange, draftToChanges, windowsAppRef,
+  applyExpiredPendingChanges, appRefKey, cancelPendingChange, createRule, getRule, scheduleRuleChange, draftToChanges, windowsAppRef,
 } from '../src/shared/repos/blocking'
 import { completeRoutine, getLastStepCompletions, getRoutineSteps } from '../src/shared/repos/routines'
 import { addReportFromLibrary, getReports, getTodaysRoutineSubmissions, saveMetric, submitReport } from '../src/shared/repos/reports'
@@ -13,6 +13,8 @@ import { emptyEditorState, loadEditorState, newEditableStep, saveTask } from '..
 import { REPORT_LIBRARY } from '../src/shared/reports'
 import { CONTEMPLATION_LIBRARY } from '../src/shared/contemplationLibrary'
 import { seededRandom } from '../src/shared/contemplationSchedule'
+import { applyGuide, dismissOnboarding, finishDeviceSetup, getOnboarding } from '../src/shared/repos/onboarding'
+import { buildOnboardingPlan, deferredChoices, onboardingRoute } from '../src/shared/onboarding'
 
 test('saveTask → loadEditorState round-trips and getActiveTasks maps it', async () => {
   const db = memoryDb()
@@ -152,4 +154,82 @@ test('contemplations: library deck, sequential delivery, first response wins', a
   await recordResponse(db, id, 'affirmed')
   await recordResponse(db, id, 'other')
   assert.equal((await getRecentDeliveries(db))[0].response, 'affirmed')
+})
+
+test('applyGuide writes the plan and the synced onboarding row', async () => {
+  const db = memoryDb()
+  const plan = buildOnboardingPlan({
+    starters: { morning_routine: {}, morning_walk: {}, meditation: {}, journaling: {}, groceries: {}, five_remembrances: {} },
+    home: null,
+    store: null,
+    companion_apps: [{ platform: 'windows', exe: 'calm.exe' }],
+    blocked_apps: [windowsAppRef('discord.exe')],
+    blocked_domains: ['reddit.com'],
+  })
+  const { taskIds, ruleId } = await applyGuide(db, plan, 'windows')
+  const tasks = await getActiveTasks(db)
+  assert.deepEqual(tasks.map((t) => t.title), ['Morning Routine', 'Meditation', 'Journal'])
+  assert.deepEqual((await getRoutineSteps(db, taskIds.morning_routine!)).map((s) => s.title), ['Make Bed', 'Take Pills', 'Reverse Plank'])
+  const rule = (await getRule(db, ruleId!))!
+  assert.deepEqual(rule.conditionTaskIds, [taskIds.morning_routine, taskIds.meditation])
+  assert.deepEqual(rule.blockedApps, ['discord.exe'])
+  assert.equal((await getDecks(db)).filter((d) => d.libraryKey === 'five_remembrances').length, 1)
+
+  const row = (await getOnboarding(db))!
+  assert.equal(row.status, 'completed')
+  assert.deepEqual(row.deferredSteps.map((d) => d.key), ['morning_walk', 'groceries'])
+  assert.equal(row.blockingRuleId, ruleId)
+  assert.equal(row.meditationTaskId, taskIds.meditation)
+  assert.ok(row.setupAt.windows)
+  assert.equal(row.setupAt.android, null)
+  assert.equal((await db.getOptional('SELECT id FROM onboarding'))!.id, 'user-1')
+
+  // Running the guide again adds no second deck, and keeps one row.
+  await applyGuide(db, buildOnboardingPlan({ starters: { five_remembrances: {} }, home: null, store: null, companion_apps: [], blocked_apps: [], blocked_domains: [] }), 'windows')
+  assert.equal((await getDecks(db)).length, 1)
+  assert.equal((await db.getAll('SELECT id FROM onboarding')).length, 1)
+  assert.equal((await getOnboarding(db))!.blockingRuleId, ruleId)
+})
+
+test('finishDeviceSetup adds this platform\'s apps and the deferred starters', async () => {
+  const db = memoryDb()
+  const plan = buildOnboardingPlan({
+    starters: { morning_routine: {}, morning_walk: { available_from: '07:00', due_at: '10:00' }, meditation: {} },
+    home: null,
+    store: null,
+    companion_apps: [{ platform: 'macos', bundle_id: 'com.calm.mac' }],
+    blocked_apps: [{ platform: 'macos', bundle_id: 'com.hnc.Discord' }],
+    blocked_domains: [],
+  })
+  const { taskIds, ruleId } = await applyGuide(db, plan, 'macos')
+  const row = (await getOnboarding(db))!
+  const home = { latitude: 40.7, longitude: -73.9, radius_meters: 120 }
+  await finishDeviceSetup(db, {
+    blockedApps: [windowsAppRef('discord.exe')],
+    companionApps: [{ platform: 'windows', exe: 'calm.exe' }],
+    deferredPlan: buildOnboardingPlan(deferredChoices(row.deferredSteps, home, null)),
+  }, 'windows')
+
+  const walk = (await getActiveTasks(db)).find((t) => t.title === 'Morning Walk')!
+  assert.equal(walk.availableFrom, '07:00')
+  assert.deepEqual(JSON.parse(walk.verificationConfig), { latitude: 40.7, longitude: -73.9, radius_meters: 120, mode: 'leave', min_duration_m: 0 })
+  const rule = (await getRule(db, ruleId!))!
+  assert.equal(rule.pendingChanges, null) // stricter: applied at once
+  assert.deepEqual(rule.blockedAppRefs.map(appRefKey), ['macos:com.hnc.Discord', 'windows:discord.exe'])
+  assert.deepEqual(rule.conditionTaskIds, [taskIds.morning_routine, taskIds.meditation, walk.id])
+  const meditation = await db.getOptional('SELECT verification_config FROM tasks WHERE id = ?', [taskIds.meditation])
+  assert.deepEqual(JSON.parse(meditation!.verification_config).companion_apps, [
+    { platform: 'macos', bundle_id: 'com.calm.mac' }, { platform: 'windows', exe: 'calm.exe' },
+  ])
+  const after = (await getOnboarding(db))!
+  assert.deepEqual(after.deferredSteps, [])
+  assert.ok(after.setupAt.windows)
+  assert.equal(onboardingRoute({ platform: 'windows', hasSynced: true, onboarding: after, taskCount: 3 }), 'none')
+  assert.equal(onboardingRoute({ platform: 'android', hasSynced: true, onboarding: after, taskCount: 3 }), 'device_setup')
+})
+
+test('dismissOnboarding records a dismissed row', async () => {
+  const db = memoryDb()
+  await dismissOnboarding(db)
+  assert.equal((await getOnboarding(db))!.status, 'dismissed')
 })

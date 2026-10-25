@@ -1,0 +1,279 @@
+{
+  "description": "The setup guide (onboarding). `route`: where a device goes, from the synced onboarding row (column names, JSON values), the active task count and the platform. `plan`: the rows the guide writes for a set of choices. A starter is turned on by being present in `choices.starters`, and its values override the default window. Compare JSON configs as values (key order doesn't matter). Each plan task lists its routine steps (empty for other types). See shared/CONTRACTS.md.",
+  "route": [
+    { "name": "waits for the first sync", "platform": "android", "has_synced": false, "onboarding": null, "task_count": 0, "route": "wait" },
+    { "name": "waits for the first sync even with a row", "platform": "macos", "has_synced": false, "onboarding": { "status": "completed", "deferred_steps": [], "android_setup_at": null, "windows_setup_at": null, "macos_setup_at": null }, "task_count": 4, "route": "wait" },
+    { "name": "a new account gets the guide", "platform": "windows", "has_synced": true, "onboarding": null, "task_count": 0, "route": "guide" },
+    { "name": "an existing account without a row is dismissed quietly", "platform": "android", "has_synced": true, "onboarding": null, "task_count": 3, "route": "auto_dismiss" },
+    { "name": "dismissed shows nothing", "platform": "android", "has_synced": true, "onboarding": { "status": "dismissed", "deferred_steps": [], "android_setup_at": null, "windows_setup_at": null, "macos_setup_at": null }, "task_count": 0, "route": "none" },
+    { "name": "dismissed ignores deferred steps", "platform": "android", "has_synced": true, "onboarding": { "status": "dismissed", "deferred_steps": [{ "key": "groceries" }], "android_setup_at": null, "windows_setup_at": null, "macos_setup_at": null }, "task_count": 2, "route": "none" },
+    { "name": "completed elsewhere: device setup", "platform": "android", "has_synced": true, "onboarding": { "status": "completed", "deferred_steps": [], "android_setup_at": null, "windows_setup_at": null, "macos_setup_at": "2026-10-20T08:00:00.000Z" }, "task_count": 4, "route": "device_setup" },
+    { "name": "completed elsewhere: Mac device setup", "platform": "macos", "has_synced": true, "onboarding": { "status": "completed", "deferred_steps": [], "android_setup_at": "2026-10-20 08:00:00+00", "windows_setup_at": null, "macos_setup_at": null }, "task_count": 4, "route": "device_setup" },
+    { "name": "this platform is set up", "platform": "android", "has_synced": true, "onboarding": { "status": "completed", "deferred_steps": [], "android_setup_at": "2026-10-20 08:00:00+00", "windows_setup_at": null, "macos_setup_at": null }, "task_count": 4, "route": "none" },
+    { "name": "deferred steps bring a locating device back", "platform": "android", "has_synced": true, "onboarding": { "status": "completed", "deferred_steps": [{ "key": "morning_walk", "available_from": "06:00", "due_at": "11:00" }], "android_setup_at": "2026-10-20 08:00:00+00", "windows_setup_at": null, "macos_setup_at": "2026-10-21T08:00:00.000Z" }, "task_count": 4, "route": "device_setup" },
+    { "name": "Windows can finish deferred steps", "platform": "windows", "has_synced": true, "onboarding": { "status": "completed", "deferred_steps": [{ "key": "groceries" }], "android_setup_at": null, "windows_setup_at": "2026-10-20T08:00:00.000Z", "macos_setup_at": "2026-10-21T08:00:00.000Z" }, "task_count": 4, "route": "device_setup" },
+    { "name": "the Mac can't finish deferred steps", "platform": "macos", "has_synced": true, "onboarding": { "status": "completed", "deferred_steps": [{ "key": "groceries" }], "android_setup_at": null, "windows_setup_at": null, "macos_setup_at": "2026-10-21T08:00:00.000Z" }, "task_count": 4, "route": "none" },
+    { "name": "an unknown status shows nothing", "platform": "windows", "has_synced": true, "onboarding": { "status": "in_progress", "deferred_steps": [], "android_setup_at": null, "windows_setup_at": null, "macos_setup_at": null }, "task_count": 0, "route": "none" }
+  ],
+  "plan": [
+    {
+      "name": "every starter on Android, default windows",
+      "platform": "android",
+      "choices": {
+        "starters": { "morning_routine": {}, "morning_walk": {}, "meditation": {}, "journaling": {}, "groceries": {}, "five_remembrances": {} },
+        "home": { "latitude": 40.7027, "longitude": -73.9228, "radius_meters": 150 },
+        "store": { "latitude": 40.705, "longitude": -73.92 },
+        "companion_apps": [{ "platform": "android", "package": "com.calm.android" }],
+        "blocked_apps": [{ "platform": "android", "package": "com.twitter.android" }, { "platform": "android", "package": "com.instagram.android" }],
+        "blocked_domains": ["Reddit.com", "https://www.youtube.com/feed", "reddit.com", "nodot"]
+      },
+      "expect": {
+        "tasks": [
+          {
+            "key": "morning_routine", "title": "Morning Routine", "task_type": "routine",
+            "verification_type": null, "verification_config": {},
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "06:00", "due_at": "09:00", "sort_order": 0,
+            "steps": [
+              { "title": "Make Bed", "step_type": "checkbox", "config": {} },
+              { "title": "Take Pills", "step_type": "checkbox", "config": {} },
+              { "title": "Reverse Plank", "step_type": "timed", "config": { "duration_seconds": 30 } }
+            ]
+          },
+          {
+            "key": "morning_walk", "title": "Morning Walk", "task_type": "simple",
+            "verification_type": "gps",
+            "verification_config": { "latitude": 40.7027, "longitude": -73.9228, "radius_meters": 150, "mode": "leave", "min_duration_m": 0 },
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "06:00", "due_at": "11:00", "sort_order": 1, "steps": []
+          },
+          {
+            "key": "meditation", "title": "Meditation", "task_type": "simple",
+            "verification_type": "meditation",
+            "verification_config": { "duration_seconds": 600, "short_sit_seconds": 120, "companion_apps": [{ "platform": "android", "package": "com.calm.android" }] },
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "06:00", "due_at": "19:00", "sort_order": 2, "steps": []
+          },
+          {
+            "key": "journaling", "title": "Journal", "task_type": "journal",
+            "verification_type": "journal", "verification_config": {},
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": false, "available_from": "18:00", "due_at": "23:00", "sort_order": 3, "steps": []
+          },
+          {
+            "key": "groceries", "title": "Groceries", "task_type": "shopping",
+            "verification_type": "gps",
+            "verification_config": {
+              "latitude": 40.705, "longitude": -73.92, "radius_meters": 100, "mode": "notify",
+              "notify_window": { "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "start": "08:00", "end": "21:00" }
+            },
+            "recurrence_type": null, "recurrence_config": {},
+            "is_blocking_condition": false, "available_from": null, "due_at": null, "sort_order": 4, "steps": []
+          }
+        ],
+        "deferred_steps": [],
+        "add_remembrances": true,
+        "rule": {
+          "name": "Distractions",
+          "blocked_apps": [{ "platform": "android", "package": "com.twitter.android" }, { "platform": "android", "package": "com.instagram.android" }],
+          "blocked_domains": ["reddit.com", "youtube.com"],
+          "condition_keys": ["morning_routine", "morning_walk", "meditation"],
+          "condition_logic": "all"
+        }
+      }
+    },
+    {
+      "name": "the Mac defers the location starters, keeping their windows",
+      "platform": "macos",
+      "choices": {
+        "starters": { "morning_routine": {}, "morning_walk": { "available_from": "07:00", "due_at": "10:30" }, "meditation": { "due_at": "12:00" }, "groceries": {} },
+        "home": null,
+        "store": null,
+        "companion_apps": [{ "platform": "macos", "bundle_id": "com.insighttimer.ios" }],
+        "blocked_apps": [{ "platform": "macos", "bundle_id": "com.hnc.Discord" }],
+        "blocked_domains": []
+      },
+      "expect": {
+        "tasks": [
+          {
+            "key": "morning_routine", "title": "Morning Routine", "task_type": "routine",
+            "verification_type": null, "verification_config": {},
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "06:00", "due_at": "09:00", "sort_order": 0,
+            "steps": [
+              { "title": "Make Bed", "step_type": "checkbox", "config": {} },
+              { "title": "Take Pills", "step_type": "checkbox", "config": {} },
+              { "title": "Reverse Plank", "step_type": "timed", "config": { "duration_seconds": 30 } }
+            ]
+          },
+          {
+            "key": "meditation", "title": "Meditation", "task_type": "simple",
+            "verification_type": "meditation",
+            "verification_config": { "duration_seconds": 600, "short_sit_seconds": 120, "companion_apps": [{ "platform": "macos", "bundle_id": "com.insighttimer.ios" }] },
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "06:00", "due_at": "12:00", "sort_order": 2, "steps": []
+          }
+        ],
+        "deferred_steps": [
+          { "key": "morning_walk", "available_from": "07:00", "due_at": "10:30" },
+          { "key": "groceries" }
+        ],
+        "add_remembrances": false,
+        "rule": {
+          "name": "Distractions",
+          "blocked_apps": [{ "platform": "macos", "bundle_id": "com.hnc.Discord" }],
+          "blocked_domains": [],
+          "condition_keys": ["morning_routine", "meditation"],
+          "condition_logic": "all"
+        }
+      }
+    },
+    {
+      "name": "no rule when nothing is blocked",
+      "platform": "windows",
+      "choices": {
+        "starters": { "morning_routine": { "available_from": "05:30", "due_at": "08:00" }, "journaling": {} },
+        "home": null,
+        "store": null,
+        "companion_apps": [],
+        "blocked_apps": [],
+        "blocked_domains": ["nodot"]
+      },
+      "expect": {
+        "tasks": [
+          {
+            "key": "morning_routine", "title": "Morning Routine", "task_type": "routine",
+            "verification_type": null, "verification_config": {},
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "05:30", "due_at": "08:00", "sort_order": 0,
+            "steps": [
+              { "title": "Make Bed", "step_type": "checkbox", "config": {} },
+              { "title": "Take Pills", "step_type": "checkbox", "config": {} },
+              { "title": "Reverse Plank", "step_type": "timed", "config": { "duration_seconds": 30 } }
+            ]
+          },
+          {
+            "key": "journaling", "title": "Journal", "task_type": "journal",
+            "verification_type": "journal", "verification_config": {},
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": false, "available_from": "18:00", "due_at": "23:00", "sort_order": 3, "steps": []
+          }
+        ],
+        "deferred_steps": [],
+        "add_remembrances": false,
+        "rule": null
+      }
+    },
+    {
+      "name": "no rule without a blocking task: it would always block",
+      "platform": "windows",
+      "choices": {
+        "starters": { "journaling": {}, "five_remembrances": {} },
+        "home": null,
+        "store": null,
+        "companion_apps": [],
+        "blocked_apps": [{ "platform": "windows", "exe": "discord.exe" }],
+        "blocked_domains": ["x.com"]
+      },
+      "expect": {
+        "tasks": [
+          {
+            "key": "journaling", "title": "Journal", "task_type": "journal",
+            "verification_type": "journal", "verification_config": {},
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": false, "available_from": "18:00", "due_at": "23:00", "sort_order": 3, "steps": []
+          }
+        ],
+        "deferred_steps": [],
+        "add_remembrances": true,
+        "rule": null
+      }
+    },
+    {
+      "name": "a Mac with only the walk defers it and makes no rule yet",
+      "platform": "macos",
+      "choices": {
+        "starters": { "morning_walk": {} },
+        "home": null,
+        "store": null,
+        "companion_apps": [],
+        "blocked_apps": [{ "platform": "macos", "bundle_id": "com.hnc.Discord" }],
+        "blocked_domains": ["reddit.com"]
+      },
+      "expect": {
+        "tasks": [],
+        "deferred_steps": [{ "key": "morning_walk", "available_from": "06:00", "due_at": "11:00" }],
+        "add_remembrances": false,
+        "rule": null
+      }
+    },
+    {
+      "name": "finishing deferred starters on a device that can locate",
+      "platform": "android",
+      "choices": {
+        "starters": { "morning_walk": { "available_from": "07:00", "due_at": "10:30" }, "groceries": {} },
+        "home": { "latitude": 51.5, "longitude": -0.12, "radius_meters": 100 },
+        "store": { "latitude": 51.51, "longitude": -0.13 },
+        "companion_apps": [],
+        "blocked_apps": [],
+        "blocked_domains": []
+      },
+      "expect": {
+        "tasks": [
+          {
+            "key": "morning_walk", "title": "Morning Walk", "task_type": "simple",
+            "verification_type": "gps",
+            "verification_config": { "latitude": 51.5, "longitude": -0.12, "radius_meters": 100, "mode": "leave", "min_duration_m": 0 },
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "07:00", "due_at": "10:30", "sort_order": 1, "steps": []
+          },
+          {
+            "key": "groceries", "title": "Groceries", "task_type": "shopping",
+            "verification_type": "gps",
+            "verification_config": {
+              "latitude": 51.51, "longitude": -0.13, "radius_meters": 100, "mode": "notify",
+              "notify_window": { "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "start": "08:00", "end": "21:00" }
+            },
+            "recurrence_type": null, "recurrence_config": {},
+            "is_blocking_condition": false, "available_from": null, "due_at": null, "sort_order": 4, "steps": []
+          }
+        ],
+        "deferred_steps": [],
+        "add_remembrances": false,
+        "rule": null
+      }
+    },
+    {
+      "name": "a location starter whose location is missing is deferred on any platform",
+      "platform": "windows",
+      "choices": {
+        "starters": { "groceries": {}, "meditation": {} },
+        "home": null,
+        "store": null,
+        "companion_apps": [{ "platform": "windows", "exe": "insight timer.exe" }],
+        "blocked_apps": [],
+        "blocked_domains": ["https://*.Reddit.com/"]
+      },
+      "expect": {
+        "tasks": [
+          {
+            "key": "meditation", "title": "Meditation", "task_type": "simple",
+            "verification_type": "meditation",
+            "verification_config": { "duration_seconds": 600, "short_sit_seconds": 120, "companion_apps": [{ "platform": "windows", "exe": "insight timer.exe" }] },
+            "recurrence_type": "daily", "recurrence_config": {},
+            "is_blocking_condition": true, "available_from": "06:00", "due_at": "19:00", "sort_order": 2, "steps": []
+          }
+        ],
+        "deferred_steps": [{ "key": "groceries" }],
+        "add_remembrances": false,
+        "rule": {
+          "name": "Distractions",
+          "blocked_apps": [],
+          "blocked_domains": ["reddit.com"],
+          "condition_keys": ["meditation"],
+          "condition_logic": "all"
+        }
+      }
+    }
+  ]
+}

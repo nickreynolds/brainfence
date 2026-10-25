@@ -73,6 +73,7 @@ async function main() {
     // Delete all table data for this user (order matters for FK constraints)
     console.log("\n→ Deleting existing data (keeping user)...");
     const tables = [
+      "onboarding",         // a bootstrapped account has tasks, so the guide is dismissed again
       "step_completions",   // references task_completions
       "task_completions",   // references tasks
       "routine_steps",      // references tasks

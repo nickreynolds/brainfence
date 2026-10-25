@@ -12,7 +12,11 @@ struct RootView: View {
         case .signedOut:
             SignInView()
         case .signedIn:
-            MainView()
+            switch model.onboardingScreen {
+            case .guide: GuideView()
+            case .deviceSetup: DeviceSetupView()
+            case nil: MainView()
+            }
         }
     }
 }

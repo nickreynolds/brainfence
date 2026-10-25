@@ -2,6 +2,7 @@ package dev.brainfence.data.contemplation
 
 import com.powersync.PowerSyncDatabase
 import com.powersync.db.SqlCursor
+import com.powersync.db.internal.PowerSyncTransaction
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.domain.contemplation.pickItemIndex
 import dev.brainfence.domain.contemplation.pickWeightedIndex
@@ -88,9 +89,20 @@ class ContemplationRepository @Inject constructor(
     /** Copies a starter deck and its items into the user's own tables. */
     suspend fun addFromLibrary(libraryDeck: ContemplationLibrary.LibraryDeck): String {
         val userId = requireUserId()
-        val now = Instant.now().toString()
         val deckId = UUID.randomUUID().toString()
-        database.writeTransaction { tx ->
+        database.writeTransaction { tx -> insertLibraryDeck(tx, libraryDeck, userId, deckId) }
+        return deckId
+    }
+
+    companion object {
+        /** The inserts of [addFromLibrary], for use inside a larger transaction. */
+        fun insertLibraryDeck(
+            tx: PowerSyncTransaction,
+            libraryDeck: ContemplationLibrary.LibraryDeck,
+            userId: String,
+            deckId: String = UUID.randomUUID().toString(),
+        ) {
+            val now = Instant.now().toString()
             tx.execute(
                 sql = """
                     INSERT INTO contemplation_decks
@@ -119,7 +131,6 @@ class ContemplationRepository @Inject constructor(
                 )
             }
         }
-        return deckId
     }
 
     suspend fun updateDeck(

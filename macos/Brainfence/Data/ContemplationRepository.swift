@@ -65,30 +65,35 @@ struct ContemplationRepository: Sendable {
     }
 
     func addFromLibrary(_ deck: LibraryDeck, userId: String) async throws {
+        try await db.writeTransaction { tx in
+            try Self.insertLibraryDeck(tx, deck, userId: userId)
+        }
+    }
+
+    /// Copies a library deck and its items into the user's tables.
+    static func insertLibraryDeck(_ tx: any ConnectionContext, _ deck: LibraryDeck, userId: String) throws {
         let now = Timestamp.format(Date())
         let deckId = UUID().uuidString.lowercased()
-        try await db.writeTransaction { tx in
+        try tx.execute(
+            sql: """
+                INSERT INTO contemplation_decks
+                    (id, user_id, name, description, ordering, response_type, response_label,
+                     weight, is_enabled, library_key, sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?)
+                """,
+            parameters: [
+                deckId, userId, deck.name, deck.description, deck.ordering.rawValue, deck.responseType.rawValue,
+                deck.responseLabel, deck.weight, deck.key, now, now,
+            ]
+        )
+        for (index, item) in deck.items.enumerated() {
             try tx.execute(
                 sql: """
-                    INSERT INTO contemplation_decks
-                        (id, user_id, name, description, ordering, response_type, response_label,
-                         weight, is_enabled, library_key, sort_order, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?)
+                    INSERT INTO contemplations (id, user_id, deck_id, title, body, attribution, sort_order, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                parameters: [
-                    deckId, userId, deck.name, deck.description, deck.ordering.rawValue, deck.responseType.rawValue,
-                    deck.responseLabel, deck.weight, deck.key, now, now,
-                ]
+                parameters: [UUID().uuidString.lowercased(), userId, deckId, item.title, item.body, item.attribution, index, now, now]
             )
-            for (index, item) in deck.items.enumerated() {
-                try tx.execute(
-                    sql: """
-                        INSERT INTO contemplations (id, user_id, deck_id, title, body, attribution, sort_order, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                    parameters: [UUID().uuidString.lowercased(), userId, deckId, item.title, item.body, item.attribution, index, now, now]
-                )
-            }
         }
     }
 

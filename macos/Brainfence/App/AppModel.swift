@@ -27,6 +27,7 @@ final class AppModel {
     @ObservationIgnored let shoppingRepository: ShoppingRepository
     @ObservationIgnored let reportRepository: ReportRepository
     @ObservationIgnored let contemplationRepository: ContemplationRepository
+    @ObservationIgnored let onboardingRepository: OnboardingRepository
     @ObservationIgnored let notifications: NotificationService
     @ObservationIgnored let webEnforcer: WebEnforcer
     @ObservationIgnored private let appEnforcer: AppEnforcer
@@ -35,6 +36,12 @@ final class AppModel {
     /// Task notifications already sent (keys include the date).
     @ObservationIgnored private var sentTaskNotifications = Set<String>()
     @ObservationIgnored private let logger = Logger(subsystem: "dev.brainfence.macos", category: "app")
+
+    /// The setup guide or this device's setup, while it's open. It stays up
+    /// until the user leaves it, even after the row it was opened for changes.
+    enum OnboardingScreen: Equatable { case guide, deviceSetup }
+    var onboardingScreen: OnboardingScreen?
+    @ObservationIgnored private var onboardingDecided = false
 
     /// Set by the AppDelegate; opens (or focuses) the main window.
     @ObservationIgnored var openMainWindow: () -> Void = {}
@@ -74,6 +81,7 @@ final class AppModel {
         shoppingRepository = ShoppingRepository(db: db)
         reportRepository = ReportRepository(db: db)
         contemplationRepository = ContemplationRepository(db: db)
+        onboardingRepository = OnboardingRepository(db: db)
         engine = BlockingEngine(taskRepository: taskRepository, blockingRepository: blockingRepository)
 
         shield = ShieldPresenter()
@@ -163,7 +171,11 @@ final class AppModel {
                 }
                 defaults.set(userId, forKey: Self.lastUserKey)
                 try await db.connect(connector: connector)
+                Task { await decideOnboarding() }
             case .signedOut:
+                // Whoever signs in next gets their own onboarding check.
+                onboardingDecided = false
+                onboardingScreen = nil
                 try await db.disconnect()
             case .loading:
                 break
@@ -221,6 +233,82 @@ final class AppModel {
     func cancelPendingChange(ruleId: String) async throws {
         try await blockingRepository.cancelPendingChange(ruleId: ruleId)
         engine.tick()
+    }
+
+    // MARK: Onboarding
+
+    /// Once per launch, after the first sync: open the setup guide or this
+    /// device's setup if the synced `onboarding` row calls for it
+    /// (shared/CONTRACTS.md, Onboarding).
+    private func decideOnboarding() async {
+        guard !onboardingDecided else { return }
+        do {
+            try await db.waitForFirstSync()
+            guard !onboardingDecided, let userId = session.userIdForLocalWrites else { return }
+            let route = onboardingRoute(
+                platform: localPlatform,
+                hasSynced: true,
+                onboarding: try await onboardingRepository.row(),
+                taskCount: try await onboardingRepository.activeTaskCount()
+            )
+            onboardingDecided = true
+            switch route {
+            case .autoDismiss: try await onboardingRepository.dismiss(userId: userId)
+            case .guide: showOnboarding(.guide)
+            case .deviceSetup: showOnboarding(.deviceSetup)
+            case .wait, .none: break
+            }
+        } catch {
+            logger.error("onboarding check failed: \(error.localizedDescription)")
+        }
+    }
+
+    func showOnboarding(_ screen: OnboardingScreen?) {
+        onboardingDecided = true
+        onboardingScreen = screen
+        if screen != nil { openMainWindow() }
+    }
+
+    func skipGuide() async throws {
+        try await onboardingRepository.dismiss(userId: requireUserId())
+        showOnboarding(nil)
+    }
+
+    func applyGuide(_ plan: OnboardingPlan) async throws {
+        _ = try await onboardingRepository.applyGuide(plan, userId: requireUserId())
+        if plan.addRemembrances { enableContemplationsHere() }
+        engine.tick()
+        debugLog.log("onboarding", "Setup guide finished: \(plan.tasks.count) tasks, rule: \(plan.rule != nil)")
+    }
+
+    /// The Mac's device setup: its apps for the guide's rule (a stricter
+    /// change, applied at once) and its companion apps for the guide's
+    /// meditation task. `companionApps` nil leaves them as they are.
+    func finishDeviceSetup(blockedApps: [BlockedApp], companionApps: [BlockedApp]?, deliverContemplations: Bool) async throws {
+        let userId = try requireUserId()
+        let row = try await onboardingRepository.row()
+        if let ruleId = row?.blockingRuleId, !blockedApps.isEmpty, let rule = try await blockingRepository.rule(id: ruleId) {
+            let have = Set(rule.blockedApps.map(\.key))
+            _ = try await submit(RuleChange(blockedApps: rule.blockedApps + blockedApps.filter { !have.contains($0.key) }), toRuleId: ruleId)
+        }
+        if let companionApps, let taskId = row?.meditationTaskId {
+            try await onboardingRepository.setCompanionApps(companionApps, taskId: taskId)
+        }
+        if deliverContemplations { enableContemplationsHere() }
+        try await onboardingRepository.markDeviceSetUp(userId: userId)
+        engine.tick()
+    }
+
+    func skipDeviceSetup() async throws {
+        try await onboardingRepository.markDeviceSetUp(userId: requireUserId())
+        showOnboarding(nil)
+    }
+
+    private func enableContemplationsHere() {
+        var settings = contemplationScheduler.settings
+        guard !settings.enabled else { return }
+        settings.enabled = true
+        contemplationScheduler.update(settings)
     }
 
     // MARK: Paths

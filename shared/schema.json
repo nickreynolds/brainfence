@@ -172,6 +172,19 @@
       {"name": "recorded_at", "type": "text"},
       {"name": "created_at", "type": "text"}
     ],
+    "onboarding": [
+      {"name": "user_id", "type": "text", "note": "one row per user: id = user_id"},
+      {"name": "status", "type": "text", "note": "'completed' | 'dismissed'"},
+      {"name": "deferred_steps", "type": "text", "encoding": "json", "note": "starters left for a device with location"},
+      {"name": "blocking_rule_id", "type": "text"},
+      {"name": "meditation_task_id", "type": "text"},
+      {"name": "android_setup_at", "type": "text"},
+      {"name": "windows_setup_at", "type": "text"},
+      {"name": "macos_setup_at", "type": "text"},
+      {"name": "completed_at", "type": "text"},
+      {"name": "created_at", "type": "text"},
+      {"name": "updated_at", "type": "text"}
+    ],
     "notes": [
       {"name": "user_id", "type": "text"},
       {"name": "title", "type": "text"},

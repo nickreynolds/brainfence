@@ -1,6 +1,6 @@
 // Port of data/contemplation/ContemplationRepository.kt.
 
-import { Db, bool, requireUserId } from '../db'
+import { Db, SqlStatement, bool, requireUserId } from '../db'
 import { nowIso, uuid } from '../json'
 import type {
   Contemplation, ContemplationDeck, ContemplationDelivery, ContemplationResponseType, DeckOrdering,
@@ -56,9 +56,15 @@ export async function createDeck(db: Db, name: string): Promise<string> {
 
 export async function addDeckFromLibrary(db: Db, deck: LibraryDeck): Promise<string> {
   const userId = await requireUserId(db)
-  const now = nowIso()
   const deckId = uuid()
-  await db.batch([
+  await db.batch(libraryDeckStatements(userId, deck, deckId))
+  return deckId
+}
+
+/** Inserts copying a library deck and its items into the user's tables. */
+export function libraryDeckStatements(userId: string, deck: LibraryDeck, deckId = uuid()): SqlStatement[] {
+  const now = nowIso()
+  return [
     {
       sql: `INSERT INTO contemplation_decks
               (id, user_id, name, description, ordering, response_type, response_label,
@@ -71,8 +77,7 @@ export async function addDeckFromLibrary(db: Db, deck: LibraryDeck): Promise<str
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [uuid(), userId, deckId, item.title, item.body, item.attribution, index, now, now],
     })),
-  ])
-  return deckId
+  ]
 }
 
 export async function updateDeck(

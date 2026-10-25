@@ -53,6 +53,8 @@ const TABLES: Record<string, string[]> = {
   contemplations: ['user_id', 'deck_id', 'title', 'body', 'attribution', 'sort_order', 'created_at', 'updated_at'],
   contemplation_deliveries: ['user_id', 'deck_id', 'contemplation_id', 'title', 'body', 'attribution', 'delivered_at', 'response',
     'responded_at', 'created_at'],
+  onboarding: ['user_id', 'status', 'deferred_steps', 'blocking_rule_id', 'meditation_task_id', 'android_setup_at',
+    'windows_setup_at', 'macos_setup_at', 'completed_at', 'created_at', 'updated_at'],
 }
 
 /** An in-memory SQLite Db with the synced tables' columns (no PowerSync views). */

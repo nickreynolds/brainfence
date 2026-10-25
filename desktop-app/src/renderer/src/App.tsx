@@ -9,6 +9,7 @@ import { ContemplationsScreen, DeckEditorScreen } from './screens/Contemplations
 import { DebugScreen } from './screens/Debug'
 import { HomeLocationScreen } from './screens/HomeLocation'
 import { JournalHistoryScreen } from './screens/JournalHistory'
+import { DeviceSetupScreen, GuideScreen, useOnboardingFlow } from './screens/Onboarding'
 import { MetricEditorScreen, ReportEditorScreen, ReportsScreen } from './screens/Reports'
 import { SettingsScreen } from './screens/Settings'
 import { TaskEditorScreen } from './screens/TaskEditor'
@@ -44,10 +45,19 @@ function Shell({ email }: { email: string | null }) {
   const section = routeParts(route)[0]
   const navSection = section === 'task' || section === 'editor' ? 'home' : section
   const blockedCount = (enforcement?.state.blockedApps.length ?? 0) + (enforcement?.state.blockedDomains.length ?? 0)
+  const onboarding = useOnboardingFlow()
 
   useEffect(() => {
     document.querySelector('.main')?.scrollTo(0, 0)
   }, [route])
+
+  // The setup guide and device setup take over the window until the user leaves them.
+  const leaveOnboarding = () => {
+    onboarding.show(null)
+    navigate('home', { reset: true })
+  }
+  if (onboarding.open === 'guide' || route === 'guide') return <GuideScreen onExit={leaveOnboarding} />
+  if (onboarding.open === 'device_setup') return <DeviceSetupScreen onExit={leaveOnboarding} />
 
   return (
     <div className="shell">

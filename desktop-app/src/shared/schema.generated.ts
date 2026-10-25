@@ -174,6 +174,19 @@ export const TABLES = {
     recorded_at: 'text',
     created_at: 'text',
   },
+  onboarding: {
+    user_id: 'text',                     // one row per user: id = user_id
+    status: 'text',                      // 'completed' | 'dismissed'
+    deferred_steps: 'text',              // json — starters left for a device with location
+    blocking_rule_id: 'text',
+    meditation_task_id: 'text',
+    android_setup_at: 'text',
+    windows_setup_at: 'text',
+    macos_setup_at: 'text',
+    completed_at: 'text',
+    created_at: 'text',
+    updated_at: 'text',
+  },
   notes: {
     user_id: 'text',
     title: 'text',
@@ -199,5 +212,6 @@ export const JSON_COLUMNS: Record<string, readonly string[]> = {
   task_completions: ['verification_data'],
   step_completions: ['data'],
   blocking_rules: ['blocked_apps', 'blocked_domains', 'condition_task_ids', 'pending_changes'],
+  onboarding: ['deferred_steps'],
   notes: ['tags', 'outgoing_links'],
 }

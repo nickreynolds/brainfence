@@ -13,6 +13,7 @@ public enum SchemaColumns {
         "task_completions": ["verification_data"],
         "step_completions": ["data"],
         "blocking_rules": ["blocked_apps", "blocked_domains", "condition_task_ids", "pending_changes"],
+        "onboarding": ["deferred_steps"],
         "notes": ["tags", "outgoing_links"],
     ]
 

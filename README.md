@@ -310,6 +310,37 @@ CREATE TABLE groups (
 );
 ```
 
+#### onboarding
+
+The setup guide (first-time user experience), tracked per account so finishing
+it on one device carries over to the others. Routing, the starter tasks and the
+write rules are in `shared/CONTRACTS.md` (Onboarding).
+
+```sql
+CREATE TABLE onboarding (
+  id                 UUID PRIMARY KEY,           -- = user_id: one row per user
+  user_id            UUID NOT NULL UNIQUE REFERENCES auth.users(id),
+  status             TEXT NOT NULL,              -- 'completed' | 'dismissed'
+
+  -- Starters chosen on a device without location (the Mac), finished by
+  -- a device that has one: [{"key": "morning_walk", "available_from": "06:00", "due_at": "11:00"}]
+  deferred_steps     JSONB NOT NULL DEFAULT '[]',
+
+  -- What the guide made, so other devices can add their own apps to it
+  blocking_rule_id   UUID REFERENCES blocking_rules(id) ON DELETE SET NULL,
+  meditation_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+
+  -- When each platform last finished its device setup
+  android_setup_at   TIMESTAMPTZ,
+  windows_setup_at   TIMESTAMPTZ,
+  macos_setup_at     TIMESTAMPTZ,
+
+  completed_at       TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ DEFAULT now(),
+  updated_at         TIMESTAMPTZ DEFAULT now()
+);
+```
+
 ### 4.2 Recurrence System
 
 Replace the v1 `freqHours` with a predefined-pattern system that covers all stated use cases:

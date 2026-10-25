@@ -6,7 +6,8 @@
     "bootstrap:full": "npx tsx dev/bootstrap-full.ts",
     "brand": "node branding/build.mjs && node branding/teaser/build.mjs",
     "codegen": "node shared/codegen.mjs",
-    "codegen:check": "node shared/codegen.mjs --check"
+    "codegen:check": "node shared/codegen.mjs --check",
+    "deploy": "npx tsx dev/deploy.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4"

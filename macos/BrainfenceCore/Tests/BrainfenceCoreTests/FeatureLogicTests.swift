@@ -1,8 +1,8 @@
 import XCTest
 @testable import BrainfenceCore
 
-private let zone = TimeZone(identifier: "America/New_York")!
-private let clock = ZonedClock(timeZone: zone)
+private let newYork = TimeZone(identifier: "America/New_York")!
+private let clock = ZonedClock(timeZone: newYork)
 
 private func at(_ date: String, _ hour: Int = 12, _ minute: Int = 0) -> Date {
     clock.instant(CivilDate(date)!, hour: hour, minute: minute)
@@ -38,11 +38,11 @@ final class ContemplationScheduleTests: XCTestCase {
     func testNextSlotIsFirstAfterNowElseTomorrow() {
         let slots = contemplationSlots(for: date, config: config, seed: 7)
         let now = clock.startOfDay(date).addingTimeInterval(TimeInterval(slots[1] + 1))
-        let next = nextContemplationSlot(after: now, config: config, seed: 7, timeZone: zone)!
+        let next = nextContemplationSlot(after: now, config: config, seed: 7, timeZone: newYork)!
         XCTAssertEqual(clock.secondsIntoDay(of: next), slots[2])
-        let late = nextContemplationSlot(after: at("2026-04-16", 22), config: config, seed: 7, timeZone: zone)!
+        let late = nextContemplationSlot(after: at("2026-04-16", 22), config: config, seed: 7, timeZone: newYork)!
         XCTAssertEqual(clock.date(of: late), date.plusDays(1))
-        XCTAssertNil(nextContemplationSlot(after: at("2026-04-16", 9), config: ContemplationScheduleConfig(perDay: 0, windowStart: 0, windowEnd: 100), seed: 7, timeZone: zone))
+        XCTAssertNil(nextContemplationSlot(after: at("2026-04-16", 9), config: ContemplationScheduleConfig(perDay: 0, windowStart: 0, windowEnd: 100), seed: 7, timeZone: newYork))
     }
 
     func testItemPicking() {
@@ -124,7 +124,7 @@ final class TaskListTests: XCTestCase {
             task("done-daily") { $0.completedToday = true },
             task("done-once") { $0.completedToday = true; $0.recurrenceType = nil },
         ]
-        let p = partitionTasks(tasks, now: at("2026-04-16", 12), timeZone: zone)
+        let p = partitionTasks(tasks, now: at("2026-04-16", 12), timeZone: newYork)
         XCTAssertEqual(p.active.map(\.id), ["blocker-overdue", "blocker-later", "due", "plain"])
         XCTAssertEqual(p.done.map(\.id), ["done-daily", "done-once"])
         XCTAssertEqual(p.upcoming.map(\.id), ["not-yet", "done-daily"])
@@ -136,15 +136,15 @@ final class TaskListTests: XCTestCase {
             task("b") { $0.title = "Journal"; $0.dueAt = "13:00" },
         ]
         var sent = Set<String>()
-        let ready = dueTaskNotifications(tasks: tasks, enforcedTaskIds: ["b"], now: at("2026-04-16", 9, 1), sentKeys: &sent, timeZone: zone)
+        let ready = dueTaskNotifications(tasks: tasks, enforcedTaskIds: ["b"], now: at("2026-04-16", 9, 1), sentKeys: &sent, timeZone: newYork)
         XCTAssertEqual(ready, [TaskNotification(title: "Stretch is ready", body: "Available since 09:00")])
-        XCTAssertEqual(dueTaskNotifications(tasks: tasks, enforcedTaskIds: ["b"], now: at("2026-04-16", 9, 1), sentKeys: &sent, timeZone: zone), [])
+        XCTAssertEqual(dueTaskNotifications(tasks: tasks, enforcedTaskIds: ["b"], now: at("2026-04-16", 9, 1), sentKeys: &sent, timeZone: newYork), [])
 
-        let warning = dueTaskNotifications(tasks: tasks, enforcedTaskIds: ["b"], now: at("2026-04-16", 12, 30), sentKeys: &sent, timeZone: zone)
+        let warning = dueTaskNotifications(tasks: tasks, enforcedTaskIds: ["b"], now: at("2026-04-16", 12, 30), sentKeys: &sent, timeZone: newYork)
         XCTAssertEqual(warning.map(\.title), ["Journal will block in 1 hour"])
         // Not enforced by a rule: no warning.
         var fresh = Set<String>()
-        XCTAssertEqual(dueTaskNotifications(tasks: tasks, enforcedTaskIds: [], now: at("2026-04-16", 12, 30), sentKeys: &fresh, timeZone: zone), [])
+        XCTAssertEqual(dueTaskNotifications(tasks: tasks, enforcedTaskIds: [], now: at("2026-04-16", 12, 30), sentKeys: &fresh, timeZone: newYork), [])
     }
 
     func testOnlyNonFlowTasksAreQuickCompletable() {

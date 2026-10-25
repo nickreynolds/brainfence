@@ -4,6 +4,7 @@ import { Icon } from '../components/Icon'
 import { ConfirmDialog, Switch, TopBar } from '../components/ui'
 import { useAuth, useEnforcement, useLocationStatus, useSyncStatus } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
+import { useRouter } from '../lib/router'
 
 /**
  * Windows setup and account — the counterpart of Android's accessibility
@@ -17,6 +18,7 @@ export function SettingsScreen() {
   const [app, setApp] = useState<AppSettings | null>(null)
   const [settingUp, setSettingUp] = useState(false)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const { navigate } = useRouter()
 
   useEffect(() => {
     void window.api.settings.getApp().then(setApp)
@@ -69,6 +71,17 @@ export function SettingsScreen() {
               <button className="btn tonal sm" onClick={() => void window.api.location.refresh()}>Check now</button>
               <button className="btn text sm" onClick={() => void window.api.location.openSettings()}>Windows location settings</button>
             </div>
+          </div>
+        </div>
+
+        <div className="stack sm">
+          <div className="title-md">Setup guide</div>
+          <div className="card row">
+            <div className="grow">
+              <div className="title-sm">Run setup guide</div>
+              <div className="small muted">Walks through how Brainfence works and adds the starter tasks and blocking rule again. Your existing tasks are kept.</div>
+            </div>
+            <button className="btn tonal sm" onClick={() => navigate('guide')}>Start</button>
           </div>
         </div>
 

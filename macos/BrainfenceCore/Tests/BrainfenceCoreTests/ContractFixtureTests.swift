@@ -73,4 +73,76 @@ final class ContractFixtureTests: XCTestCase {
             XCTAssertEqual(actual.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.0005, input)
         }
     }
+
+    func testOnboardingRoute() throws {
+        let cases = try XCTUnwrap(fixture("onboarding.json")["route"]?.arrayValue)
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let row: OnboardingRow? = c["onboarding"].flatMap { o in
+                guard let status = o["status"]?.stringValue else { return nil }
+                var setupAt: [String: String] = [:]
+                for p in OnboardingRow.platforms {
+                    if let at = o[OnboardingRow.setupColumn(p)]?.stringValue { setupAt[p] = at }
+                }
+                return OnboardingRow(
+                    status: status, deferredSteps: DeferredStep.parseList(o["deferred_steps"]?.jsonString),
+                    blockingRuleId: nil, meditationTaskId: nil, setupAt: setupAt
+                )
+            }
+            let route = onboardingRoute(
+                platform: c["platform"]?.stringValue ?? "",
+                hasSynced: c["has_synced"]?.boolValue ?? false,
+                onboarding: row,
+                taskCount: c["task_count"]?.intValue ?? 0
+            )
+            XCTAssertEqual(route.rawValue, c["route"]?.stringValue, c["name"]?.stringValue ?? "")
+        }
+    }
+
+    func testOnboardingPlan() throws {
+        let cases = try XCTUnwrap(fixture("onboarding.json")["plan"]?.arrayValue)
+        XCTAssertFalse(cases.isEmpty)
+        func place(_ v: JSONValue?) -> PlaceChoice? {
+            guard let v, let lat = v["latitude"]?.doubleValue, let lng = v["longitude"]?.doubleValue else { return nil }
+            return PlaceChoice(latitude: lat, longitude: lng, radiusMeters: v["radius_meters"]?.intValue ?? 100)
+        }
+        for c in cases {
+            let ch = try XCTUnwrap(c["choices"])
+            var starters: [StarterKey: StarterChoice] = [:]
+            for (k, v) in ch["starters"]?.objectValue ?? [:] {
+                starters[try XCTUnwrap(StarterKey(rawValue: k))] = StarterChoice(availableFrom: v["available_from"]?.stringValue, dueAt: v["due_at"]?.stringValue)
+            }
+            let plan = OnboardingPlan(OnboardingChoices(
+                starters: starters,
+                home: place(ch["home"]),
+                store: place(ch["store"]),
+                companionApps: BlockedApp.parseList(ch["companion_apps"]?.jsonString),
+                blockedApps: BlockedApp.parseList(ch["blocked_apps"]?.jsonString),
+                blockedDomains: JSONValue.stringArray(ch["blocked_domains"]?.jsonString)
+            ))
+            let optional = { (s: String?) in s.map(JSONValue.string) ?? .null }
+            let actual = JSONValue.object([
+                "tasks": .array(plan.tasks.map { t in
+                    .object([
+                        "key": .string(t.key.rawValue), "title": .string(t.title), "task_type": .string(t.taskType),
+                        "verification_type": optional(t.verificationType), "verification_config": t.verificationConfig,
+                        "recurrence_type": optional(t.recurrenceType), "recurrence_config": t.recurrenceConfig,
+                        "is_blocking_condition": .bool(t.isBlockingCondition), "available_from": optional(t.availableFrom),
+                        "due_at": optional(t.dueAt), "sort_order": .int(t.sortOrder),
+                        "steps": .array(t.steps.map { .object(["title": .string($0.title), "step_type": .string($0.stepType), "config": $0.config]) }),
+                    ])
+                }),
+                "deferred_steps": .array(plan.deferredSteps.map(\.json)),
+                "add_remembrances": .bool(plan.addRemembrances),
+                "rule": plan.rule.map { r in
+                    .object([
+                        "name": .string(r.name), "blocked_apps": BlockedApp.encodeList(r.blockedApps),
+                        "blocked_domains": .array(of: r.blockedDomains),
+                        "condition_keys": .array(of: r.conditionKeys.map(\.rawValue)), "condition_logic": .string(r.conditionLogic),
+                    ])
+                } ?? .null,
+            ])
+            XCTAssertEqual(actual, c["expect"], c["name"]?.stringValue ?? "")
+        }
+    }
 }

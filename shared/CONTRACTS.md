@@ -84,3 +84,81 @@ Postgres arrive in its text form (`2026-04-16 14:03:00.123+00`). Always parse
 before comparing; never compare the strings (`' ' < 'T'`, so a string comparison
 can apply a time-locked change up to a day early). Text without an offset is UTC
 (`fixtures/timestamps.json`).
+
+## Onboarding
+
+The setup guide (first-time user experience) teaches how Brainfence works and
+creates a starter set of tasks, a blocking rule and the Five Remembrances deck.
+Its state is the synced `onboarding` table: one row per user with
+`id = user_id`, so devices that finish offline upsert the same row.
+
+### Where a device goes (`fixtures/onboarding.json` → `route`)
+
+Decided from the `onboarding` row, the number of active tasks, and the platform.
+Android and Windows **can locate** (they have a home location). The Mac can't.
+
+| Situation | Route |
+| --- | --- |
+| The first sync hasn't finished | `wait`: show nothing yet, since the row may still be on its way |
+| No row, and the account has tasks | `auto_dismiss`: write a `dismissed` row and show nothing (an existing user) |
+| No row, no tasks | `guide`: the full setup guide |
+| `dismissed` | `none` |
+| `completed`, this platform can locate and `deferred_steps` isn't empty | `device_setup` |
+| `completed`, and this platform's `<platform>_setup_at` is null | `device_setup` |
+| Anything else | `none` |
+
+"Run setup guide" in settings opens the full guide whatever the row says.
+
+### Starters (`fixtures/onboarding.json` → `plan`)
+
+Each starter can be turned on or off, and its `available_from` / `due_at`
+changed. Everything else is fixed. All starters are `status = 'active'`, with
+`tags = []`, `blocking_rule_ids = []`, `blocking_days_of_week = []` and
+`home_only_blocking = 0`.
+
+| Key | Order | Title | task_type / verification_type | Recurrence | Blocks | Window | verification_config |
+| --- | :-: | --- | --- | --- | :-: | --- | --- |
+| `morning_routine` | 0 | Morning Routine | `routine` / null | daily | yes | 06:00–09:00 | `{}`; steps Make Bed (checkbox), Take Pills (checkbox), Reverse Plank (timed, 30 s) |
+| `morning_walk` | 1 | Morning Walk | `simple` / `gps` | daily | yes | 06:00–11:00 | leave home: `latitude`, `longitude`, `radius_meters` from the home location, `mode: "leave"`, `min_duration_m: 0` |
+| `meditation` | 2 | Meditation | `simple` / `meditation` | daily | yes | 06:00–19:00 | `duration_seconds: 600`, `short_sit_seconds: 120`, `companion_apps` from this platform |
+| `journaling` | 3 | Journal | `journal` / `journal` | daily | no | 18:00–23:00 | `{}` |
+| `groceries` | 4 | Groceries | `shopping` / `gps` | none | no | none | the store's `latitude` / `longitude`, `radius_meters: 100`, `mode: "notify"`, `notify_window` every day 08:00–21:00 |
+| `five_remembrances` | | | the `five_remembrances` library deck, unless the account already has one | | | | |
+
+- `sort_order` is the order column, so starters keep their order even when created later.
+- **Location starters** (`morning_walk` needs a home, `groceries` a store) are
+  *deferred* when the location isn't known, which is always the case on the
+  Mac. A deferred starter isn't created; it goes in `deferred_steps` as
+  `{"key", "available_from", "due_at"}` (the times only for starters that have
+  a window). A device that can locate finishes it in device setup by building
+  a plan from those entries.
+- **The rule** is named "Distractions" with `condition_logic: "all"`. Its
+  conditions are the blocking starters created *now*, in order. It holds this
+  platform's chosen apps and the chosen domains (normalized, deduplicated). It is
+  created only if it would block something and has at least one condition. A
+  rule with no conditions would always block.
+- Adding the Five Remembrances also turns contemplation delivery on for this
+  device, since the schedule is per device.
+
+### Writing the row
+
+- **Finishing the guide** upserts `status: 'completed'`, `completed_at`,
+  `deferred_steps` (replaced) and this platform's `<platform>_setup_at = now`.
+  `blocking_rule_id` and `meditation_task_id` take the new ids, keeping the old
+  ones when nothing new was made. If either is new, the other platforms'
+  `_setup_at` is cleared so they offer device setup again.
+- **Skipping the guide** upserts `status: 'dismissed'` without touching the other columns.
+- **Device setup** offers whichever of these apply, and then sets
+  `<platform>_setup_at = now`. On a device that can locate, `deferred_steps`
+  keeps only the starters the user kept but still has no location for
+  ("later"). Skipping device setup clears them.
+  The options:
+  - **This platform's apps for the guide's rule.** Adding apps is a stricter
+    change (see the time-lock above), so it applies at once.
+  - **This platform's companion apps for the guide's meditation task.** Other
+    platforms' entries are kept.
+  - **Home location and the deferred starters**, on a device that can locate.
+    A deferred blocking starter is added to the guide's rule as a condition
+    once it's created. That goes through the normal rule-change path: under
+    `"all"` adding a condition is stricter, so it applies at once.
+  - **Contemplation delivery on this device**, when the account has an enabled deck.

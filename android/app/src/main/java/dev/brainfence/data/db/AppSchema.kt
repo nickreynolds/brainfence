@@ -237,6 +237,22 @@ val AppSchema = Schema(
         ),
     ),
     Table(
+        name = "onboarding",
+        columns = listOf(
+            Column.text("user_id"),                   // one row per user: id = user_id
+            Column.text("status"),                    // 'completed' | 'dismissed'
+            Column.text("deferred_steps"),            // json — starters left for a device with location
+            Column.text("blocking_rule_id"),
+            Column.text("meditation_task_id"),
+            Column.text("android_setup_at"),
+            Column.text("windows_setup_at"),
+            Column.text("macos_setup_at"),
+            Column.text("completed_at"),
+            Column.text("created_at"),
+            Column.text("updated_at"),
+        ),
+    ),
+    Table(
         name = "notes",
         columns = listOf(
             Column.text("user_id"),
@@ -264,5 +280,6 @@ val JSON_ENCODED_COLUMNS: Map<String, Set<String>> = mapOf(
     "task_completions" to setOf("verification_data"),
     "step_completions" to setOf("data"),
     "blocking_rules" to setOf("blocked_apps", "blocked_domains", "condition_task_ids", "pending_changes"),
+    "onboarding" to setOf("deferred_steps"),
     "notes" to setOf("tags", "outgoing_links"),
 )

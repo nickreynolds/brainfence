@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import { parseInstant } from '../src/shared/json'
 import type { AppRef } from '../src/shared/models'
 import { appRefKey, isMoreRestrictive, mapRule, normalizeDomain, parseBlockedApps } from '../src/shared/repos/blocking'
+import { mapOnboarding } from '../src/shared/repos/onboarding'
+import { buildOnboardingPlan, onboardingRoute } from '../src/shared/onboarding'
 
 const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, '../../shared/fixtures', name), 'utf8'))
 
@@ -40,5 +42,21 @@ test('domain normalization', () => {
 test('timestamps', () => {
   for (const c of fixture('timestamps.json').cases) {
     assert.equal(parseInstant(c.input)?.toISOString() ?? null, c.utc, c.input)
+  }
+})
+
+test('onboarding route', () => {
+  for (const c of fixture('onboarding.json').route) {
+    const onboarding = c.onboarding && mapOnboarding({ ...c.onboarding, deferred_steps: JSON.stringify(c.onboarding.deferred_steps) })
+    const route = onboardingRoute({ platform: c.platform, hasSynced: c.has_synced, onboarding, taskCount: c.task_count })
+    assert.equal(route, c.route, c.name)
+  }
+})
+
+test('onboarding plan', () => {
+  for (const c of fixture('onboarding.json').plan) {
+    const plan = buildOnboardingPlan(c.choices)
+    const tasks = plan.tasks.map((t) => ({ ...t, steps: t.steps.map((s) => ({ title: s.title, step_type: s.stepType, config: s.config })) }))
+    assert.deepEqual({ ...plan, tasks }, c.expect, c.name)
   }
 })
