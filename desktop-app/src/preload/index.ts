@@ -24,6 +24,8 @@ const api: BrainfenceApi = {
     signUp: (email, password) => invoke('auth:signUp', email, password),
     signOut: () => invoke('auth:signOut'),
     onState: (cb) => subscribe('auth:state', cb),
+    takeNotice: () => invoke('auth:takeNotice'),
+    onNotice: (cb) => subscribe('auth:notice', cb),
   },
   sync: {
     getStatus: () => invoke('sync:getStatus'),

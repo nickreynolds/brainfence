@@ -10,6 +10,8 @@ import dev.brainfence.BuildConfig
 import dev.brainfence.data.auth.EncryptedSessionManager
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.FlowType
+import dev.brainfence.domain.auth.AuthCallback
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import javax.inject.Singleton
@@ -35,6 +37,10 @@ object SupabaseModule {
                 // most of the day. Keep the session refreshing for the whole
                 // process lifetime instead.
                 enableLifecycleCallbacks = false
+                // Email confirmation links open the app (shared/CONTRACTS.md, Email links).
+                flowType = FlowType.PKCE
+                scheme = AuthCallback.SCHEME
+                host = AuthCallback.HOST
             }
             install(Postgrest)
         }

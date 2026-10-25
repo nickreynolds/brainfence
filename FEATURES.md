@@ -23,6 +23,7 @@ Last reviewed: 2026-10-25.
 | --- | :-: | :-: | :-: | --- |
 | Email sign-in | ✅ | ✅ | ✅ | |
 | Sign-up | ✅ | ✅ | ✅ | |
+| Email confirmation link opens the app (`brainfence://auth-callback`) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Email links). Signs in on the device that signed up; elsewhere it says the email is confirmed. |
 | Offline-first sync (PowerSync + Supabase) | ✅ | ✅ | ✅ | Schema generated from `shared/schema.json`. |
 
 ## Setup guide

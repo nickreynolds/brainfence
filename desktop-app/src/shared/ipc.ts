@@ -134,6 +134,9 @@ export interface BrainfenceApi {
     signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }>
     signOut(): Promise<void>
     onState(cb: (state: AuthState) => void): () => void
+    /** A notice from the last email link (shown on the sign-in screen), cleared once taken. */
+    takeNotice(): Promise<string | null>
+    onNotice(cb: (notice: string) => void): () => void
   }
   sync: {
     getStatus(): Promise<SyncStatusInfo>

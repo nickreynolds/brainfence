@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ErrorText, Field, TextInput } from '../components/ui'
 import { useAction } from '../lib/hooks'
 
@@ -10,6 +10,16 @@ export function AuthScreen() {
   const [confirm, setConfirm] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
   const { busy, error, run, setError } = useAction()
+
+  // Email confirmation links land here (shared/CONTRACTS.md, Email links).
+  useEffect(() => {
+    const show = (n: string) => {
+      setNotice(n)
+      setMode('signIn')
+    }
+    void window.api.auth.takeNotice().then((n) => n && show(n))
+    return window.api.auth.onNotice(show)
+  }, [])
 
   const submit = () => {
     setNotice(null)

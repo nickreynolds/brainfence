@@ -180,7 +180,7 @@ fun GuideScreen(
                 PlacePicker("Home", "Morning Walk completes when you leave here. It's also saved as this phone's home location.", state.home, state.homeRadiusMeters, onSetHome)
             }
             if (StarterKey.GROCERIES in state.starters) {
-                PlacePicker("Grocery store", "Brainfence reminds you of your list when you arrive here.", state.store, Onboarding.GROCERIES_RADIUS_M, onSetStore)
+                PlacePicker("Grocery store", "Brainfence reminds you of your list when you're near here.", state.store, Onboarding.GROCERIES_RADIUS_M, onSetStore)
             }
             if (plan.deferredSteps.isNotEmpty()) {
                 Muted("Without a place, ${plan.deferredSteps.joinToString(" and ") { Onboarding.starter(it.key).title }} will be asked about next time Brainfence opens.")
@@ -331,7 +331,7 @@ fun DeviceSetupScreen(
             )
         }
         if (StarterKey.GROCERIES in state.keep) {
-            PlacePicker("Grocery store", "Brainfence reminds you of your list when you arrive here.", state.store, Onboarding.GROCERIES_RADIUS_M, onSetStore)
+            PlacePicker("Grocery store", "Brainfence reminds you of your list when you're near here.", state.store, Onboarding.GROCERIES_RADIUS_M, onSetStore)
         }
         if (deferredPlan.deferredSteps.isNotEmpty()) {
             Muted("Without a place, ${deferredPlan.deferredSteps.joinToString(" and ") { Onboarding.starter(it.key).title }} will be asked about again next time.")

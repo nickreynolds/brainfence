@@ -59,6 +59,15 @@ fun SignInScreen(
             Spacer(Modifier.height(8.dp))
         }
 
+        uiState.notice?.let { notice ->
+            Text(
+                text = notice,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+
         Button(
             onClick = { onSignIn(email, password) },
             enabled = !uiState.isLoading && email.isNotBlank() && password.isNotBlank(),

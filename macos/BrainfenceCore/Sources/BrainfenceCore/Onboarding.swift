@@ -41,7 +41,7 @@ public struct StarterDef: Sendable {
         StarterDef(key: .morningWalk, title: "Morning Walk", summary: "Completes on its own when your phone leaves home.", hasWindow: true, availableFrom: "06:00", dueAt: "11:00", blocks: true, needs: .home, sortOrder: 1),
         StarterDef(key: .meditation, title: "Meditation", summary: "Ten minutes with the built-in timer or a meditation app you choose.", hasWindow: true, availableFrom: "06:00", dueAt: "19:00", blocks: true, needs: nil, sortOrder: 2),
         StarterDef(key: .journaling, title: "Journal", summary: "Write a short entry each evening. Past entries are kept in Journal.", hasWindow: true, availableFrom: "18:00", dueAt: "23:00", blocks: false, needs: nil, sortOrder: 3),
-        StarterDef(key: .groceries, title: "Groceries", summary: "A running shopping list that reminds you when you reach the store.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: .store, sortOrder: 4),
+        StarterDef(key: .groceries, title: "Groceries", summary: "A running shopping list that reminds you when you're near the store.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: .store, sortOrder: 4),
         StarterDef(key: .fiveRemembrances, title: "The Five Remembrances", summary: "Short reflections delivered a few times a day. Click \"I remember\" to acknowledge one.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: nil, sortOrder: 5),
     ]
 

@@ -8,6 +8,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { AuthState } from '@shared/ipc'
+import { AUTH_CALLBACK_URL, CONFIRMED_NOTICE, linkErrorNotice, parseAuthCallback } from '@shared/authCallback'
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config'
 import { getValue, setValue } from './store'
 
@@ -54,7 +55,7 @@ export function supabase(): SupabaseClient {
       throw new Error('Supabase is not configured: set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in the repo-root .env and rebuild')
     }
     client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: { storage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      auth: { storage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: 'pkce' },
     })
   }
   return client
@@ -103,7 +104,11 @@ export async function signIn(email: string, password: string): Promise<void> {
 }
 
 export async function signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }> {
-  const { data, error } = await supabase().auth.signUp({ email: email.trim(), password })
+  const { data, error } = await supabase().auth.signUp({
+    email: email.trim(),
+    password,
+    options: { emailRedirectTo: AUTH_CALLBACK_URL },
+  })
   if (error) throw new Error(error.message)
   return { needsConfirmation: !data.session }
 }
@@ -119,4 +124,44 @@ export async function currentAccessToken(): Promise<{ token: string; expiresAt?:
   const session = data.session
   if (!session) return null
   return { token: session.access_token, expiresAt: session.expires_at ? new Date(session.expires_at * 1000) : undefined }
+}
+
+// ── Email links (shared/CONTRACTS.md, Email links) ──────────────────────────
+
+let pendingNotice: string | null = null
+const noticeListeners = new Set<(notice: string) => void>()
+
+function setNotice(notice: string): void {
+  pendingNotice = notice
+  noticeListeners.forEach((l) => l(notice))
+}
+
+/** The sign-in screen's notice from the last email link, cleared once read. */
+export function takeNotice(): string | null {
+  const n = pendingNotice
+  pendingNotice = null
+  return n
+}
+
+export function onNotice(listener: (notice: string) => void): () => void {
+  noticeListeners.add(listener)
+  return () => noticeListeners.delete(listener)
+}
+
+/** Handles a brainfence://auth-callback link. Returns false for other URLs. */
+export async function handleAuthCallback(url: string): Promise<boolean> {
+  const link = parseAuthCallback(url)
+  if (!link) return false
+  if (link.kind === 'error') {
+    setNotice(linkErrorNotice(link.message))
+    return true
+  }
+  // Supabase confirmed the email before redirecting; signing in is a bonus. It
+  // fails when the link is opened on a different device than the sign-up.
+  const { error } =
+    link.kind === 'code' ? await supabase().auth.exchangeCodeForSession(link.code)
+    : link.kind === 'tokens' ? await supabase().auth.setSession({ access_token: link.access_token, refresh_token: link.refresh_token })
+    : { error: new Error('nothing to sign in with') }
+  if (error) setNotice(CONFIRMED_NOTICE)
+  return true
 }

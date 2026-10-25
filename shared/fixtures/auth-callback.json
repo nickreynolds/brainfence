@@ -1,0 +1,18 @@
+{
+  "description": "Classifying an email link that Supabase Auth redirects to brainfence://auth-callback. `result` is null for a URL that isn't an auth callback; otherwise `kind` is code | tokens | error | none, with `code`, `access_token` / `refresh_token`, or `message` (the decoded error_description, falling back to error). An error wins over anything else in the link. See shared/CONTRACTS.md (Email links).",
+  "cases": [
+    { "url": "brainfence://auth-callback?code=9c2f420d-e94e-4282-8b9f-f63f206bdef2", "result": { "kind": "code", "code": "9c2f420d-e94e-4282-8b9f-f63f206bdef2" } },
+    { "url": "brainfence://auth-callback/?code=abc", "result": { "kind": "code", "code": "abc" } },
+    { "url": "brainfence://auth-callback#access_token=AT.x-y&expires_in=3600&refresh_token=RT1&token_type=bearer&type=signup", "result": { "kind": "tokens", "access_token": "AT.x-y", "refresh_token": "RT1" } },
+    { "url": "brainfence://auth-callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired", "result": { "kind": "error", "message": "Email link is invalid or has expired" } },
+    { "url": "brainfence://auth-callback?error=server_error&error_description=Something%20went%20wrong&code=ignored", "result": { "kind": "error", "message": "Something went wrong" } },
+    { "url": "brainfence://auth-callback?error=access_denied", "result": { "kind": "error", "message": "access_denied" } },
+    { "url": "brainfence://auth-callback?error=access_denied&error_description=Token+has+expired+or+is+invalid", "result": { "kind": "error", "message": "Token has expired or is invalid" } },
+    { "url": "brainfence://auth-callback#access_token=AT", "result": { "kind": "none" } },
+    { "url": "brainfence://auth-callback", "result": { "kind": "none" } },
+    { "url": "brainfence://contemplation/respond?id=1&r=affirmed", "result": null },
+    { "url": "brainfence://open/task/1", "result": null },
+    { "url": "https://example.com/auth-callback?code=abc", "result": null },
+    { "url": "not a url", "result": null }
+  ]
+}

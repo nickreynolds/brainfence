@@ -14,6 +14,8 @@ import javax.inject.Inject
 data class AuthUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
+    /** "Check your email", or the outcome of an email link. */
+    val notice: String? = null,
 )
 
 @HiltViewModel
@@ -23,23 +25,44 @@ class AuthViewModel @Inject constructor(
 
     val authState = sessionRepository.authState
 
+    init {
+        // Email confirmation links (handled in MainActivity) report here.
+        viewModelScope.launch {
+            sessionRepository.authNotice.collect { notice ->
+                if (notice != null) {
+                    _uiState.update { it.copy(notice = notice, error = null) }
+                    sessionRepository.clearAuthNotice()
+                }
+            }
+        }
+    }
+
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState = _uiState.asStateFlow()
 
     fun signIn(email: String, password: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, notice = null) }
             runCatching { sessionRepository.signIn(email, password) }
                 .onSuccess { _uiState.update { it.copy(isLoading = false) } }
                 .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.message) } }
         }
     }
 
-    fun signUp(email: String, password: String) {
+    /** [onNeedsConfirmation] runs when the account waits for its email to be confirmed. */
+    fun signUp(email: String, password: String, onNeedsConfirmation: () -> Unit) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, notice = null) }
             runCatching { sessionRepository.signUp(email, password) }
-                .onSuccess { _uiState.update { it.copy(isLoading = false) } }
+                .onSuccess { needsConfirmation ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            notice = if (needsConfirmation) "Check your email to confirm your account, then sign in." else null,
+                        )
+                    }
+                    if (needsConfirmation) onNeedsConfirmation()
+                }
                 .onFailure { e -> _uiState.update { it.copy(isLoading = false, error = e.message) } }
         }
     }

@@ -34,7 +34,7 @@ export const STARTERS: StarterDef[] = [
   { key: 'morning_walk', title: 'Morning Walk', summary: 'Completes on its own when your phone leaves home.', hasWindow: true, availableFrom: '06:00', dueAt: '11:00', blocks: true, needs: 'home', sortOrder: 1 },
   { key: 'meditation', title: 'Meditation', summary: 'Ten minutes with the built-in timer or a meditation app you choose.', hasWindow: true, availableFrom: '06:00', dueAt: '19:00', blocks: true, needs: null, sortOrder: 2 },
   { key: 'journaling', title: 'Journal', summary: 'Write a short entry each evening. Past entries are kept in Journal.', hasWindow: true, availableFrom: '18:00', dueAt: '23:00', blocks: false, needs: null, sortOrder: 3 },
-  { key: 'groceries', title: 'Groceries', summary: 'A running shopping list that reminds you when you reach the store.', hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: 'store', sortOrder: 4 },
+  { key: 'groceries', title: 'Groceries', summary: "A running shopping list that reminds you when you're near the store.", hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: 'store', sortOrder: 4 },
   { key: 'five_remembrances', title: 'The Five Remembrances', summary: 'Short reflections delivered a few times a day. Tap "I remember" to acknowledge one.', hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: null, sortOrder: 5 },
 ]
 

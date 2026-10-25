@@ -1,3 +1,4 @@
+import BrainfenceCore
 import Foundation
 import OSLog
 import Supabase
@@ -14,6 +15,8 @@ final class SessionStore {
     }
 
     private(set) var state: State = .loading
+    /// For the sign-in screen, from the last email link; it clears it once shown.
+    var notice: String?
 
     @ObservationIgnored let client: SupabaseClient
     @ObservationIgnored private var observation: Task<Void, Never>?
@@ -58,8 +61,32 @@ final class SessionStore {
     /// Creates an account. Returns true when the user is signed in right
     /// away, false when the project requires confirming the email first.
     func signUp(email: String, password: String) async throws -> Bool {
-        let response = try await client.auth.signUp(email: email, password: password)
+        let response = try await client.auth.signUp(email: email, password: password, redirectTo: AuthCallback.url)
         return response.session != nil
+    }
+
+    /// Handles a brainfence://auth-callback email link; false for other URLs.
+    /// Supabase confirmed the email before redirecting, so signing in here is
+    /// a bonus: it fails when the link is opened on a different device than
+    /// the sign-up (shared/CONTRACTS.md, Email links).
+    func handleAuthCallback(_ url: URL) async -> Bool {
+        guard let link = AuthCallback.parse(url) else { return false }
+        do {
+            switch link {
+            case .error(let message):
+                notice = AuthCallback.errorNotice(message)
+            case .code(let code):
+                _ = try await client.auth.exchangeCodeForSession(authCode: code)
+            case .tokens(let access, let refresh):
+                _ = try await client.auth.setSession(accessToken: access, refreshToken: refresh)
+            case .none:
+                notice = AuthCallback.confirmedNotice
+            }
+        } catch {
+            logger.info("email link didn't sign in: \(error.localizedDescription)")
+            notice = AuthCallback.confirmedNotice
+        }
+        return true
     }
 
     func signOut() async {

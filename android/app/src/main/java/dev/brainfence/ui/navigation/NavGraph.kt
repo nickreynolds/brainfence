@@ -183,7 +183,9 @@ fun BrainfenceNavGraph(
         composable(Routes.SIGN_UP) {
             SignUpScreen(
                 uiState            = authUiState,
-                onSignUp           = authViewModel::signUp,
+                onSignUp           = { email, password ->
+                    authViewModel.signUp(email, password) { navController.popBackStack() }
+                },
                 onNavigateToSignIn = { navController.popBackStack() },
             )
         }

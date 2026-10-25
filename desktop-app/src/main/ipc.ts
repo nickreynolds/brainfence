@@ -3,7 +3,7 @@ import type { AppSettings, ContemplationSettings, HomeLocation } from '@shared/i
 import type { SqlStatement } from '@shared/db'
 import { getActiveTask } from '@shared/repos/tasks'
 import { parseDurationConfig, parseMeditationConfig } from '@shared/verification'
-import { getAuthState, onAuthState, signIn, signOut, signUp, userIdForLocalWrites } from './auth'
+import { getAuthState, onAuthState, onNotice, signIn, signOut, signUp, takeNotice, userIdForLocalWrites } from './auth'
 import { appIcon, listInstalledApps } from './blocking/apps'
 import { setupHostsAccess } from './blocking/hosts'
 import { hideOverlay, overlayContext, overlayWebContentsId, showOverlay } from './blocking/overlay'
@@ -45,6 +45,8 @@ export function registerIpc(): void {
     evaluateNow()
   })
   onAuthState((s) => broadcast('auth:state', s))
+  ipcMain.handle('auth:takeNotice', () => takeNotice())
+  onNotice((n) => broadcast('auth:notice', n))
   ipcMain.handle('sync:getStatus', () => getSyncStatus())
   onSyncStatus((s) => broadcast('sync:status', s))
 

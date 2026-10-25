@@ -115,6 +115,14 @@ struct SignInView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Email confirmation links land here (shared/CONTRACTS.md, Email links).
+        .task(id: model.session.notice) {
+            guard let sessionNotice = model.session.notice else { return }
+            notice = sessionNotice
+            error = nil
+            isSigningUp = false
+            model.session.notice = nil
+        }
     }
 
     private func submit() {

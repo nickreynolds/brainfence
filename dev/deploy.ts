@@ -1,14 +1,17 @@
-// Deploys the backend: Supabase migrations, then PowerSync sync rules on the
-// droplet. Order matters: sync rules (and app builds) must not reference a
-// table before its migration has run. See powersync/README.md (Operations).
+// Deploys the backend: Supabase migrations, Supabase Auth's redirect URLs,
+// then PowerSync sync rules on the droplet. Order matters: sync rules (and app
+// builds) must not reference a table before its migration has run. See
+// powersync/README.md (Operations).
 //
-//   npm run deploy               push migrations, upload sync rules, restart PowerSync
-//   npm run deploy -- --dry-run  show pending migrations and the sync-rules diff only
+//   npm run deploy               push migrations, set auth URLs, upload sync rules, restart PowerSync
+//   npm run deploy -- --dry-run  show what would change, without changing it
 //   npm run deploy -- --yes      don't ask before pushing migrations
-//   npm run deploy -- --skip-migrations | --skip-sync-rules
+//   npm run deploy -- --skip-migrations | --skip-auth | --skip-sync-rules
 //
 // Reads from .env:
 //   SUPABASE_DB_URL       its password is used for `supabase db push` (or set SUPABASE_DB_PASSWORD)
+//   SUPABASE_ACCESS_TOKEN a personal access token (supabase.com/dashboard/account/tokens), for
+//                         the auth URLs; without it that step is skipped with a warning
 //   POWERSYNC_SSH_IP      the droplet's IP; SSH goes to root@<it>
 //   DEPLOY_SSH_TARGET     overrides that (default root@powersync.brainfence.online)
 //   DEPLOY_SSH_KEY        optional private key path
@@ -24,7 +27,7 @@ const root = path.resolve(__dirname, "..");
 dotenv.config({ path: path.join(root, ".env") });
 
 const args = new Set(process.argv.slice(2));
-const known = ["--dry-run", "--yes", "--skip-migrations", "--skip-sync-rules"];
+const known = ["--dry-run", "--yes", "--skip-migrations", "--skip-auth", "--skip-sync-rules"];
 for (const a of Array.from(args)) {
   if (!known.includes(a)) fail(`Unknown option ${a}. Options: ${known.join(", ")}`);
 }
@@ -107,7 +110,45 @@ function deployMigrations() {
   if (r.status !== 0) fail("supabase db push failed; sync rules were not touched");
 }
 
-// ── 2. Sync rules ───────────────────────────────────────────────────────────
+// ── 2. Auth redirect URLs ───────────────────────────────────────────────────
+
+// Email links open the apps (shared/CONTRACTS.md, Email links). Supabase only
+// redirects to allow-listed URLs, and falls back to the Site URL otherwise.
+const AUTH_CALLBACK_URL = "brainfence://auth-callback";
+
+async function deployAuthUrls() {
+  console.log(`\n→ Supabase Auth redirect URLs${dryRun ? " (dry run)" : ""}`);
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!token) {
+    console.warn("  ⚠ SUPABASE_ACCESS_TOKEN isn't set, so this was skipped. Set Site URL and Redirect URLs to");
+    console.warn(`    ${AUTH_CALLBACK_URL} in the dashboard (Authentication → URL Configuration), or add a token.`);
+    return;
+  }
+  const ref = fs.readFileSync(path.join(root, "supabase", ".temp", "project-ref"), "utf8").trim();
+  const endpoint = `https://api.supabase.com/v1/projects/${ref}/config/auth`;
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  const res = await fetch(endpoint, { headers });
+  if (!res.ok) fail(`Reading the auth config failed: HTTP ${res.status} ${await res.text()}`);
+  const config = (await res.json()) as { site_url?: string; uri_allow_list?: string };
+  const allowList = (config.uri_allow_list ?? "").split(",").map((u) => u.trim()).filter(Boolean);
+  const changes: Record<string, string> = {};
+  if (config.site_url !== AUTH_CALLBACK_URL) changes.site_url = AUTH_CALLBACK_URL;
+  if (!allowList.includes(AUTH_CALLBACK_URL)) changes.uri_allow_list = [...allowList, AUTH_CALLBACK_URL].join(",");
+  if (Object.keys(changes).length === 0) {
+    console.log("  Already up to date.");
+    return;
+  }
+  if (changes.site_url) console.log(`  Site URL: ${config.site_url || "(none)"} → ${changes.site_url}`);
+  if (changes.uri_allow_list) console.log(`  Redirect URLs: add ${AUTH_CALLBACK_URL}`);
+  if (dryRun) return;
+
+  const patch = await fetch(endpoint, { method: "PATCH", headers, body: JSON.stringify(changes) });
+  if (!patch.ok) fail(`Updating the auth config failed: HTTP ${patch.status} ${await patch.text()}`);
+  console.log("  Updated.");
+}
+
+// ── 3. Sync rules ───────────────────────────────────────────────────────────
 
 function deploySyncRules() {
   console.log(`\n→ PowerSync sync rules on ${sshTarget}${dryRun ? " (dry run)" : ""}`);
@@ -157,7 +198,12 @@ function deploySyncRules() {
   }
 }
 
-preflight();
-if (!args.has("--skip-migrations")) deployMigrations();
-if (!args.has("--skip-sync-rules")) deploySyncRules();
-console.log(dryRun ? "\n✓ Dry run finished; nothing was changed." : "\n✓ Deployed.");
+async function main() {
+  preflight();
+  if (!args.has("--skip-migrations")) deployMigrations();
+  if (!args.has("--skip-auth")) await deployAuthUrls();
+  if (!args.has("--skip-sync-rules")) deploySyncRules();
+  console.log(dryRun ? "\n✓ Dry run finished; nothing was changed." : "\n✓ Deployed.");
+}
+
+void main();

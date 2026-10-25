@@ -66,6 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         exit(0)
     }
 
+    /// brainfence:// links, such as email confirmation.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            Task { @MainActor in
+                if await model.session.handleAuthCallback(url) { showMainWindow() }
+            }
+        }
+    }
+
     // MARK: Quit protection
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

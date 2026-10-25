@@ -74,6 +74,10 @@ targets:
           Brainfence reads the address of your browser's current tab so it can
           block the websites listed in your blocking rules.
         NSHumanReadableCopyright: ""
+        # brainfence:// links: email confirmation (shared/CONTRACTS.md, Email links).
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.brainfence.macos
+            CFBundleURLSchemes: [brainfence]
     entitlements:
       path: Brainfence/Brainfence.entitlements
       properties:

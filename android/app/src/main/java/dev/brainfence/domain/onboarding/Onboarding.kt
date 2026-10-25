@@ -56,7 +56,7 @@ object Onboarding {
         StarterDef(StarterKey.MORNING_WALK, "Morning Walk", "Completes on its own when your phone leaves home.", true, "06:00", "11:00", true, StarterDef.Place.HOME, 1),
         StarterDef(StarterKey.MEDITATION, "Meditation", "Ten minutes with the built-in timer or a meditation app you choose.", true, "06:00", "19:00", true, null, 2),
         StarterDef(StarterKey.JOURNALING, "Journal", "Write a short entry each evening. Past entries are kept in Journal history.", true, "18:00", "23:00", false, null, 3),
-        StarterDef(StarterKey.GROCERIES, "Groceries", "A running shopping list that reminds you when you reach the store.", false, null, null, false, StarterDef.Place.STORE, 4),
+        StarterDef(StarterKey.GROCERIES, "Groceries", "A running shopping list that reminds you when you're near the store.", false, null, null, false, StarterDef.Place.STORE, 4),
         StarterDef(StarterKey.FIVE_REMEMBRANCES, "The Five Remembrances", "Short reflections delivered a few times a day. Tap \"I remember\" to acknowledge one.", false, null, null, false, null, 5),
     )
 

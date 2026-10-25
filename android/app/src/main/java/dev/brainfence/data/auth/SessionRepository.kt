@@ -3,7 +3,13 @@ package dev.brainfence.data.auth
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.parseSessionFromFragment
 import io.github.jan.supabase.auth.status.SessionStatus
+import android.util.Log
+import dev.brainfence.domain.auth.AuthCallback
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -50,11 +56,46 @@ class SessionRepository @Inject constructor(
         }
     }
 
-    suspend fun signUp(email: String, password: String) {
-        supabase.auth.signUpWith(Email) {
+    /** Creates an account. Returns true when the email must be confirmed before signing in. */
+    suspend fun signUp(email: String, password: String): Boolean {
+        supabase.auth.signUpWith(Email, redirectUrl = AuthCallback.URL) {
             this.email = email
             this.password = password
         }
+        return supabase.auth.currentSessionOrNull() == null
+    }
+
+    private val _authNotice = MutableStateFlow<String?>(null)
+
+    /** For the sign-in screen, from the last email link. */
+    val authNotice: StateFlow<String?> = _authNotice.asStateFlow()
+
+    fun clearAuthNotice() {
+        _authNotice.value = null
+    }
+
+    /**
+     * Handles a brainfence://auth-callback email link; false for other URLs.
+     * Supabase confirmed the email before redirecting, so signing in here is a
+     * bonus: it fails when the link is opened on a different device than the
+     * sign-up (shared/CONTRACTS.md, Email links).
+     */
+    suspend fun handleAuthCallback(url: String): Boolean {
+        val link = AuthCallback.parse(url) ?: return false
+        try {
+            when (link) {
+                is AuthCallback.Error -> _authNotice.value = AuthCallback.errorNotice(link.message)
+                is AuthCallback.Code -> supabase.auth.exchangeCodeForSession(link.code)
+                is AuthCallback.Tokens -> supabase.auth.importSession(
+                    supabase.auth.parseSessionFromFragment(url.substringAfter('#')),
+                )
+                AuthCallback.None -> _authNotice.value = AuthCallback.CONFIRMED_NOTICE
+            }
+        } catch (e: Exception) {
+            Log.i("SessionRepository", "Email link didn't sign in: ${e.message}")
+            _authNotice.value = AuthCallback.CONFIRMED_NOTICE
+        }
+        return true
     }
 
     suspend fun signOut() {

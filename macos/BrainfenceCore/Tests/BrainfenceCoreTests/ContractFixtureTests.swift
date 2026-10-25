@@ -145,4 +145,21 @@ final class ContractFixtureTests: XCTestCase {
             XCTAssertEqual(actual, c["expect"], c["name"]?.stringValue ?? "")
         }
     }
+
+    func testAuthCallbackLinks() throws {
+        let cases = try XCTUnwrap(fixture("auth-callback.json")["cases"]?.arrayValue)
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let text = c["url"]?.stringValue ?? ""
+            let parsed = URL(string: text).flatMap(AuthCallback.parse)
+            let actual: JSONValue = switch parsed {
+            case nil: .null
+            case .code(let code)?: .object(["kind": .string("code"), "code": .string(code)])
+            case .tokens(let a, let r)?: .object(["kind": .string("tokens"), "access_token": .string(a), "refresh_token": .string(r)])
+            case .error(let m)?: .object(["kind": .string("error"), "message": .string(m)])
+            case .none?: .object(["kind": .string("none")])
+            }
+            XCTAssertEqual(actual, c["result"], text)
+        }
+    }
 }

@@ -263,7 +263,7 @@ export function GuideScreen({ onExit }: { onExit: () => void }) {
             <PlaceInput title="Home" help="Morning Walk completes when you leave here. It's also saved as this PC's home location." lat={home.lat} lng={home.lng} onChange={(lat, lng) => setHome({ lat, lng })} />
           )}
           {on('groceries') && (
-            <PlaceInput title="Grocery store" help="Brainfence reminds you of your list when you arrive here." lat={store.lat} lng={store.lng} onChange={(lat, lng) => setStore({ lat, lng })} />
+            <PlaceInput title="Grocery store" help="Brainfence reminds you of your list when you're near here." lat={store.lat} lng={store.lng} onChange={(lat, lng) => setStore({ lat, lng })} />
           )}
           {plan.deferred_steps.length > 0 && (
             <div className="small muted">{plan.deferred_steps.map((d) => starterDef(d.key).title).join(' and ')} will be finished on a device with a location.</div>
@@ -450,7 +450,7 @@ function DeviceSetupForm({ row, rule, companions: initialCompanions, decks, home
         <PlaceInput title="Home" help={keep.has('morning_walk') ? 'Morning Walk completes when you leave here. Also used for home-only blocking.' : 'Used for tasks that only block at home.'} lat={home.lat} lng={home.lng} onChange={(lat, lng) => setHome({ lat, lng })} />
       )}
       {keep.has('groceries') && (
-        <PlaceInput title="Grocery store" help="Brainfence reminds you of your list when you arrive here." lat={store.lat} lng={store.lng} onChange={(lat, lng) => setStore({ lat, lng })} />
+        <PlaceInput title="Grocery store" help="Brainfence reminds you of your list when you're near here." lat={store.lat} lng={store.lng} onChange={(lat, lng) => setStore({ lat, lng })} />
       )}
       {deferredPlan.deferred_steps.length > 0 && (
         <div className="small muted">Without a location, {deferredPlan.deferred_steps.map((d) => starterDef(d.key).title).join(' and ')} will be asked about again next time.</div>

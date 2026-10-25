@@ -9,6 +9,7 @@ import type { AppRef } from '../src/shared/models'
 import { appRefKey, isMoreRestrictive, mapRule, normalizeDomain, parseBlockedApps } from '../src/shared/repos/blocking'
 import { mapOnboarding } from '../src/shared/repos/onboarding'
 import { buildOnboardingPlan, onboardingRoute } from '../src/shared/onboarding'
+import { parseAuthCallback } from '../src/shared/authCallback'
 
 const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, '../../shared/fixtures', name), 'utf8'))
 
@@ -58,5 +59,11 @@ test('onboarding plan', () => {
     const plan = buildOnboardingPlan(c.choices)
     const tasks = plan.tasks.map((t) => ({ ...t, steps: t.steps.map((s) => ({ title: s.title, step_type: s.stepType, config: s.config })) }))
     assert.deepEqual({ ...plan, tasks }, c.expect, c.name)
+  }
+})
+
+test('auth callback links', () => {
+  for (const c of fixture('auth-callback.json').cases) {
+    assert.deepEqual(parseAuthCallback(c.url), c.result, c.url)
   }
 })

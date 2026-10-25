@@ -1,6 +1,6 @@
 import { app, powerMonitor } from 'electron'
 import { resolve } from 'node:path'
-import { initAuth } from './auth'
+import { handleAuthCallback, initAuth } from './auth'
 import { destroyOverlay } from './blocking/overlay'
 import { stopEnforcer } from './blocking/enforcer'
 import { APP_USER_MODEL_ID, PROTOCOL } from './config'
@@ -17,7 +17,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.setAppUserModelId(APP_USER_MODEL_ID)
-  // brainfence:// links (contemplation toast buttons) come back through here.
+  // brainfence:// links (contemplation toast buttons, email confirmation links) come back through here.
   // Dev runs set BRAINFENCE_REGISTER_PROTOCOL=1 to opt in, since registering
   // points the user's registry at node_modules' electron.exe.
   if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL)
@@ -76,6 +76,7 @@ if (!app.requestSingleInstanceLock()) {
 
 async function routeProtocolUrl(url: string): Promise<void> {
   if (await handleProtocolUrl(url)) return
+  if (await handleAuthCallback(url)) return showMainWindow()
   try {
     const u = new URL(url)
     if (u.hostname === 'open') showMainWindow(u.pathname.replace(/^\//, ''))

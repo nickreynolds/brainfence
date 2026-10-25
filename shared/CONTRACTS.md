@@ -162,3 +162,23 @@ changed. Everything else is fixed. All starters are `status = 'active'`, with
     once it's created. That goes through the normal rule-change path: under
     `"all"` adding a condition is stricter, so it applies at once.
   - **Contemplation delivery on this device**, when the account has an enabled deck.
+
+## Email links
+
+Sign-up asks Supabase to send the confirmation link to
+`brainfence://auth-callback`, which every client registers as a URL scheme.
+All clients use the PKCE flow. The project's Site URL and Redirect URLs must
+include it (`npm run deploy` sets both when `SUPABASE_ACCESS_TOKEN` is in
+`.env`). Supabase confirms the email *before* redirecting, so a link that can't
+sign the user in has still confirmed them.
+
+A link is classified like this (`fixtures/auth-callback.json`):
+
+| Link carries | Kind | The client |
+| --- | --- | --- |
+| `error_description` or `error` (query or fragment) | `error` | Shows "That link didn't work: *message*. Sign up again with the same email to get a new one." |
+| `code` (query) | `code` | Exchanges it for a session. If that fails (e.g. the link was opened on a different device than the one that signed up), shows "Your email is confirmed. Sign in to continue." |
+| `access_token` and `refresh_token` (fragment) | `tokens` | Signs in with them. Shows the "confirmed" notice if that fails. |
+| Anything else | `none` | Shows "Your email is confirmed. Sign in to continue." |
+
+Other `brainfence://` URLs (and other schemes) aren't auth callbacks.
