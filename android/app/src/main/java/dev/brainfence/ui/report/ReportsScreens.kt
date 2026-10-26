@@ -104,83 +104,80 @@ private fun ConfirmDeleteDialog(title: String, text: String, onConfirm: () -> Un
 
 // ── Reports list ─────────────────────────────────────────────────────
 
+/** Reports, starter reports and every metric: the Reports tab of Review, which has the New report button. */
 @Composable
-fun ReportsScreen(
+fun ReportsList(
     reports: List<Report>,
     metrics: List<Metric>,
     starters: List<ReportLibrary.StarterReport>,
     onOpenReport: (String) -> Unit,
     onOpenMetric: (String) -> Unit,
     onAddStarter: (String) -> Unit,
-    onCreateReport: () -> Unit,
-    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    BackScaffold(title = "Reports", onBack = onBack) { modifier ->
-        LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "A report is a set of metrics you answer from a Report task or a routine's report " +
-                        "step. Metrics are shared: every report that asks one adds to the same history.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            items(reports, key = { it.id }) { report ->
-                Card(modifier = Modifier.fillMaxWidth().clickable { onOpenReport(report.id) }) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(report.name, style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            text = report.metrics.joinToString { it.name }.ifBlank { "No metrics yet" },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            items(starters, key = { "starter-${it.key}" }) { starter ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                ) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Starter: ${starter.name}", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                text = starter.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(onClick = { onAddStarter(starter.key) }) { Text("Add") }
-                    }
-                }
-            }
-            item {
-                TextButton(onClick = onCreateReport) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("New report")
-                }
-            }
-            if (metrics.isNotEmpty()) {
-                item {
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    Text("All metrics", style = MaterialTheme.typography.titleMedium)
-                }
-                items(metrics, key = { "metric-${it.id}" }) { metric ->
-                    Column(Modifier.fillMaxWidth().clickable { onOpenMetric(metric.id) }.padding(vertical = 4.dp)) {
-                        Text(metric.name, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            text = metric.summary(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(24.dp)) }
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "A report is a set of metrics you answer from a Report task or a routine's report " +
+                    "step. Metrics are shared: every report that asks one adds to the same history.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+        items(reports, key = { it.id }) { report ->
+            Card(modifier = Modifier.fillMaxWidth().clickable { onOpenReport(report.id) }) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(report.name, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = report.metrics.joinToString { it.name }.ifBlank { "No metrics yet" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        items(starters, key = { "starter-${it.key}" }) { starter ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Starter: ${starter.name}", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = starter.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { onAddStarter(starter.key) }) { Text("Add") }
+                }
+            }
+        }
+        if (metrics.isNotEmpty()) {
+            item {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Text("All metrics", style = MaterialTheme.typography.titleMedium)
+            }
+            items(metrics, key = { "metric-${it.id}" }) { metric ->
+                Column(Modifier.fillMaxWidth().clickable { onOpenMetric(metric.id) }.padding(vertical = 4.dp)) {
+                    Text(metric.name, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = metric.summary(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        // Room to scroll the last metric clear of the New report button.
+        item { Spacer(Modifier.height(88.dp)) }
     }
 }
 

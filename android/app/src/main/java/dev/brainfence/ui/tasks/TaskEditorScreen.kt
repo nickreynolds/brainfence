@@ -420,7 +420,8 @@ private fun TaskTypeSelector(selected: String, onSelect: (String) -> Unit) {
                             Text(
                                 text = taskTypeDescription(value),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }

@@ -54,6 +54,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.brainfence.domain.model.Task
+import dev.brainfence.ui.theme.blockingColors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -116,7 +117,8 @@ fun BlockingRuleEditorScreen(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            containerColor = MaterialTheme.blockingColors.pendingContainer,
+                            contentColor = MaterialTheme.blockingColors.onPendingContainer,
                         ),
                     ) {
                         Row(
@@ -126,7 +128,6 @@ fun BlockingRuleEditorScreen(
                             Icon(
                                 imageVector = Icons.Default.Schedule,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
                             )
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {

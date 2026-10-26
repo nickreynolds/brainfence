@@ -1,16 +1,14 @@
 import type { JournalEntry } from '@shared/models'
 import { getJournalEntries } from '@shared/repos/shopping'
 import { TASK_TABLES } from '@shared/repos/tasks'
-import { TopBar } from '../components/ui'
 import { formatDateTime } from '../lib/format'
 import { db, useQuery } from '../lib/hooks'
 
-/** Port of JournalHistoryScreen. */
-export function JournalHistoryScreen() {
+/** Journal entries, newest first: Review's Journal tab. Port of Android's JournalHistoryList. */
+export function JournalHistoryList() {
   const { data: entries, loading } = useQuery(() => getJournalEntries(db), TASK_TABLES, [], [] as JournalEntry[])
   return (
     <>
-      <TopBar title="Journal" back={false} />
       {!loading && entries.length === 0 ? (
         <div className="empty">No journal entries yet.</div>
       ) : (

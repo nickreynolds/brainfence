@@ -2,7 +2,7 @@
 // blocked app — the Windows counterpart of Android's BlockingActivity.
 
 import { BrowserWindow, screen } from 'electron'
-import { loadRenderer, preloadPath } from '../windows'
+import { loadRenderer, preloadPath, surfaceColor } from '../windows'
 
 let win: BrowserWindow | null = null
 let context: { exe: string; name: string } | null = null
@@ -30,7 +30,7 @@ function ensureWindow(): BrowserWindow {
     maximizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    backgroundColor: '#1c1b1f',
+    backgroundColor: surfaceColor(),
     webPreferences: { preload: preloadPath(), contextIsolation: true, sandbox: false },
   })
   win.setAlwaysOnTop(true, 'screen-saver')
@@ -49,6 +49,7 @@ export function showOverlay(exe: string, name: string): void {
   context = { exe, name }
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   w.setBounds(display.bounds)
+  w.setBackgroundColor(surfaceColor())
   if (changed || !w.isVisible()) w.webContents.send('overlay:context', context)
   if (!w.isVisible()) w.show()
   w.moveTop()

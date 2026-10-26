@@ -27,8 +27,10 @@ for (const [table, columns] of tables) {
     if (c.encoding && !['json', 'boolean'].includes(c.encoding)) throw new Error(`${table}.${c.name}: unknown encoding`)
   }
 }
+// Material 3 roles, then the app's blocking-state roles (blocked, unlocked, pending).
 const colors = Object.entries(tokens.color)
-for (const [role, { light, dark }] of colors) {
+const blockingColors = Object.entries(tokens.blocking)
+for (const [role, { light, dark }] of [...colors, ...blockingColors]) {
   for (const hex of [light, dark]) if (!/^#[0-9A-F]{6}$/.test(hex)) throw new Error(`${role}: colors are #RRGGBB, got ${hex}`)
 }
 
@@ -93,10 +95,21 @@ package dev.brainfence.ui.theme
 
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
 ${['light', 'dark'].map((mode) => `internal val ${mode === 'light' ? 'Light' : 'Dark'}ColorScheme = ${mode}ColorScheme(
 ${colors.map(([role, c]) => `    ${role} = Color(0xFF${c[mode].slice(1)}),`).join('\n')}
+)`).join('\n\n')}
+
+/** Blocking-state colors, alongside the Material scheme. Read them with \`MaterialTheme.blockingColors\`. */
+@Immutable
+data class BlockingColors(
+${blockingColors.map(([role]) => `    val ${role}: Color,`).join('\n')}
+)
+
+${['light', 'dark'].map((mode) => `internal val ${mode === 'light' ? 'Light' : 'Dark'}BlockingColors = BlockingColors(
+${blockingColors.map(([role, c]) => `    ${role} = Color(0xFF${c[mode].slice(1)}),`).join('\n')}
 )`).join('\n\n')}
 `
 
@@ -126,7 +139,7 @@ ${columnsWith('json').map(([table, names]) => `  ${table}: [${names.map((n) => `
 `
 
 const cssBlock = (mode, indent) =>
-  colors.map(([role, c]) => `${indent}--${kebab(role)}: ${c[mode].toLowerCase()};`).join('\n') +
+  [...colors, ...blockingColors].map(([role, c]) => `${indent}--${kebab(role)}: ${c[mode].toLowerCase()};`).join('\n') +
   `\n${indent}color-scheme: ${mode};`
 
 const css = `${header('/*', 'tokens.json').replace(/\n\/\*/g, '\n *').replace(/\n$/, ' */\n')}
@@ -139,6 +152,16 @@ ${cssBlock('light', '  ')}
 ${cssBlock('dark', '    ')}
   }
 }
+`
+
+// The main process can't read CSS variables; it uses these for window backgrounds.
+const tsColors = `${header('//', 'tokens.json')}
+/** Every color role (Material 3, then blocking state) for each appearance. */
+export const COLORS = {
+${['light', 'dark'].map((mode) => `  ${mode}: {
+${[...colors, ...blockingColors].map(([role, c]) => `    ${role}: '${c[mode]}',`).join('\n')}
+  },`).join('\n')}
+} as const
 `
 
 // ── macOS ───────────────────────────────────────────────────────────────────
@@ -185,10 +208,12 @@ const swiftPalette = `${header('//', 'tokens.json')}
 import AppKit
 import SwiftUI
 
-/// Brainfence's Material 3 color roles, resolving to the light or dark value
-/// for the current appearance.
+/// Brainfence's Material 3 color roles, then its blocking-state roles, each
+/// resolving to the light or dark value for the current appearance.
 enum Palette {
 ${colors.map(([role, c]) => `    static let ${role} = Color(light: 0x${c.light.slice(1)}, dark: 0x${c.dark.slice(1)})`).join('\n')}
+
+${blockingColors.map(([role, c]) => `    static let ${role} = Color(light: 0x${c.light.slice(1)}, dark: 0x${c.dark.slice(1)})`).join('\n')}
 }
 
 private extension Color {
@@ -213,6 +238,7 @@ const outputs = {
   'android/app/src/main/java/dev/brainfence/ui/theme/Color.kt': kotlinColors,
   'desktop-app/src/shared/schema.generated.ts': tsSchema,
   'desktop-app/src/renderer/src/tokens.css': css,
+  'desktop-app/src/shared/tokens.generated.ts': tsColors,
   'macos/Brainfence/Sync/AppSchema.swift': swiftSchema,
   'macos/BrainfenceCore/Sources/BrainfenceCore/SchemaColumns.swift': swiftColumns,
   'macos/Brainfence/Theme/Palette.swift': swiftPalette,

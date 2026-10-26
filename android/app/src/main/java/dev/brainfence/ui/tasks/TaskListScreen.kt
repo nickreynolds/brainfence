@@ -22,32 +22,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.ShoppingCart
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -82,6 +71,7 @@ import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE_TITLE
 import dev.brainfence.ui.setup.BACKGROUND_LOCATION_DISCLOSURE
 import dev.brainfence.ui.setup.BACKGROUND_LOCATION_DISCLOSURE_TITLE
 import dev.brainfence.ui.setup.DisclosureDialog
+import dev.brainfence.ui.theme.blockingColors
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -113,23 +103,10 @@ fun TaskListScreen(
     onEditTask: (Task) -> Unit,
     onConfirmComplete: () -> Unit,
     onDismissComplete: () -> Unit,
-    onSignOut: () -> Unit,
-    onDeleteAccount: (onDone: (error: String?) -> Unit) -> Unit,
-    onNavigateToDebug: () -> Unit = {},
-    onNavigateToRules: () -> Unit = {},
-    onNavigateToHomeLocation: () -> Unit = {},
-    onNavigateToJournalHistory: () -> Unit = {},
-    onNavigateToContemplations: () -> Unit = {},
-    onNavigateToReports: () -> Unit = {},
-    onNavigateToSetupGuide: () -> Unit = {},
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
-
-    var showDeleteAccount by remember { mutableStateOf(false) }
-    if (showDeleteAccount) {
-        DeleteAccountDialog(onDelete = onDeleteAccount, onDismiss = { showDeleteAccount = false })
-    }
+    val listState = rememberLazyListState()
 
     // A task only actually blocks apps when it's a condition of an *active*
     // blocking rule — the per-task `is_blocking_condition` flag is not enough
@@ -160,63 +137,15 @@ fun TaskListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Tasks") },
-                actions = {
-                    IconButton(onClick = onNavigateToJournalHistory) {
-                        Icon(Icons.AutoMirrored.Filled.Article, contentDescription = "Journal history")
-                    }
-                    IconButton(onClick = onNavigateToHomeLocation) {
-                        Icon(Icons.Default.Home, contentDescription = "Home location")
-                    }
-                    IconButton(onClick = onCreateTask) {
-                        Icon(Icons.Default.Add, contentDescription = "Create task")
-                    }
-                    var showMenu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Blocking rules") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                            onClick = { showMenu = false; onNavigateToRules() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Contemplations") },
-                            leadingIcon = { Icon(Icons.Default.SelfImprovement, contentDescription = null) },
-                            onClick = { showMenu = false; onNavigateToContemplations() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Reports") },
-                            leadingIcon = { Icon(Icons.Default.Assessment, contentDescription = null) },
-                            onClick = { showMenu = false; onNavigateToReports() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Setup guide") },
-                            leadingIcon = { Icon(Icons.Default.Explore, contentDescription = null) },
-                            onClick = { showMenu = false; onNavigateToSetupGuide() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Debug logs") },
-                            leadingIcon = { Icon(Icons.Default.BugReport, contentDescription = null) },
-                            onClick = { showMenu = false; onNavigateToDebug() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Sign out") },
-                            leadingIcon = { Icon(Icons.Default.Logout, contentDescription = null) },
-                            onClick = { showMenu = false; onSignOut() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete account") },
-                            leadingIcon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                            onClick = { showMenu = false; showDeleteAccount = true },
-                        )
-                    }
-                },
+            TopAppBar(title = { Text("Tasks") })
+        },
+        floatingActionButton = {
+            // Shrinks to just the icon once the list scrolls.
+            ExtendedFloatingActionButton(
+                text = { Text("New task") },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                onClick = onCreateTask,
+                expanded = !listState.canScrollBackward,
             )
         },
     ) { padding ->
@@ -259,7 +188,7 @@ fun TaskListScreen(
                 )
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
                 // Banners only on the Active tab
                 if (selectedTab == HomeTab.ACTIVE) {
                     if (!isAccessibilityEnabled) {
@@ -482,7 +411,7 @@ private fun TaskItem(
                 isOverdue && isActivelyBlocking -> {
                     Text(
                         text = "Overdue \u2014 blocking apps until completed",
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.blockingColors.blocked,
                     )
                 }
                 isOverdue -> {
@@ -529,7 +458,7 @@ private fun TaskItem(
                 showAsCompleted || isCompletedRecurring -> Icon(
                     imageVector        = Icons.Default.CheckCircle,
                     contentDescription = "Completed today",
-                    tint               = MaterialTheme.colorScheme.primary,
+                    tint               = MaterialTheme.blockingColors.unlocked,
                 )
                 isLocked -> Icon(
                     imageVector        = Icons.Default.Lock,
@@ -539,7 +468,7 @@ private fun TaskItem(
                 isOverdue && isActivelyBlocking -> Icon(
                     imageVector        = Icons.Default.Warning,
                     contentDescription = "Overdue",
-                    tint               = MaterialTheme.colorScheme.error,
+                    tint               = MaterialTheme.blockingColors.blocked,
                 )
                 isOverdue -> Icon(
                     imageVector        = Icons.Default.Warning,
@@ -558,7 +487,7 @@ private fun TaskItem(
                 Icon(
                     imageVector        = Icons.Default.Block,
                     contentDescription = "Blocking condition",
-                    tint               = MaterialTheme.colorScheme.error,
+                    tint               = MaterialTheme.blockingColors.blocked,
                 )
             }
         } else null,
@@ -607,7 +536,7 @@ private fun BlockingStatusCard(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                containerColor = MaterialTheme.blockingColors.unlockedContainer,
             ),
         ) {
             Row(
@@ -617,14 +546,14 @@ private fun BlockingStatusCard(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.blockingColors.onUnlockedContainer,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(
                     text = "All clear \u2014 no apps blocked",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.blockingColors.onUnlockedContainer,
                 )
             }
         }
@@ -635,7 +564,7 @@ private fun BlockingStatusCard(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
+                containerColor = MaterialTheme.blockingColors.blockedContainer,
             ),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -643,7 +572,7 @@ private fun BlockingStatusCard(
                     Icon(
                         imageVector = Icons.Default.Block,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
+                        tint = MaterialTheme.blockingColors.onBlockedContainer,
                         modifier = Modifier.size(24.dp),
                     )
                     Spacer(Modifier.width(12.dp))
@@ -651,7 +580,7 @@ private fun BlockingStatusCard(
                     Text(
                         text = "$count app${if (count != 1) "s" else ""} blocked",
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        color = MaterialTheme.blockingColors.onBlockedContainer,
                     )
                 }
 
@@ -672,7 +601,7 @@ private fun BlockingStatusCard(
                             Text(
                                 text = app.label,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                color = MaterialTheme.blockingColors.onBlockedContainer,
                             )
                         }
                     }
@@ -683,7 +612,7 @@ private fun BlockingStatusCard(
                     Text(
                         text = "Complete to unblock:",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        color = MaterialTheme.blockingColors.onBlockedContainer,
                     )
                     Spacer(Modifier.height(4.dp))
 
@@ -697,7 +626,7 @@ private fun BlockingStatusCard(
                             Icon(
                                 imageVector = Icons.Outlined.Circle,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                tint = MaterialTheme.blockingColors.onBlockedContainer,
                                 modifier = Modifier.size(16.dp),
                             )
                             Spacer(Modifier.width(8.dp))
@@ -705,14 +634,14 @@ private fun BlockingStatusCard(
                                 Text(
                                     text = task.title,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    color = MaterialTheme.blockingColors.onBlockedContainer,
                                 )
                                 val hint = blockingVerificationHint(task)
                                 if (hint != null) {
                                     Text(
                                         text = hint,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
+                                        color = MaterialTheme.blockingColors.onBlockedContainer.copy(alpha = 0.7f),
                                     )
                                 }
                             }
@@ -956,49 +885,4 @@ private fun AccessibilityBanner() {
             )
         }
     }
-}
-
-/** shared/CONTRACTS.md, Account deletion. */
-@Composable
-private fun DeleteAccountDialog(
-    onDelete: (onDone: (error: String?) -> Unit) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var deleting by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = { if (!deleting) onDismiss() },
-        title = { Text("Delete your account?") },
-        text = {
-            Column {
-                Text(
-                    "This permanently deletes your account and everything in it, including your " +
-                        "tasks, blocking rules and history, from Brainfence's servers and this " +
-                        "phone. Blocking stops. You can't undo this.",
-                )
-                error?.let {
-                    Spacer(Modifier.height(12.dp))
-                    Text("Couldn't delete your account: $it", color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !deleting,
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                onClick = {
-                    deleting = true
-                    error = null
-                    // On success the app signs out, which closes this screen.
-                    onDelete { e ->
-                        deleting = false
-                        error = e
-                    }
-                },
-            ) { Text(if (deleting) "Deleting…" else "Delete account") }
-        },
-        dismissButton = {
-            TextButton(enabled = !deleting, onClick = onDismiss) { Text("Cancel") }
-        },
-    )
 }

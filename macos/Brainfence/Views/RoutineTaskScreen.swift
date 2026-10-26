@@ -344,7 +344,7 @@ private struct StepCard: View {
             }
         }
         .padding(12)
-        .background(state.isDone ? Palette.primaryContainer.opacity(0.5) : Palette.surfaceContainerLow, in: RoundedRectangle(cornerRadius: 10))
+        .background(state.isDone ? Palette.primaryContainer.opacity(0.3) : Palette.surfaceContainerLow, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

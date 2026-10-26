@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Metric, MetricKind, Report, ReportSubmission } from '@shared/models'
 import {
-  OptionDraft, REPORT_DEFINITION_TABLES, REPORT_SUBMISSION_TABLES, addMetricToReport, addReportFromLibrary, createMetric, createReport,
+  OptionDraft, REPORT_DEFINITION_TABLES, REPORT_SUBMISSION_TABLES, addMetricToReport, addReportFromLibrary, createMetric,
   deleteMetric, deleteReport, getMetrics, getRecentSubmissions, getReport, getReports, moveMetricInReport, removeMetricFromReport, saveMetric, updateReport,
 } from '@shared/repos/reports'
 import { MAX_METRIC_OPTIONS, MIN_METRIC_OPTIONS, NEW_METRIC_OPTIONS, REPORT_LIBRARY, validateMetricDraft } from '@shared/reports'
@@ -13,7 +13,8 @@ import { db, useQuery } from '../lib/hooks'
 import { useRouter } from '../lib/router'
 
 /** Port of ReportsScreen, plus a recent-answers history. */
-export function ReportsScreen() {
+/** Reports, starters and every metric: Review's Reports tab. Review's top bar has New report. */
+export function ReportsList() {
   const { navigate } = useRouter()
   const { data: reports } = useQuery(() => getReports(db), REPORT_DEFINITION_TABLES, [], [] as Report[])
   const { data: metrics } = useQuery(() => getMetrics(db), REPORT_DEFINITION_TABLES, [], [] as Metric[])
@@ -23,7 +24,6 @@ export function ReportsScreen() {
 
   return (
     <>
-      <TopBar title="Reports" back={false} />
       <div className="stack lg">
         <div className="small muted">A report is a set of metrics you answer from a Report task or a routine's report step. Metrics are shared, so every report that asks one feeds a single history.</div>
         <div className="stack sm">
@@ -42,7 +42,6 @@ export function ReportsScreen() {
               <button className="btn text sm" onClick={() => void addReportFromLibrary(db, s)}>Add</button>
             </div>
           ))}
-          <div><button className="btn outlined" onClick={() => void createReport(db, 'New report').then((id) => navigate(`reports/${id}`))}><Icon name="add" /> New report</button></div>
         </div>
         {metrics.length > 0 && (
           <div className="stack sm">

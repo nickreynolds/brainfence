@@ -8,14 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
+import dev.brainfence.ui.theme.blockingColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,25 +42,22 @@ fun BlockingRuleListScreen(
     onRuleTap: (String) -> Unit,
     onCreateRule: () -> Unit,
     onDeleteRule: (String) -> Unit,
-    onBack: () -> Unit,
 ) {
     var deleteTarget by remember { mutableStateOf<RuleListItem?>(null) }
+    val listState = rememberLazyListState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Blocking Rules") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            TopAppBar(title = { Text("Blocking") })
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreateRule) {
-                Icon(Icons.Default.Add, contentDescription = "Create rule")
-            }
+            // Shrinks to just the icon once the list scrolls.
+            ExtendedFloatingActionButton(
+                text = { Text("New rule") },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                onClick = onCreateRule,
+                expanded = !listState.canScrollBackward,
+            )
         },
     ) { padding ->
         if (rules.isEmpty()) {
@@ -74,7 +72,7 @@ fun BlockingRuleListScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Tap + to create a rule that blocks apps until you complete your tasks.",
+                    text = "Tap New rule to create a rule that blocks apps until you complete your tasks.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
@@ -85,6 +83,7 @@ fun BlockingRuleListScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
+                state = listState,
             ) {
                 items(rules, key = { it.rule.id }) { item ->
                     ListItem(
@@ -111,7 +110,7 @@ fun BlockingRuleListScreen(
                                     Icon(
                                         imageVector = Icons.Default.Schedule,
                                         contentDescription = "Pending changes",
-                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        tint = MaterialTheme.blockingColors.pending,
                                     )
                                 }
                                 IconButton(onClick = { deleteTarget = item }) {

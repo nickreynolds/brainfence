@@ -62,7 +62,7 @@ export function HomeLocationScreen() {
 
   return (
     <>
-      <TopBar title="Home location" back={false} />
+      <TopBar title="Home location" />
       <div className="stack lg">
         <div className="small muted">Tasks marked "only block when at home" skip blocking when this PC is outside this radius (e.g. a laptop on vacation). If the location is unknown, they keep blocking.</div>
         {location?.access === 'denied' && (

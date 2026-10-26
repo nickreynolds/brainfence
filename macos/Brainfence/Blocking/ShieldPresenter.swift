@@ -106,7 +106,7 @@ private struct ShieldContent: View {
             HStack(spacing: 12) {
                 Image(systemName: liveBlocks.isEmpty ? "lock.open.fill" : "lock.fill")
                     .font(.system(size: 28))
-                    .foregroundStyle(liveBlocks.isEmpty ? .green : .orange)
+                    .foregroundStyle(liveBlocks.isEmpty ? Palette.unlocked : Palette.blocked)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(liveBlocks.isEmpty ? "Unblocked" : subject.title)
                         .font(.title3.weight(.semibold))
@@ -181,7 +181,7 @@ struct BlockingTaskRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Image(systemName: "circle")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Palette.blocked)
             VStack(alignment: .leading, spacing: 2) {
                 Text(task?.title ?? "Unknown task")
                 if let hint = task?.verificationHint ?? (task == nil ? "Not synced to this Mac yet" : nil) {

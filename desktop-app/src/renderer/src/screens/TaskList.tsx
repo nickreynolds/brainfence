@@ -7,7 +7,7 @@ import { RULE_TABLES, getActiveRules } from '@shared/repos/blocking'
 import { SHOPPING_TABLES, getOpenItemCounts } from '@shared/repos/shopping'
 import { TASK_TABLES, completeTask, getActiveTasks } from '@shared/repos/tasks'
 import { Icon } from '../components/Icon'
-import { AppIcon, Banner, ConfirmDialog, IconButton, ProgressBar, TopBar } from '../components/ui'
+import { AppIcon, Banner, ConfirmDialog, ProgressBar, TopBar } from '../components/ui'
 import { capitalize, formatNextDue, plural } from '../lib/format'
 import { db, useEnforcement, useLocationStatus, useNow, useQuery, useTimers } from '../lib/hooks'
 import { useRouter } from '../lib/router'
@@ -100,13 +100,7 @@ export function TaskListScreen() {
       <TopBar
         title="Tasks"
         back={false}
-        actions={
-          <>
-            <IconButton icon="article" title="Journal history" onClick={() => navigate('journal')} />
-            <IconButton icon="home" title="Home location" onClick={() => navigate('home-location')} />
-            <IconButton icon="add" title="Create task" onClick={() => navigate('editor')} />
-          </>
-        }
+        actions={<button className="btn create" onClick={() => navigate('editor')}><Icon name="add" /> New task</button>}
       />
       <div className="tabs">
         {(['active', 'done', 'upcoming'] as Tab[]).map((t) => {
@@ -221,7 +215,7 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   } else if (showAsUpcoming && task.availableFrom) {
     supporting = `Available at ${task.availableFrom}`
   } else if (isOverdue && isActivelyBlocking) {
-    supporting = <span className="err-text">Overdue — blocking until completed</span>
+    supporting = <span className="blocked-text">Overdue — blocking until completed</span>
   } else if (isOverdue) {
     supporting = 'Overdue'
   } else if (phase === 'ACTIVE' && task.dueAt && !task.completedToday) {
@@ -232,11 +226,11 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   }
 
   const leading = showAsCompleted || isCompletedRecurring
-    ? <Icon name="check" style={{ color: 'var(--primary)' }} />
+    ? <Icon name="check" style={{ color: 'var(--unlocked)' }} />
     : isLocked
       ? <Icon name="lock" style={{ color: 'var(--outline)' }} />
       : isOverdue
-        ? <Icon name="warning" style={{ color: isActivelyBlocking ? 'var(--error)' : 'var(--on-surface-variant)' }} />
+        ? <Icon name="warning" style={{ color: isActivelyBlocking ? 'var(--blocked)' : 'var(--on-surface-variant)' }} />
         : <Icon name="circle" style={{ color: 'var(--outline)' }} />
 
   return (
@@ -250,7 +244,7 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
         {showMeditation && <MeditationProgress state={meditation!} />}
         {supporting && <div className="supporting">{supporting}</div>}
       </div>
-      {isEnforcedBlocker && <Icon name="block" style={{ color: 'var(--error)' }} />}
+      {isEnforcedBlocker && <Icon name="block" style={{ color: 'var(--blocked)' }} />}
     </div>
   )
 }
@@ -280,9 +274,9 @@ function BlockingStatusCard({ tasks, rules, onTap }: { tasks: Task[]; rules: Blo
 
   if (total === 0) {
     return (
-      <div className="card primary">
+      <div className="card unlocked">
         <div className="row" style={{ gap: 12 }}>
-          <Icon name="check" style={{ color: 'var(--primary)' }} />
+          <Icon name="check" />
           <span>All clear — nothing blocked</span>
         </div>
       </div>
@@ -290,10 +284,10 @@ function BlockingStatusCard({ tasks, rules, onTap }: { tasks: Task[]; rules: Blo
   }
 
   return (
-    <div className="card error">
+    <div className="card blocked">
       <div className="stack sm">
         <div className="row" style={{ gap: 12 }}>
-          <Icon name="block" style={{ color: 'var(--error)' }} />
+          <Icon name="block" />
           <span className="title-sm">
             {[state.blockedApps.length ? plural(state.blockedApps.length, 'app') : '', state.blockedDomains.length ? plural(state.blockedDomains.length, 'website') : '']
               .filter(Boolean).join(' and ')} blocked

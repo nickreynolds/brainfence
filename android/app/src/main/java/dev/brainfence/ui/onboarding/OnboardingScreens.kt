@@ -268,7 +268,7 @@ fun GuideScreen(
                 Point(Icons.Default.FormatQuote, "Contemplations",
                     "A remembrance arrives as a notification a few times a day. Tap \"I remember\". Change how often under Contemplations.")
             }
-            Point(Icons.Default.Settings, "Run this again", "⋮ menu → Setup guide.")
+            Point(Icons.Default.Settings, "Run this again", "Settings → Run setup guide.")
         }
     }
 }

@@ -268,7 +268,7 @@ struct JournalTaskScreen: View {
             VStack(alignment: .leading, spacing: 12) {
                 if task.completedToday {
                     CompletedToday()
-                    Button("View journal history") { model.navigation.section = .journal }
+                    Button("View journal history") { model.navigation.showJournal() }
                         .frame(maxWidth: .infinity)
                 } else {
                     if let description = task.description { Text(description).foregroundStyle(.secondary) }

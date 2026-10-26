@@ -10,7 +10,32 @@ struct SettingsView: View {
     @State private var deleteError: String?
 
     var body: some View {
+        @Bindable var navigation = model.navigation
+        NavigationStack(path: $navigation.settingsPath) {
+            form
+                .navigationDestination(for: AppNavigation.SettingsRoute.self) { route in
+                    switch route {
+                    case .contemplations: ContemplationsView()
+                    case .deck(let id): DeckEditorView(deckId: id)
+                    case .debug: DebugView()
+                    }
+                }
+        }
+    }
+
+    private var form: some View {
         Form {
+            Section("Contemplations") {
+                NavigationLink(value: AppNavigation.SettingsRoute.contemplations) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Contemplations")
+                        Text("Prompts sent through the day, and their decks")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Section("Account") {
                 if case .signedIn(_, let email) = model.session.state {
                     LabeledContent("Signed in as", value: email ?? "—")
@@ -27,7 +52,7 @@ struct SettingsView: View {
                 if let deleteError {
                     Text("Couldn't delete your account: \(deleteError)")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Palette.error)
                 }
             }
             .confirmationDialog("Delete your account?", isPresented: $confirmingDelete) {
@@ -83,8 +108,12 @@ struct SettingsView: View {
                 Section("Rejected uploads") {
                     Text("\(plural(model.uploadLog.items.count, "upload")) rejected by the server. Details are under Debug.")
                         .font(.caption)
-                    Button("Show Debug Log") { model.navigation.section = .debug }
+                    Button("Show Debug Log") { model.navigation.settingsPath.append(.debug) }
                 }
+            }
+
+            Section("Troubleshooting") {
+                NavigationLink("Debug Log", value: AppNavigation.SettingsRoute.debug)
             }
         }
         .formStyle(.grouped)

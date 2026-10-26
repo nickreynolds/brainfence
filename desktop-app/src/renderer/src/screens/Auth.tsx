@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ErrorText, Field, TextInput } from '../components/ui'
+import { ErrorText, Field, Logo, TextInput } from '../components/ui'
 import { useAction } from '../lib/hooks'
 
 /** Port of SignInScreen / SignUpScreen. */
@@ -43,7 +43,7 @@ export function AuthScreen() {
     <div className="center-screen" style={{ minHeight: '100vh', padding: 24 }}>
       <div className="stack" style={{ width: 'min(380px, 100%)', textAlign: 'left' }}>
         <div className="row" style={{ gap: 12, marginBottom: 8 }}>
-          <div className="nav-brand" style={{ padding: 0 }}><div className="logo">B</div></div>
+          <div className="nav-brand" style={{ padding: 0 }}><Logo /></div>
           <h1 style={{ fontSize: 26 }}>Brainfence</h1>
         </div>
         <div className="title-md">{mode === 'signIn' ? 'Sign in' : 'Create account'}</div>

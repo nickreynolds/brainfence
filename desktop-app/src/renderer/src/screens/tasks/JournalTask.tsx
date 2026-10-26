@@ -35,7 +35,7 @@ export function JournalTaskScreen({ task }: { task: Task }) {
       <>
         <TaskTopBar task={task} />
         <CompletedToday />
-        <div className="center"><button className="btn text" onClick={() => navigate('journal')}>View journal history</button></div>
+        <div className="center"><button className="btn text" onClick={() => navigate('review')}>View journal history</button></div>
       </>
     )
   }

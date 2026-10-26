@@ -61,7 +61,7 @@ export function ContemplationsScreen() {
 
   return (
     <>
-      <TopBar title="Contemplations" back={false} />
+      <TopBar title="Contemplations" />
       <div className="stack lg">
         <div className="small muted">"To be a happy person, one must contemplate death five times daily." Short passages arrive as notifications at random times through your day.</div>
 

@@ -61,7 +61,7 @@ export function BlockingRulesScreen() {
 
   return (
     <>
-      <TopBar title="Blocking Rules" back={false} actions={<IconButton icon="add" title="New rule" onClick={() => navigate('blocking/new')} />} />
+      <TopBar title="Blocking rules" back={false} actions={<button className="btn create" onClick={() => navigate('blocking/new')}><Icon name="add" /> New rule</button>} />
       {loading ? <Loading /> : rules.length === 0 ? (
         <div className="empty stack sm">
           <div className="title-sm">No blocking rules yet</div>
@@ -74,16 +74,16 @@ export function BlockingRulesScreen() {
             return (
               <div key={rule.id} className="card clickable" onClick={() => navigate(`blocking/${rule.id}`)}>
                 <div className="row top">
-                  <Icon name="block" style={{ color: blocking ? 'var(--error)' : rule.isActive ? 'var(--primary)' : 'var(--outline)' }} />
+                  <Icon name="block" style={{ color: blocking ? 'var(--blocked)' : rule.isActive ? 'var(--unlocked)' : 'var(--outline)' }} />
                   <div className="grow stack sm">
                     <div className="row wrap">
                       <span className="title-md">{rule.name}</span>
                       {!rule.isActive && <span className="small muted">· Inactive</span>}
-                      {blocking && <span className="small err-text">· Blocking now</span>}
+                      {blocking && <span className="small blocked-text">· Blocking now</span>}
                     </div>
                     <div className="small muted">{ruleSummary(rule)}</div>
                     <div className="small muted">{plural(rule.conditionTaskIds.length, 'condition task')} · {rule.conditionLogic === 'any' ? 'any' : 'all'} must be done</div>
-                    {rule.pendingChanges && <div className="small" style={{ color: 'var(--tertiary)' }}>Changes pending — apply {formatCountdown(rule.changesApplyAt, now)}</div>}
+                    {rule.pendingChanges && <div className="small pending-text">Changes pending — apply {formatCountdown(rule.changesApplyAt, now)}</div>}
                   </div>
                   <IconButton
                     icon="delete"
@@ -202,7 +202,7 @@ export function RuleEditorScreen({ ruleId }: { ruleId: string | null }) {
       <TopBar title={ruleId ? 'Edit Rule' : 'New Rule'} />
       <div className="stack lg">
         {rule?.pendingChanges && (
-          <div className="card tertiary row">
+          <div className="card pending row">
             <Icon name="lock" />
             <div className="grow">
               <div className="title-sm">Changes pending</div>
@@ -214,7 +214,7 @@ export function RuleEditorScreen({ ruleId }: { ruleId: string | null }) {
         {ruleId && (
           <div className="small muted row"><Icon name="lock" size="sm" /> Changes that loosen an existing rule are time-locked and take {rule?.configLockHours ?? 24} hours to apply. Tightening applies immediately.</div>
         )}
-        {notice && <Banner icon="lock" tone="tertiary" action={<button className="btn text sm" onClick={back}>Done</button>}>{notice}</Banner>}
+        {notice && <Banner icon="lock" tone="pending" action={<button className="btn text sm" onClick={back}>Done</button>}>{notice}</Banner>}
 
         <Field label="Rule name"><TextInput value={s.name} onChange={(name) => update({ name })} autoFocus={!ruleId} /></Field>
         {ruleId && (

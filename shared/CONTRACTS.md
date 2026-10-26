@@ -10,7 +10,7 @@ definitions and test cases instead:
 | Path | What | Consumed by |
 | --- | --- | --- |
 | `schema.json` | Synced tables and columns, with which columns hold JSON or booleans | `codegen.mjs` → each client's PowerSync schema and upload column lists |
-| `tokens.json` | Color palette (Material 3 roles, light and dark) | `codegen.mjs` → Compose colors, CSS variables, SwiftUI colors |
+| `tokens.json` | Color palette, light and dark: Material 3 roles plus blocking-state roles | `codegen.mjs` → Compose colors, CSS variables and a TypeScript map, SwiftUI colors |
 | `fixtures/*.json` | Test cases for the rules below | Each client's unit tests load them directly |
 
 Run `npm run codegen` from the repo root after editing `schema.json` or
@@ -20,12 +20,34 @@ they are out of date. Generated files (don't edit by hand):
 | Client | From `schema.json` | From `tokens.json` |
 | --- | --- | --- |
 | Android | `data/db/AppSchema.kt` (schema + `JSON_ENCODED_COLUMNS`) | `ui/theme/Color.kt` |
-| Windows | `src/shared/schema.generated.ts` | `src/renderer/src/tokens.css` |
+| Windows | `src/shared/schema.generated.ts` | `src/renderer/src/tokens.css`, `src/shared/tokens.generated.ts` |
 | macOS | `Brainfence/Sync/AppSchema.swift`, `BrainfenceCore/…/SchemaColumns.swift` | `Brainfence/Theme/Palette.swift` |
 
-The palette starts as the Material 3 baseline that Android was already
-rendering (Compose material3 1.3.1 defaults, plus Android's original light
-`primary`). Change it in `tokens.json` to restyle every client at once.
+### Colors
+
+The palette is the **Foil** direction from branding round 4
+(`branding/src/schemes.mjs`, shown in the Brand Lab gallery), built from the
+app icon's Static colors. Surfaces and buttons are greys, near-black on light
+and near-white on dark, and the neon colors carry meaning. Change
+`tokens.json` to restyle every client at once.
+
+`color` holds the Material 3 roles. `blocking` holds three app families, each
+with `X`, `onX`, `XContainer` and `onXContainer`. Every client uses them for
+the same things:
+
+| Family | Means | Used for |
+| --- | --- | --- |
+| `blocked` (magenta) | Something is blocked right now | The block screen and overlay, the "N blocked" status card, "Blocking now" on a rule, lock icons, overdue tasks that are blocking |
+| `unlocked` (lime) | Nothing is blocked, or a gating task is done | The "All clear" card, an active rule that isn't blocking, the check on a task done today, the sync dot when connected |
+| `pending` (cyan) | A loosening change is waiting out its time lock | The pending-change notice and icon on a rule |
+
+Rules for using them:
+
+- On an `XContainer` fill, text and icons use `onXContainer`, never `X`.
+- `error` is only for real errors (failed saves, sign-in problems), not for blocking.
+- `primaryContainer` is the brand lime in both modes. Anything drawn on it uses
+  `onPrimaryContainer`, including secondary text, which would be unreadable in
+  dark mode in `onSurface` or `onSurfaceVariant`.
 
 ## Platform-tagged app entries
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Icon, IconName } from './components/Icon'
-import { Loading } from './components/ui'
+import { Loading, Logo } from './components/ui'
 import { useAuth, useEnforcement, useSyncStatus } from './lib/hooks'
 import { RouterProvider, routeParts, useRouter } from './lib/router'
 import { AuthScreen } from './screens/Auth'
@@ -8,9 +8,9 @@ import { BlockingRulesScreen, RuleEditorScreen } from './screens/BlockingRules'
 import { ContemplationsScreen, DeckEditorScreen } from './screens/Contemplations'
 import { DebugScreen } from './screens/Debug'
 import { HomeLocationScreen } from './screens/HomeLocation'
-import { JournalHistoryScreen } from './screens/JournalHistory'
 import { DeviceSetupScreen, GuideScreen, useOnboardingFlow } from './screens/Onboarding'
-import { MetricEditorScreen, ReportEditorScreen, ReportsScreen } from './screens/Reports'
+import { MetricEditorScreen, ReportEditorScreen } from './screens/Reports'
+import { ReviewScreen } from './screens/Review'
 import { SettingsScreen } from './screens/Settings'
 import { TaskEditorScreen } from './screens/TaskEditor'
 import { TaskListScreen } from './screens/TaskList'
@@ -27,23 +27,30 @@ export function App() {
   )
 }
 
+// The same four sections as Android's bottom bar.
 const NAV: { route: string; label: string; icon: IconName }[] = [
   { route: 'home', label: 'Tasks', icon: 'tasks' },
   { route: 'blocking', label: 'Blocking rules', icon: 'block' },
-  { route: 'contemplations', label: 'Contemplations', icon: 'meditation' },
-  { route: 'reports', label: 'Reports', icon: 'report' },
-  { route: 'journal', label: 'Journal', icon: 'article' },
-  { route: 'home-location', label: 'Home location', icon: 'home' },
+  { route: 'review', label: 'Review', icon: 'article' },
   { route: 'settings', label: 'Settings', icon: 'settings' },
-  { route: 'debug', label: 'Debug logs', icon: 'bug' },
 ]
+
+/** The sidebar section each route belongs to. */
+const SECTION_OF: Record<string, string> = {
+  task: 'home',
+  editor: 'home',
+  reports: 'review',
+  contemplations: 'settings',
+  'home-location': 'settings',
+  debug: 'settings',
+}
 
 function Shell({ email }: { email: string | null }) {
   const { route, navigate } = useRouter()
   const enforcement = useEnforcement()
   const sync = useSyncStatus()
   const section = routeParts(route)[0]
-  const navSection = section === 'task' || section === 'editor' ? 'home' : section
+  const navSection = SECTION_OF[section] ?? section
   const blockedCount = (enforcement?.state.blockedApps.length ?? 0) + (enforcement?.state.blockedDomains.length ?? 0)
   const onboarding = useOnboardingFlow()
 
@@ -63,14 +70,14 @@ function Shell({ email }: { email: string | null }) {
     <div className="shell">
       <nav className="nav">
         <div className="nav-brand">
-          <div className="logo">B</div>
+          <Logo />
           <span>Brainfence</span>
         </div>
         {NAV.map((n) => (
           <button key={n.route} className={`nav-item ${navSection === n.route ? 'active' : ''}`} onClick={() => navigate(n.route, { reset: true })} title={n.label}>
             <Icon name={n.icon} />
             <span>{n.label}</span>
-            {n.route === 'blocking' && blockedCount > 0 && <span className="badge small err-text">{blockedCount} blocked</span>}
+            {n.route === 'blocking' && blockedCount > 0 && <span className="badge small blocked-text">{blockedCount} blocked</span>}
           </button>
         ))}
         <div className="nav-spacer" />
@@ -97,10 +104,10 @@ function Route({ route }: { route: string }) {
     case 'editor': return <TaskEditorScreen key={a ?? 'new'} taskId={a ?? null} />
     case 'blocking': return a ? <RuleEditorScreen key={a} ruleId={a === 'new' ? null : a} /> : <BlockingRulesScreen />
     case 'contemplations': return a === 'deck' && b ? <DeckEditorScreen key={b} deckId={b} /> : <ContemplationsScreen />
+    case 'review': return <ReviewScreen tab={a === 'reports' ? 'reports' : 'journal'} />
     case 'reports':
       if (a === 'metric' && b) return <MetricEditorScreen key={b} metricId={b} />
-      return a ? <ReportEditorScreen key={a} reportId={a} /> : <ReportsScreen />
-    case 'journal': return <JournalHistoryScreen />
+      return a ? <ReportEditorScreen key={a} reportId={a} /> : <ReviewScreen tab="reports" />
     case 'home-location': return <HomeLocationScreen />
     case 'settings': return <SettingsScreen />
     case 'debug': return <DebugScreen />

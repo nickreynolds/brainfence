@@ -9,7 +9,7 @@ struct MenuBarContent: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: model.engine.state.isBlocking ? "lock.fill" : "lock.open.fill")
-                    .foregroundStyle(model.engine.state.isBlocking ? .orange : .green)
+                    .foregroundStyle(model.engine.state.isBlocking ? Palette.blocked : Palette.unlocked)
                 Text(model.engine.state.isBlocking ? "Blocking" : "Nothing blocked")
                     .font(.headline)
                 Spacer()

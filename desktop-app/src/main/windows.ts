@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
+import { COLORS } from '@shared/tokens.generated'
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false
@@ -7,6 +8,9 @@ let quitting = false
 export const preloadPath = () => join(__dirname, '../preload/index.js')
 export const resourcePath = (name: string) =>
   app.isPackaged ? join(process.resourcesPath, name) : join(__dirname, '../../resources', name)
+
+/** What a window shows before the renderer paints: the current theme's surface. */
+export const surfaceColor = () => COLORS[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'].surface
 
 /** Load the renderer at a hash route ("" = the main app, "overlay" = the blocking overlay). */
 export function loadRenderer(win: BrowserWindow, route = ''): void {
@@ -28,7 +32,7 @@ export function createMainWindow(showOnCreate: boolean): BrowserWindow {
     show: false,
     title: 'Brainfence',
     icon: resourcePath('icon.png'),
-    backgroundColor: '#fffbfe',
+    backgroundColor: surfaceColor(),
     autoHideMenuBar: true,
     webPreferences: { preload: preloadPath(), contextIsolation: true, sandbox: false },
   })

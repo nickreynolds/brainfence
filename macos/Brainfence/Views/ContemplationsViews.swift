@@ -3,21 +3,9 @@ import SwiftUI
 
 /// Delivery schedule (per device), decks and recent deliveries. Port of
 /// Android's ContemplationSettingsScreen and ContemplationDeckScreen.
+/// Contemplation schedule and decks: a page of Settings, which shows each deck
+/// in a DeckEditorView.
 struct ContemplationsView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        @Bindable var navigation = model.navigation
-        NavigationStack(path: $navigation.deckPath) {
-            ContemplationSettingsView()
-                .navigationDestination(for: String.self) { deckId in
-                    DeckEditorView(deckId: deckId)
-                }
-        }
-    }
-}
-
-private struct ContemplationSettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var form = ContemplationScheduler.Settings()
     @State private var decks: [ContemplationDeck] = []
@@ -85,7 +73,7 @@ private struct ContemplationSettingsView: View {
                 Button("New Deck") {
                     act {
                         let id = try await model.contemplationRepository.createDeck(userId: model.requireUserId(), name: "New deck")
-                        model.navigation.deckPath.append(id)
+                        model.navigation.settingsPath.append(.deck(id))
                     }
                 }
             }
@@ -187,7 +175,7 @@ private struct DeliveryRow: View {
     }
 }
 
-private struct DeckEditorView: View {
+struct DeckEditorView: View {
     let deckId: String
     @Environment(AppModel.self) private var model
     @State private var deck: ContemplationDeck?
@@ -276,7 +264,7 @@ private struct DeckEditorView: View {
             Button("Delete", role: .destructive) {
                 act {
                     try await model.contemplationRepository.deleteDeck(id: deckId)
-                    model.navigation.deckPath.removeAll()
+                    _ = model.navigation.settingsPath.popLast()
                 }
             }
             Button("Keep", role: .cancel) {}
@@ -334,7 +322,7 @@ private struct DeckEditorView: View {
                 id: deckId, name: trimmed, description: desc.isEmpty ? nil : desc, ordering: ordering,
                 responseType: responseType, responseLabel: label.isEmpty ? nil : label, weight: weight
             )
-            model.navigation.deckPath.removeAll()
+            _ = model.navigation.settingsPath.popLast()
         }
     }
 

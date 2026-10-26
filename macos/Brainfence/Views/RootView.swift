@@ -41,11 +41,8 @@ struct MainView: View {
         } detail: {
             switch navigation.section {
             case .tasks: TasksView()
-            case .journal: NavigationStack { JournalHistoryView() }
-            case .reports: ReportsView()
-            case .contemplations: ContemplationsView()
             case .rules: RulesView()
-            case .debug: NavigationStack { DebugView() }
+            case .review: ReviewView()
             case .settings: SettingsView()
             }
         }
@@ -158,7 +155,7 @@ struct SyncStatusBadge: View {
         let status = model.db.currentStatus.observable
         HStack(spacing: 6) {
             Circle()
-                .fill(status.anyError != nil ? .red : status.connected ? .green : .orange)
+                .fill(status.anyError != nil ? Palette.error : status.connected ? Palette.unlocked : Palette.pending)
                 .frame(width: 8, height: 8)
             Text(label(status))
                 .font(.caption)

@@ -21,7 +21,7 @@ export function DebugScreen() {
 
   return (
     <>
-      <TopBar title="Debug Logs" back={false} actions={<IconButton icon="delete" title="Clear logs" onClick={() => void window.api.debug.clear().then(load)} />} />
+      <TopBar title="Debug logs" actions={<IconButton icon="delete" title="Clear logs" onClick={() => void window.api.debug.clear().then(load)} />} />
       <div className="stack">
         {enforcement && (
           <div className="card mono stack sm">

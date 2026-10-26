@@ -7,7 +7,7 @@
   const cache = new Map();
   const src = (svg) => { if (!cache.has(svg)) cache.set(svg, url(svg)); return cache.get(svg); };
 
-  const state = { round: store.get('bf-round'), pal: store.get('bf-pal'), hero: store.get('bf-hero') };
+  const state = { round: store.get('bf-round'), pal: store.get('bf-pal'), hero: store.get('bf-hero'), scheme: store.get('bf-scheme') };
   const round = () => data.rounds.find((r) => r.id === state.round);
   // Keep the palette and lockup choice valid for the current round.
   function settle() {
@@ -61,9 +61,23 @@
     return el;
   }
 
+  // Round 4 swaps the icon concepts for the app palette directions.
+  const schemeBtns = [...document.querySelectorAll('[data-scheme-btn]')];
+  const schemeEls = [...document.querySelectorAll('[data-scheme]')];
+  if (!schemeEls.some((el) => el.dataset.scheme === state.scheme)) state.scheme = schemeEls[0] && schemeEls[0].dataset.scheme;
+  function showScheme() {
+    for (const el of schemeEls) el.hidden = el.dataset.scheme !== state.scheme;
+    for (const b of schemeBtns) b.setAttribute('aria-checked', String(b.dataset.schemeBtn === state.scheme));
+  }
+  for (const b of schemeBtns) b.addEventListener('click', () => { state.scheme = b.dataset.schemeBtn; store.set('bf-scheme', state.scheme); showScheme(); });
+  showScheme();
+
   function build() {
     settle();
     const r = round();
+    const palette = r.kind === 'palette';
+    document.getElementById('icon-concepts').hidden = palette;
+    document.getElementById('app-palette').hidden = !palette;
     pals.replaceChildren(...r.palettes.map((id) => palChip(palById[id])));
     marks.replaceChildren(...r.marks.map((id) => markCard(byId[id])));
     document.getElementById('round-note').textContent = r.note;

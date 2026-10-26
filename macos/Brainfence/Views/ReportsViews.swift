@@ -2,7 +2,8 @@ import BrainfenceCore
 import SwiftUI
 
 /// Every journal entry, newest first. Port of Android's JournalHistoryScreen.
-struct JournalHistoryView: View {
+/// Journal entries, newest first: Review's Journal tab.
+private struct JournalHistoryView: View {
     @Environment(AppModel.self) private var model
     @State private var entries: [JournalEntry] = []
     @State private var loaded = false
@@ -26,7 +27,6 @@ struct JournalHistoryView: View {
                 .padding(.vertical, 4)
             }
         }
-        .navigationTitle("Journal")
         .reloading(on: ShoppingRepository.journalTables, db: model.db) {
             entries = (try? await model.shoppingRepository.journalEntries()) ?? []
             loaded = true
@@ -36,19 +36,61 @@ struct JournalHistoryView: View {
 
 /// Reports, metrics and recent answers, with editors. Port of Android's
 /// ReportsScreen, ReportEditorScreen and MetricEditorScreen.
-struct ReportsView: View {
+/// The Review section: journal entries and reports, as tabs. Port of
+/// Android's ReviewScreen.
+struct ReviewView: View {
     @Environment(AppModel.self) private var model
+    @State private var error: String?
 
     var body: some View {
         @Bindable var navigation = model.navigation
         NavigationStack(path: $navigation.reportPath) {
-            ReportListView()
-                .navigationDestination(for: AppNavigation.ReportRoute.self) { route in
-                    switch route {
-                    case .report(let id): ReportEditorView(reportId: id)
-                    case .metric(let id): MetricEditorView(metricId: id)
+            Group {
+                switch navigation.reviewTab {
+                case .journal: JournalHistoryView()
+                case .reports: ReportListView()
+                }
+            }
+            .navigationTitle("Review")
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Review", selection: $navigation.reviewTab) {
+                        ForEach(AppNavigation.ReviewTab.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                if navigation.reviewTab == .reports {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: newReport) {
+                            Label("New Report", systemImage: "plus")
+                        }
+                        .buttonStyle(.create)
                     }
                 }
+            }
+            .navigationDestination(for: AppNavigation.ReportRoute.self) { route in
+                switch route {
+                case .report(let id): ReportEditorView(reportId: id)
+                case .metric(let id): MetricEditorView(metricId: id)
+                }
+            }
+            .alert("Couldn't create the report", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                Button("OK") { error = nil }
+            } message: {
+                Text(error ?? "")
+            }
+        }
+    }
+
+    private func newReport() {
+        Task {
+            do {
+                let id = try await model.reportRepository.createReport(userId: model.requireUserId(), name: "New report")
+                model.navigation.reportPath.append(.report(id))
+            } catch {
+                self.error = error.localizedDescription
+            }
         }
     }
 }
@@ -86,12 +128,6 @@ private struct ReportListView: View {
                         Button("Add") { act { try await model.reportRepository.addFromLibrary(starter, userId: model.requireUserId()) } }
                     }
                 }
-                Button("New Report") {
-                    act {
-                        let id = try await model.reportRepository.createReport(userId: model.requireUserId(), name: "New report")
-                        model.navigation.reportPath.append(.report(id))
-                    }
-                }
             }
             if !metrics.isEmpty {
                 Section("All metrics") {
@@ -121,7 +157,6 @@ private struct ReportListView: View {
                 }
             }
         }
-        .navigationTitle("Reports")
         .reloading(on: ReportRepository.definitionTables + ReportRepository.submissionTables, db: model.db) {
             reports = (try? await model.reportRepository.reports()) ?? []
             metrics = (try? await model.reportRepository.metrics()) ?? []
@@ -450,7 +485,7 @@ struct ReportForm: View {
                             let selected = answers[metric.id] == option.id
                             Button(option.label) { answers[metric.id] = option.id }
                                 .buttonStyle(.bordered)
-                                .tint(selected ? Palette.primary : nil)
+                                .tint(selected ? Palette.onPrimaryContainer : nil)
                                 .background(selected ? Palette.primaryContainer : .clear, in: RoundedRectangle(cornerRadius: 6))
                                 .disabled(isSubmitting)
                         }

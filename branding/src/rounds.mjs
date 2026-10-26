@@ -1,6 +1,7 @@
 // Exploration rounds, oldest first. A round lists the marks and palettes it
 // shows. Earlier rounds stay as they were reviewed: to revise a mark, add a
-// new one in a new round instead of editing the old file.
+// new one in a new round instead of editing the old file. A round of kind
+// 'palette' shows the app palette section (app-palette.mjs) instead of marks.
 
 import foilCrown from './marks/foil-crown.mjs';
 import faradayDome from './marks/faraday-dome.mjs';
@@ -40,5 +41,14 @@ export const rounds = [
     note: 'Chainlink Crown in Static is still the favourite. These keep everything about it and change one or two details, mostly how much wire is on top. The original comes first.',
     palettes: ['static'],
     marks: [chainlinkCrown, ...chainlinkVariants],
+  },
+  {
+    id: 'r4',
+    title: 'Round 4',
+    subtitle: 'App palette',
+    kind: 'palette',
+    note: 'Chainlink Crown in Static is the icon. This round takes its colors into the apps themselves. Foil was picked and is now the palette in shared/tokens.json.',
+    palettes: ['static'],
+    marks: [chainlinkCrown],
   },
 ];

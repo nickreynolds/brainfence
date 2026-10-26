@@ -112,7 +112,7 @@ final class AppModel {
             switch target {
             case .task(let id): self.open(taskId: id)
             case .contemplations:
-                self.navigation.section = .contemplations
+                self.navigation.showContemplations()
                 self.openMainWindow()
             case .tasks:
                 self.navigation.section = .tasks

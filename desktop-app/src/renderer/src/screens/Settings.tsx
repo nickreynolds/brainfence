@@ -78,6 +78,12 @@ export function SettingsScreen() {
         </div>
 
         <div className="stack sm">
+          <div className="title-md">Blocking and reminders</div>
+          <SettingsLink title="Home location" detail="Where home-only blocking applies and arrival reminders fire" onOpen={() => navigate('home-location')} />
+          <SettingsLink title="Contemplations" detail="Prompts sent through the day, and their decks" onOpen={() => navigate('contemplations')} />
+        </div>
+
+        <div className="stack sm">
           <div className="title-md">Setup guide</div>
           <div className="card row">
             <div className="grow">
@@ -103,6 +109,11 @@ export function SettingsScreen() {
               <button className="btn text sm" onClick={() => void window.api.window.quit()}>Quit Brainfence…</button>
             </div>
           </div>
+        </div>
+
+        <div className="stack sm">
+          <div className="title-md">Troubleshooting</div>
+          <SettingsLink title="Debug logs" detail="Recent events, for troubleshooting" onOpen={() => navigate('debug')} />
         </div>
       </div>
       {confirmSignOut && (
@@ -139,5 +150,18 @@ export function SettingsScreen() {
         />
       )}
     </>
+  )
+}
+
+/** A row that opens one of Settings' own pages. */
+function SettingsLink({ title, detail, onOpen }: { title: string; detail: string; onOpen: () => void }) {
+  return (
+    <div className="card row clickable" onClick={onOpen}>
+      <div className="grow">
+        <div className="title-sm">{title}</div>
+        <div className="small muted">{detail}</div>
+      </div>
+      <Icon name="chevron" />
+    </div>
   )
 }

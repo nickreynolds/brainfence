@@ -48,7 +48,7 @@ export function OverlayApp() {
   return (
     <div className="overlay">
       <div className="overlay-card">
-        <Icon name="block" size="xl" style={{ color: stillBlocked ? '#f2b8b5' : '#d0bcff', margin: '0 auto' }} />
+        <Icon name="block" size="xl" style={{ color: stillBlocked ? 'var(--blocked)' : 'var(--unlocked)', margin: '0 auto' }} />
         {stillBlocked ? (
           <>
             <h1 style={{ fontSize: 30, fontWeight: 500 }}>{ctx?.name ?? 'This app'} is blocked</h1>

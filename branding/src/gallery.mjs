@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 
+import { paletteSection, PALETTE_CSS } from './app-palette.mjs';
+
 // The exploration gallery: one self-contained HTML page with every generated
 // SVG embedded. Palette and lockup choices switch client-side.
 
@@ -103,12 +105,13 @@ const BODY = `
   <p class="pal-note" id="pal-note"></p>
 </div></header>
 <main class="wrap">
-  <section>
+  <section id="icon-concepts">
     <h2>Icon concepts</h2>
     <p class="round-note" id="round-note"></p>
     <p class="intro">Each concept comes in three variants. The poster adds halftone and scanlines, the icon is a flat tile for app stores and docks, and mono is a single-color template for Android themed icons, the macOS menu bar and the Windows tray.</p>
     <div class="marks" id="marks"></div>
   </section>
+${paletteSection()}
   <section>
     <h2>Lockups</h2>
     <p class="intro">Showing <strong id="hero-name"></strong>. Click Use in lockups on any concept to swap it in. The banner is 1500×500, the X header size.</p>
@@ -134,6 +137,9 @@ branding/src/marks/crowns/     round 2: guy.mjs plus one file per fence crown
 branding/src/type.mjs          Fence Stencil glyphs and text setting
 branding/src/fx.mjs            RGB split, glitch slices, streaks, halftone, fence lattice
 branding/src/compose.mjs       icon, poster and mono variants, lockups, banner
+branding/src/schemes.mjs       round 4: app palette directions and contrast checks
+branding/src/color.mjs         tonal ramps (L* tones) and WCAG contrast
+branding/src/app-palette.mjs   round 4 mock screens, role lists, contrast tables
 branding/out/marks/&lt;id&gt;/       &lt;id&gt;-&lt;palette&gt;-icon.svg, -poster.svg, &lt;id&gt;-mono.svg</pre>
   </section>
 </main>
@@ -148,7 +154,7 @@ export function gallery(data, { fragment }) {
     `<title>Brainfence Brand Lab</title>\n` +
     `<meta name="claude:viewport-fit-sides" content="cover">\n` +
     `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n` +
-    `<link rel="stylesheet" href="${FONTS}">\n<style>${CSS}</style>\n`;
+    `<link rel="stylesheet" href="${FONTS}">\n<style>${CSS}${PALETTE_CSS}</style>\n`;
   const body = `${BODY}<script type="application/json" id="brand-data">${json}</script>\n<script>${SCRIPT}</script>\n`;
   if (fragment) return head + body;
   return (

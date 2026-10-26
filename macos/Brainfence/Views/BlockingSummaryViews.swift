@@ -9,7 +9,7 @@ struct ActiveBlockRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: "lock.fill").foregroundStyle(.orange)
+                Image(systemName: "lock.fill").foregroundStyle(Palette.blocked)
                 Text(block.rule.name).font(.headline)
             }
             Text(BlockedTargetsSummary(rule: block.rule).text)

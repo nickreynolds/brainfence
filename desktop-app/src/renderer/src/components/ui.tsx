@@ -1,6 +1,12 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { useRouter } from '../lib/router'
 import { Icon, IconName } from './Icon'
+import icon from '../../../../resources/icon.png'
+
+/** The app icon, as the brand mark beside the name. */
+export function Logo() {
+  return <img className="logo" src={icon} alt="" />
+}
 
 export function TopBar({ title, actions, back = true }: { title: ReactNode; actions?: ReactNode; back?: boolean }) {
   const router = useRouter()
@@ -155,7 +161,7 @@ export function ConfirmDialog({ title, message, confirmLabel, cancelLabel = 'Can
   )
 }
 
-export function Banner({ icon, tone = 'error', children, onClick, action }: { icon: IconName; tone?: 'error' | 'secondary' | 'primary' | 'tertiary'; children: ReactNode; onClick?: () => void; action?: ReactNode }) {
+export function Banner({ icon, tone = 'error', children, onClick, action }: { icon: IconName; tone?: 'error' | 'secondary' | 'primary' | 'tertiary' | 'blocked' | 'unlocked' | 'pending'; children: ReactNode; onClick?: () => void; action?: ReactNode }) {
   return (
     <div className={`card ${tone} ${onClick ? 'clickable' : ''}`} onClick={onClick}>
       <div className="row" style={{ gap: 12 }}>

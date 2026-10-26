@@ -71,7 +71,7 @@ struct DayPicker: View {
                     if on { selection.removeAll { $0 == day } } else { selection.append(day) }
                 }
                 .buttonStyle(.bordered)
-                .tint(on ? Palette.primary : nil)
+                .tint(on ? Palette.onPrimaryContainer : nil)
                 .background(on ? Palette.primaryContainer : .clear, in: RoundedRectangle(cornerRadius: 6))
             }
         }
@@ -195,4 +195,23 @@ struct ProgressRing<Content: View>: View {
         }
         .frame(width: 200, height: 200)
     }
+}
+
+/// A section's main create action (New Task, New Rule, New Report) in the
+/// brand lime: the desktop counterpart of Android's floating action button.
+struct CreateButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .labelStyle(.titleAndIcon)
+            .font(.body.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .foregroundStyle(Palette.onPrimaryContainer)
+            .background(Palette.primaryContainer.opacity(configuration.isPressed ? 0.8 : 1), in: Capsule())
+            .contentShape(Capsule())
+    }
+}
+
+extension ButtonStyle where Self == CreateButtonStyle {
+    static var create: CreateButtonStyle { CreateButtonStyle() }
 }

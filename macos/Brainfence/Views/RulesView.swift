@@ -35,6 +35,7 @@ struct RulesView: View {
             } label: {
                 Label("New Rule", systemImage: "plus")
             }
+            .buttonStyle(.create)
         }
         .sheet(item: $editing) { target in
             switch target {
@@ -60,7 +61,7 @@ private struct RuleRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: !rule.isActive ? "pause.circle" : isBlocking ? "lock.fill" : "lock.open")
-                    .foregroundStyle(!rule.isActive ? Color.secondary : isBlocking ? .orange : .green)
+                    .foregroundStyle(!rule.isActive ? Color.secondary : isBlocking ? Palette.blocked : Palette.unlocked)
                 Text(rule.name).font(.headline)
                 if !rule.isActive {
                     Text("Inactive").font(.caption).foregroundStyle(.secondary)
@@ -133,7 +134,8 @@ struct PendingChangeBanner: View {
             .controlSize(.small)
         }
         .padding(8)
-        .background(Color.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+        .foregroundStyle(Palette.onPendingContainer)
+        .background(Palette.pendingContainer, in: RoundedRectangle(cornerRadius: 6))
     }
 
     private var message: String {

@@ -71,6 +71,7 @@ private struct TaskListView: View {
             } label: {
                 Label("New Task", systemImage: "plus")
             }
+            .buttonStyle(.create)
         }
         .confirmationDialog("Complete task?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }), presenting: confirming) { task in
             Button("Complete") { complete(task) }
@@ -174,13 +175,13 @@ private struct TaskListRow: View {
                     if let line = supportingLine(showAsDone: showAsDone, completedRecurring: completedRecurring, overdue: overdue) {
                         Text(line)
                             .font(.caption)
-                            .foregroundStyle(overdue && isBlocking ? Palette.error : .secondary)
+                            .foregroundStyle(overdue && isBlocking ? Palette.blocked : .secondary)
                     }
                 }
                 Spacer()
                 if isEnforced {
                     Image(systemName: "nosign")
-                        .foregroundStyle(Palette.error)
+                        .foregroundStyle(Palette.blocked)
                         .help("A condition of an active blocking rule")
                 }
             }
@@ -194,11 +195,11 @@ private struct TaskListRow: View {
     @ViewBuilder
     private func leadingIcon(done: Bool, locked: Bool, overdue: Bool) -> some View {
         if done {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.primary)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.unlocked)
         } else if locked {
             Image(systemName: "lock").foregroundStyle(.secondary)
         } else if overdue {
-            Image(systemName: "exclamationmark.triangle").foregroundStyle(isBlocking ? Palette.error : .secondary)
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(isBlocking ? Palette.blocked : .secondary)
         } else {
             Image(systemName: "circle").foregroundStyle(.secondary)
         }
@@ -255,7 +256,8 @@ private struct BlockingStatusCard: View {
             Label("All clear — nothing blocked", systemImage: "checkmark.circle")
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.primaryContainer, in: RoundedRectangle(cornerRadius: 10))
+                .background(Palette.unlockedContainer, in: RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(Palette.onUnlockedContainer)
         } else {
             let unmet = state.activeBlocks.flatMap { $0.rule.conditionTaskIds.filter($0.unmetTaskIds.contains) }
             let unique = unmet.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
@@ -274,8 +276,8 @@ private struct BlockingStatusCard: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.errorContainer, in: RoundedRectangle(cornerRadius: 10))
-            .foregroundStyle(Palette.onErrorContainer)
+            .background(Palette.blockedContainer, in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(Palette.onBlockedContainer)
         }
     }
 

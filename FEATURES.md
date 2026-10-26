@@ -25,7 +25,7 @@ Last reviewed: 2026-10-25.
 | Sign-up | ✅ | ✅ | ✅ | |
 | Email confirmation link opens the app (`brainfence://auth-callback`) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Email links). Signs in on the device that signed up; elsewhere it says the email is confirmed. |
 | Offline-first sync (PowerSync + Supabase) | ✅ | ✅ | ✅ | Schema generated from `shared/schema.json`. |
-| Delete account (in the app, plus a web page for requests) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Account deletion). Android: ⋮ menu. Windows and Mac: Settings. Clears local data and ends blocking. Web: `site/delete-account/`. |
+| Delete account (in the app, plus a web page for requests) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Account deletion). Settings on every platform. Clears local data and ends blocking. Web: `site/delete-account/`. |
 
 ## Setup guide
 
@@ -34,7 +34,7 @@ Last reviewed: 2026-10-25.
 | First-run setup guide: how Brainfence works, starter tasks (Morning Routine, Morning Walk, Meditation, Journal, Groceries, Five Remembrances) with adjustable windows, apps and sites to block | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Onboarding). Synced `onboarding` table, so finishing on one device carries over. Existing accounts are dismissed quietly. |
 | Home and store location in the guide | ✅ | ➕ | ➖ | Android: map picker. Windows: the PC's location or coordinates (allowed exception). The Mac defers Morning Walk and Groceries to a device with location. |
 | Device setup on a second device (its apps for the guide's rule, companion apps, contemplation delivery, deferred starters) | ✅ | ✅ | ✅ | The Mac doesn't finish deferred starters (location). |
-| Run the guide again from settings | ✅ | ✅ | ✅ | Android: ⋮ menu → Setup guide. Windows and Mac: Settings. |
+| Run the guide again from settings | ✅ | ✅ | ✅ | Settings → Run setup guide. |
 
 ## Tasks
 
@@ -102,6 +102,15 @@ an allowed exception. See [Parity policy](#parity-policy).
 | Full-text search across notes and tasks | 📋 | 📋 | 📋 | |
 | Delete or archive tasks | 📋 | 📋 | 📋 | No client can remove a task yet. |
 | Web client (notes and admin) | | | | Lower priority. It would be a fourth platform. |
+
+## Look and feel
+
+| Feature | Android | Windows | macOS | Notes |
+| --- | :-: | :-: | :-: | --- |
+| Brand palette (Foil), light and dark, following the system | ✅ | ✅ | ✅ | `shared/tokens.json`, generated per client. macOS keeps system text colors and uses the palette for tint and fills. |
+| Blocking-state colors (blocked, unlocked, pending) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Colors). |
+| Four sections: Tasks, Blocking rules, Review (Journal and Reports tabs), Settings | ✅ | ✅ | ✅ | Android: bottom bar, hidden on editors and task screens. Windows and Mac: sidebar. Settings holds Home location (not on Mac), Contemplations, the setup guide, account and debug logs. Blocking shows a count of what's blocked. |
+| Each section's create action in the brand lime (New task, New rule, New report) | ✅ | ✅ | ✅ | Android: floating button that shrinks to "+" as the list scrolls. Windows and Mac: top-bar button. |
 
 ## Platform-specific (not parity items)
 

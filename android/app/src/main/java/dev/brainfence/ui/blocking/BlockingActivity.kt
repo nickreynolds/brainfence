@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.brainfence.domain.model.Task
 import dev.brainfence.ui.theme.BrainfenceTheme
+import dev.brainfence.ui.theme.blockingColors
 
 /**
  * Full-screen, non-dismissable overlay shown when the user opens a blocked app.
@@ -137,7 +138,7 @@ private fun BlockingOverlayScreen(
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.errorContainer,
+        color = MaterialTheme.blockingColors.blockedContainer,
     ) {
         Column(
             modifier = Modifier
@@ -151,7 +152,7 @@ private fun BlockingOverlayScreen(
                 imageVector = Icons.Default.Block,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.error,
+                tint = MaterialTheme.blockingColors.onBlockedContainer,
             )
 
             Spacer(Modifier.height(16.dp))
@@ -161,7 +162,7 @@ private fun BlockingOverlayScreen(
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = MaterialTheme.blockingColors.onBlockedContainer,
             )
 
             Spacer(Modifier.height(8.dp))
@@ -170,7 +171,7 @@ private fun BlockingOverlayScreen(
                 text = "Complete the following tasks to unblock:",
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = MaterialTheme.blockingColors.onBlockedContainer,
             )
 
             Spacer(Modifier.height(24.dp))
@@ -230,7 +231,7 @@ private fun RequiredTaskCard(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Completed",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.blockingColors.unlocked,
                     modifier = Modifier.size(28.dp),
                 )
             } else {
