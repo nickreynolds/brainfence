@@ -1,0 +1,88 @@
+/* brainfence.online. Colors are the Static palette (branding/src/palettes.mjs). */
+:root {
+  --bg: #0B0A10;
+  --raised: #14121B;
+  --line: #2E2A3A;
+  --fg: #F4F1FA;
+  --muted: #A49EB2;
+  --lime: #D7FF1F;
+  --pink: #FF2D7A;
+  --cyan: #18E0FF;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 17px/1.6 "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+header.site {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 40px;
+}
+header.site a { display: flex; align-items: center; gap: 12px; color: var(--fg); text-decoration: none; }
+header.site img { width: 44px; height: 44px; border-radius: 10px; }
+.wordmark { font: 700 22px/1 "Chakra Petch", sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.wordmark b { color: var(--lime); font-weight: 700; }
+
+h1, h2, h3 { font-family: "Chakra Petch", sans-serif; line-height: 1.2; }
+h1 { font-size: clamp(30px, 6vw, 44px); margin: 0 0 8px; }
+h2 { font-size: 24px; margin: 40px 0 8px; }
+h3 { font-size: 18px; margin: 24px 0 4px; }
+
+a { color: var(--cyan); }
+a:hover { color: var(--lime); }
+a:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+.lede { color: var(--muted); font-size: 19px; margin-top: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 15px; }
+
+.card {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--pink);
+  padding: 16px 20px;
+  margin: 16px 0;
+}
+.card > :first-child { margin-top: 0; }
+.card > :last-child { margin-bottom: 0; }
+
+.hero { text-align: center; padding: 24px 0 8px; }
+.hero img { width: min(240px, 60vw); height: auto; border-radius: 24px; }
+.tag {
+  display: inline-block;
+  font: 500 14px/1 "IBM Plex Mono", monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--lime);
+  border: 1px solid var(--lime);
+  padding: 8px 12px;
+}
+
+ul, ol { padding-left: 1.3em; }
+li { margin: 4px 0; }
+code { font-family: "IBM Plex Mono", monospace; font-size: .9em; }
+
+footer.site {
+  margin-top: 64px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}

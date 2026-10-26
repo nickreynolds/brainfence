@@ -25,6 +25,7 @@ Last reviewed: 2026-10-25.
 | Sign-up | ✅ | ✅ | ✅ | |
 | Email confirmation link opens the app (`brainfence://auth-callback`) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Email links). Signs in on the device that signed up; elsewhere it says the email is confirmed. |
 | Offline-first sync (PowerSync + Supabase) | ✅ | ✅ | ✅ | Schema generated from `shared/schema.json`. |
+| Delete account (in the app, plus a web page for requests) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Account deletion). Android: ⋮ menu. Windows and Mac: Settings. Clears local data and ends blocking. Web: `site/delete-account/`. |
 
 ## Setup guide
 

@@ -89,6 +89,21 @@ final class SessionStore {
         return true
     }
 
+    /// Deletes the account on the server (shared/CONTRACTS.md, Account
+    /// deletion). Throws, having changed nothing, if that fails.
+    func deleteAccountOnServer() async throws {
+        try await client.rpc("delete_account").execute()
+    }
+
+    /// Signs out of this Mac only, for when the server session is already gone.
+    func signOutLocally() async {
+        do {
+            try await client.auth.signOut(scope: .local)
+        } catch {
+            logger.error("local sign out failed: \(error.localizedDescription)")
+        }
+    }
+
     func signOut() async {
         do {
             try await client.auth.signOut()

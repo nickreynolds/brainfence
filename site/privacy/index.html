@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy · Brainfence</title>
+  <meta name="description" content="What Brainfence collects, why, who it's shared with, and how to delete it.">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="site">
+      <a href="/"><img src="/icon.svg" alt="" width="44" height="44"><span class="wordmark">Brain<b>fence</b></span></a>
+    </header>
+
+    <h1>Privacy policy</h1>
+    <p class="muted">Effective October 26, 2026</p>
+
+    <p>Brainfence is a task and habit app that blocks distracting apps and websites until your tasks are done. It's made by Nick Reynolds ("we", "us"). This policy covers the Brainfence apps for Android, Windows and Mac, and this website. Questions go to <a href="mailto:support@brainfence.online">support@brainfence.online</a>.</p>
+
+    <div class="card">
+      <p><b>In short:</b> we store your account and what you put in the app, so it syncs between your devices. What Brainfence watches in order to block things (which app is open, which website you're on, your live location) stays on your device. We don't sell your data, show ads or use analytics or tracking tools.</p>
+    </div>
+
+    <h2>What we store, and why</h2>
+
+    <h3>Your account</h3>
+    <p>Your email address and password, to sign you in and to send account emails such as the sign-up confirmation. Passwords are stored hashed by our authentication provider; we can't read them.</p>
+
+    <h3>What you put in the app</h3>
+    <p>Your tasks, routines and their steps, shopping lists, task completions, blocking rules (including the apps and websites you choose to block), journal entries and notes, contemplations, reports and their answers, and your setup guide progress. We store these so they sync between your devices and survive reinstalling the app.</p>
+
+    <h3>Places and proof for tasks</h3>
+    <ul>
+      <li><b>Places you choose</b> for tasks, such as your home for a walk task or a store for a shopping list, as map coordinates.</li>
+      <li><b>Proof that a task was done</b>, saved with its completion. For a GPS task, that's the location (coordinates and their accuracy) and time it was completed. For a timed or companion-app task, it's how long you spent, for example the minutes spent in a meditation app.</li>
+    </ul>
+
+    <h2>What stays on your device</h2>
+    <p>To block things, Brainfence has to watch what's happening on your device. None of the following is stored on our servers or sent to anyone:</p>
+    <ul>
+      <li><b>Which app is open</b> (all platforms), so a blocked app can be covered with the blocking screen. On Android this uses the Accessibility Service.</li>
+      <li><b>The address of the website you're on</b>, read from supported browsers' address bars (Android, through the Accessibility Service) or the current tab (Mac, through Apple Events), so blocked websites can be blocked. On Windows, websites are blocked with the system hosts file instead.</li>
+      <li><b>App usage time</b> (Android Usage Access), to check companion-app tasks. Only the total for the task is saved, as proof, as described above.</li>
+      <li><b>Your live location</b> (Android and Windows), to complete GPS tasks, to remind you about shopping lists near the store, and to tell whether you're home for rules that only block at home. Android does this in the background, with your permission. Only the proof described above leaves the device.</li>
+      <li><b>Your home location</b> and the app's debug logs.</li>
+    </ul>
+    <p>Brainfence doesn't read anything else on your screen, and doesn't type, tap or change anything for you.</p>
+
+    <h2>Who we share it with</h2>
+    <p>We don't sell your data or share it for advertising. We use these service providers, only to run Brainfence:</p>
+    <ul>
+      <li><b>Supabase</b>: account sign-in and the database that stores your data.</li>
+      <li><b>DigitalOcean</b>: hosts the sync server that sends your data to your devices, and this website.</li>
+      <li><b>Resend</b>: sends account emails.</li>
+    </ul>
+    <p>If you install Brainfence from Google Play, Google's own privacy policy covers what Play collects. We'd only disclose your data otherwise if the law required it.</p>
+
+    <h2>Security</h2>
+    <p>Your data travels encrypted (HTTPS), and the database only lets your signed-in account read or change your data.</p>
+
+    <h2>How long we keep it, and deleting it</h2>
+    <p>We keep your data until you delete it or your account. You can delete your account, and everything in it, from the app at any time; see <a href="/delete-account/">Delete your account</a>, which also explains how to ask us to do it if you can't use the app. Deleted data is removed from our database immediately, and from our providers' backups when those expire, within 30 days.</p>
+    <p>You can also email us to get a copy of your data or have it corrected.</p>
+
+    <h2>Children</h2>
+    <p>Brainfence isn't meant for children under 13, and we don't knowingly collect their data. If you think a child has given us data, email us and we'll delete it.</p>
+
+    <h2>Changes</h2>
+    <p>If we change this policy, we'll update this page and its date. If a change affects what we collect or share, we'll also tell you in the app before it applies.</p>
+
+    <footer class="site">
+      <a href="/">Brainfence</a>
+      <a href="/delete-account/">Delete your account</a>
+      <a href="mailto:support@brainfence.online">support@brainfence.online</a>
+    </footer>
+  </div>
+</body>
+</html>

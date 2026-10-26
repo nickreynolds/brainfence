@@ -182,3 +182,25 @@ A link is classified like this (`fixtures/auth-callback.json`):
 | Anything else | `none` | Shows "Your email is confirmed. Sign in to continue." |
 
 Other `brainfence://` URLs (and other schemes) aren't auth callbacks.
+
+## Account deletion
+
+Every client offers **Delete account** next to Sign out (Google Play requires
+it for apps with accounts). It asks for confirmation, saying that this
+permanently deletes the account and all of its data on every device, and
+can't be undone. Then, in this order:
+
+1. Call the `delete_account()` database function (RPC, no arguments). It
+   deletes the caller's `auth.users` row; every table's `user_id` cascades.
+   This needs a connection. If it fails, nothing else happens and the client
+   shows the error.
+2. Clear the local database (PowerSync `disconnectAndClear`). Blocking stops
+   because no rules are left.
+3. Sign out locally only (the server session went with the user).
+
+Other devices still signed in to the account lose their session when it next
+refreshes, and keep whatever their own sign-out keeps.
+
+Without the app, people can ask for deletion at
+`https://brainfence.online/delete-account` (`site/`), which is the URL given to
+Google Play.

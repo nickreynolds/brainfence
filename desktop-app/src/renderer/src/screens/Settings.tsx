@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/ipc'
 import { Icon } from '../components/Icon'
 import { ConfirmDialog, Switch, TopBar } from '../components/ui'
-import { useAuth, useEnforcement, useLocationStatus, useSyncStatus } from '../lib/hooks'
+import { cleanError, useAuth, useEnforcement, useLocationStatus, useSyncStatus } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import { useRouter } from '../lib/router'
 
@@ -18,6 +18,9 @@ export function SettingsScreen() {
   const [app, setApp] = useState<AppSettings | null>(null)
   const [settingUp, setSettingUp] = useState(false)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { navigate } = useRouter()
 
   useEffect(() => {
@@ -96,6 +99,7 @@ export function SettingsScreen() {
             {sync?.error && <div className="small err-text">{sync.error}</div>}
             <div className="row">
               <button className="btn outlined sm" onClick={() => setConfirmSignOut(true)}><Icon name="logout" size="sm" /> Sign out</button>
+              <button className="btn text sm danger" onClick={() => { setDeleteError(null); setConfirmDelete(true) }}><Icon name="delete" size="sm" /> Delete account…</button>
               <button className="btn text sm" onClick={() => void window.api.window.quit()}>Quit Brainfence…</button>
             </div>
           </div>
@@ -109,6 +113,29 @@ export function SettingsScreen() {
           danger
           onCancel={() => setConfirmSignOut(false)}
           onConfirm={() => { setConfirmSignOut(false); void window.api.auth.signOut() }}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete your account?"
+          message={
+            <>
+              This permanently deletes your account and everything in it, including your tasks, blocking rules and history, from Brainfence's servers and this PC. Blocking stops. You can't undo this.
+              {deleteError && <div className="err-text" style={{ marginTop: 12 }}>Couldn't delete your account: {deleteError}</div>}
+            </>
+          }
+          confirmLabel={deleting ? 'Deleting…' : 'Delete account'}
+          danger
+          onCancel={() => { if (!deleting) setConfirmDelete(false) }}
+          onConfirm={() => {
+            if (deleting) return
+            setDeleting(true)
+            setDeleteError(null)
+            // On success the app signs out, which replaces this screen.
+            window.api.auth.deleteAccount()
+              .catch((e) => setDeleteError(cleanError(e)))
+              .finally(() => setDeleting(false))
+          }}
         />
       )}
     </>

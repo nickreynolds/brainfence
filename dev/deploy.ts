@@ -1,12 +1,13 @@
 // Deploys the backend: Supabase migrations, Supabase Auth's redirect URLs,
-// then PowerSync sync rules on the droplet. Order matters: sync rules (and app
+// PowerSync sync rules on the droplet, then the website (site/) there. Order matters: sync rules (and app
 // builds) must not reference a table before its migration has run. See
 // powersync/README.md (Operations).
 //
-//   npm run deploy               push migrations, set auth URLs, upload sync rules, restart PowerSync
+//   npm run deploy               push migrations, set auth URLs, upload sync rules, restart PowerSync,
+//                                upload the website
 //   npm run deploy -- --dry-run  show what would change, without changing it
 //   npm run deploy -- --yes      don't ask before pushing migrations
-//   npm run deploy -- --skip-migrations | --skip-auth | --skip-sync-rules
+//   npm run deploy -- --skip-migrations | --skip-auth | --skip-sync-rules | --skip-site
 //
 // Reads from .env:
 //   SUPABASE_DB_URL       its password is used for `supabase db push` (or set SUPABASE_DB_PASSWORD)
@@ -27,7 +28,7 @@ const root = path.resolve(__dirname, "..");
 dotenv.config({ path: path.join(root, ".env") });
 
 const args = new Set(process.argv.slice(2));
-const known = ["--dry-run", "--yes", "--skip-migrations", "--skip-auth", "--skip-sync-rules"];
+const known = ["--dry-run", "--yes", "--skip-migrations", "--skip-auth", "--skip-sync-rules", "--skip-site"];
 for (const a of Array.from(args)) {
   if (!known.includes(a)) fail(`Unknown option ${a}. Options: ${known.join(", ")}`);
 }
@@ -40,6 +41,8 @@ const sshKey = process.env.DEPLOY_SSH_KEY;
 const compose = `cd ${quote(`${remoteDir}/powersync`)} && docker compose -f docker-compose.prod.yml`;
 const localRules = path.join(root, "powersync", "sync-rules.yaml");
 const remoteRules = `${remoteDir}/powersync/sync-rules.yaml`;
+const localSite = path.join(root, "site");
+const remoteSite = `${remoteDir}/site`;
 
 function fail(message: string): never {
   console.error(`\n✗ ${message}`);
@@ -57,11 +60,15 @@ function run(cmd: string, argv: string[], opts: Omit<SpawnSyncOptionsWithStringE
   return r;
 }
 
-function ssh(command: string, input?: string) {
+function sshArgv(command: string): string[] {
   const argv = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"];
   if (sshKey) argv.push("-i", sshKey);
   argv.push(sshTarget, command);
-  return run("ssh", argv, { input, stdio: ["pipe", "pipe", "pipe"] });
+  return argv;
+}
+
+function ssh(command: string, input?: string) {
+  return run("ssh", sshArgv(command), { input, stdio: ["pipe", "pipe", "pipe"] });
 }
 
 function supabaseEnv(): NodeJS.ProcessEnv {
@@ -87,7 +94,7 @@ function preflight() {
       fail("This checkout isn't linked to the Supabase project. Run: supabase link --project-ref <ref>");
     }
   }
-  if (!args.has("--skip-sync-rules")) {
+  if (!args.has("--skip-sync-rules") || !args.has("--skip-site")) {
     const r = ssh(`test -f ${quote(remoteRules)} && docker compose version >/dev/null`);
     if (r.status !== 0) {
       const err = (r.stderr || "").trim();
@@ -198,11 +205,39 @@ function deploySyncRules() {
   }
 }
 
+// ── 4. Website ──────────────────────────────────────────────────────────────
+
+function deploySite() {
+  console.log(`\n→ Website (site/) on ${sshTarget}${dryRun ? " (dry run)" : ""}`);
+  const files = fs.readdirSync(localSite, { recursive: true, withFileTypes: true }).filter((f) => f.isFile());
+  if (dryRun) {
+    console.log(`  Would replace ${remoteSite} with the ${files.length} files in site/.`);
+    return;
+  }
+
+  // Caddy serves the folder through a bind mount, so replace its contents
+  // rather than the folder itself.
+  const tar = spawnSync("tar", ["-czf", "-", "-C", localSite, "."], { maxBuffer: 256 * 1024 * 1024 });
+  if (tar.status !== 0) fail(`tar failed: ${tar.stderr.toString().trim()}`);
+  const upload = spawnSync("ssh", sshArgv(
+    `mkdir -p ${quote(remoteSite)} && find ${quote(remoteSite)} -mindepth 1 -delete && tar -xzf - -C ${quote(remoteSite)}`,
+  ), { input: tar.stdout });
+  if (upload.status !== 0) fail(`Upload failed: ${upload.stderr.toString().trim()}`);
+  console.log(`  Uploaded ${files.length} files.`);
+
+  // Older droplet checkouts' Caddy doesn't mount site/ yet.
+  if (ssh(`${compose} exec -T caddy test -d /srv/site`).status !== 0) {
+    console.log("  Caddy isn't serving it yet. Once this repo's powersync/ changes are pushed, run once:");
+    console.log(`    ssh ${sshTarget} "git -C ${quote(remoteDir)} pull && ${compose} up -d caddy"`);
+  }
+}
+
 async function main() {
   preflight();
   if (!args.has("--skip-migrations")) deployMigrations();
   if (!args.has("--skip-auth")) await deployAuthUrls();
   if (!args.has("--skip-sync-rules")) deploySyncRules();
+  if (!args.has("--skip-site")) deploySite();
   console.log(dryRun ? "\n✓ Dry run finished; nothing was changed." : "\n✓ Deployed.");
 }
 

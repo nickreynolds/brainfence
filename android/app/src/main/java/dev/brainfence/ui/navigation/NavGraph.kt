@@ -266,6 +266,12 @@ fun BrainfenceNavGraph(
                 onConfirmComplete        = taskViewModel::confirmComplete,
                 onDismissComplete        = taskViewModel::dismissComplete,
                 onSignOut                = { onboardingGate.reset(); taskViewModel.signOut() },
+                onDeleteAccount          = { onDone ->
+                    taskViewModel.deleteAccount { error ->
+                        if (error == null) onboardingGate.reset()
+                        onDone(error)
+                    }
+                },
                 onNavigateToDebug        = { navController.navigate(Routes.DEBUG) },
                 onNavigateToRules        = { navController.navigate(Routes.BLOCKING_RULES) },
                 onNavigateToHomeLocation = { navController.navigate(Routes.HOME_LOCATION) },
