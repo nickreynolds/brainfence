@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material3.Button
@@ -36,6 +38,7 @@ fun AccessibilitySetupScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -50,7 +53,7 @@ fun AccessibilitySetupScreen(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                text = "Enable Accessibility Service",
+                text = ACCESSIBILITY_DISCLOSURE_TITLE,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -58,10 +61,11 @@ fun AccessibilitySetupScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // Google Play's prominent disclosure (Disclosures.kt): only "Agree"
+            // leads to the settings screen.
             Text(
-                text = "Brainfence needs the accessibility service to detect when you open a blocked app and show the blocking overlay.\n\nThis permission is only used to monitor which app is in the foreground. Brainfence does not read or interact with screen content.",
+                text = ACCESSIBILITY_DISCLOSURE,
                 style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -73,13 +77,13 @@ fun AccessibilitySetupScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Open Accessibility Settings")
+                Text("Agree and open settings")
             }
 
             Spacer(Modifier.height(12.dp))
 
             TextButton(onClick = onSkip) {
-                Text("Skip for now")
+                Text("Not now")
             }
         }
     }

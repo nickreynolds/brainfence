@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import android.util.Log
+import dev.brainfence.data.auth.AccountDeletion
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.completion.CompletionRepository
@@ -56,6 +58,7 @@ class TaskListViewModel @Inject constructor(
     private val taskRepository: TaskRepository,
     private val completionRepository: CompletionRepository,
     private val sessionRepository: SessionRepository,
+    private val accountDeletion: AccountDeletion,
     private val blockingRepository: BlockingRepository,
     private val companionUsageVerifier: CompanionUsageVerifier,
     meditationTimerManager: MeditationTimerManager,
@@ -305,6 +308,20 @@ class TaskListViewModel @Inject constructor(
 
     fun signOut() {
         viewModelScope.launch { sessionRepository.signOut() }
+    }
+
+    /** Deletes the account; [onDone] gets null, or why it couldn't be deleted. */
+    fun deleteAccount(onDone: (error: String?) -> Unit) {
+        viewModelScope.launch {
+            val error = try {
+                accountDeletion.delete()
+                null
+            } catch (e: Exception) {
+                Log.e("TaskListViewModel", "Account deletion failed", e)
+                e.message ?: "Check your connection and try again."
+            }
+            onDone(error)
+        }
     }
 
     private fun resolveAppLabel(packageName: String): String = try {

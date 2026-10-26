@@ -119,6 +119,16 @@ export async function signOut(): Promise<void> {
   if (error) await supabase().auth.signOut({ scope: 'local' })
 }
 
+/**
+ * Deletes the signed-in account on the server, then signs out locally (the
+ * server session went with the user). shared/CONTRACTS.md, Account deletion.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase().rpc('delete_account')
+  if (error) throw new Error(error.message)
+  await supabase().auth.signOut({ scope: 'local' })
+}
+
 export async function currentAccessToken(): Promise<{ token: string; expiresAt?: Date } | null> {
   const { data } = await supabase().auth.getSession()
   const session = data.session

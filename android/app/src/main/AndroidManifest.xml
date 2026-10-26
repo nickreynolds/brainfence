@@ -6,13 +6,27 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" android:maxSdkVersion="2147483647" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Package visibility: launchable apps for the app pickers, and browsers
+         for website blocking. Used instead of QUERY_ALL_PACKAGES, which Google
+         Play only allows for a few kinds of app. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
     <application
         android:name=".BrainfenceApp"
@@ -44,7 +58,13 @@
         <service
             android:name=".service.BrainfenceService"
             android:exported="false"
-            android:foregroundServiceType="location|specialUse" />
+            android:foregroundServiceType="location|specialUse">
+            <!-- Why it's a specialUse service; Google Play reviews this
+                 (store/play/permissions.md). -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's app and website blocking rules enforced, and their task timers and reminders running, while rules are active." />
+        </service>
 
         <receiver
             android:name=".service.BootReceiver"

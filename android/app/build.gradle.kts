@@ -10,18 +10,25 @@ plugins {
 }
 
 // Read secrets from the repo-root .env (one level above android/)
-fun envVar(key: String): String {
+fun envVarOrNull(key: String): String? {
     val envFile = rootProject.file("../.env")
     if (envFile.exists()) {
         envFile.readLines().forEach { line ->
             if (!line.startsWith("#") && line.contains("=")) {
                 val (k, v) = line.split("=", limit = 2)
-                if (k.trim() == key) return v.trim()
+                if (k.trim() == key && v.isNotBlank()) return v.trim()
             }
         }
     }
-    return System.getenv(key) ?: error("Missing env var: $key")
+    return System.getenv(key)
 }
+
+fun envVar(key: String): String = envVarOrNull(key) ?: error("Missing env var: $key")
+
+// Release signing key (RELEASING.md). Play and the website APK are signed with
+// the same key, so users can move between them. Without it, release builds
+// come out unsigned.
+val releaseKeystore = envVarOrNull("ANDROID_KEYSTORE_PATH")
 
 android {
     namespace   = "dev.brainfence"
@@ -31,6 +38,7 @@ android {
         applicationId   = "dev.brainfence"
         minSdk          = 26
         targetSdk       = 36
+        // Every Play upload needs a higher versionCode (RELEASING.md).
         versionCode     = 1
         versionName     = "1.0"
 
@@ -41,8 +49,20 @@ android {
 
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile     = file(releaseKeystore)
+                storePassword = envVar("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias      = envVar("ANDROID_KEY_ALIAS")
+                keyPassword   = envVar("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

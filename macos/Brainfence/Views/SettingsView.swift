@@ -5,6 +5,9 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage(WebEnforcer.blockUnsupportedBrowsersKey) private var blockUnsupportedBrowsers = true
+    @State private var confirmingDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
 
     var body: some View {
         Form {
@@ -16,6 +19,32 @@ struct SettingsView: View {
                 Text("Signing out stops syncing. Rules already on this Mac keep blocking.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button(deleting ? "Deleting Account…" : "Delete Account…", role: .destructive) {
+                    deleteError = nil
+                    confirmingDelete = true
+                }
+                .disabled(deleting)
+                if let deleteError {
+                    Text("Couldn't delete your account: \(deleteError)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            .confirmationDialog("Delete your account?", isPresented: $confirmingDelete) {
+                Button("Delete Account", role: .destructive) {
+                    deleting = true
+                    Task {
+                        do {
+                            try await model.deleteAccount()
+                        } catch {
+                            deleteError = error.localizedDescription
+                        }
+                        deleting = false
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently deletes your account and everything in it, including your tasks, blocking rules and history, from Brainfence's servers and this Mac. Blocking stops. You can't undo this.")
             }
 
             Section("Sync") {

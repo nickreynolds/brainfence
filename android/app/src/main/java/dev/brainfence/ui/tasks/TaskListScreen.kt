@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -75,6 +77,11 @@ import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeNextOccurrence
 import dev.brainfence.domain.recurrence.computeTaskPhase
+import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE
+import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE_TITLE
+import dev.brainfence.ui.setup.BACKGROUND_LOCATION_DISCLOSURE
+import dev.brainfence.ui.setup.BACKGROUND_LOCATION_DISCLOSURE_TITLE
+import dev.brainfence.ui.setup.DisclosureDialog
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -107,6 +114,7 @@ fun TaskListScreen(
     onConfirmComplete: () -> Unit,
     onDismissComplete: () -> Unit,
     onSignOut: () -> Unit,
+    onDeleteAccount: (onDone: (error: String?) -> Unit) -> Unit,
     onNavigateToDebug: () -> Unit = {},
     onNavigateToRules: () -> Unit = {},
     onNavigateToHomeLocation: () -> Unit = {},
@@ -117,6 +125,11 @@ fun TaskListScreen(
     onCreateTask: () -> Unit = {},
 ) {
     val context = LocalContext.current
+
+    var showDeleteAccount by remember { mutableStateOf(false) }
+    if (showDeleteAccount) {
+        DeleteAccountDialog(onDelete = onDeleteAccount, onDismiss = { showDeleteAccount = false })
+    }
 
     // A task only actually blocks apps when it's a condition of an *active*
     // blocking rule — the per-task `is_blocking_condition` flag is not enough
@@ -197,6 +210,11 @@ fun TaskListScreen(
                             leadingIcon = { Icon(Icons.Default.Logout, contentDescription = null) },
                             onClick = { showMenu = false; onSignOut() },
                         )
+                        DropdownMenuItem(
+                            text = { Text("Delete account") },
+                            leadingIcon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
+                            onClick = { showMenu = false; showDeleteAccount = true },
+                        )
                     }
                 },
             )
@@ -254,6 +272,21 @@ fun TaskListScreen(
                             val hasFineLocation = ContextCompat.checkSelfPermission(
                                 context, Manifest.permission.ACCESS_FINE_LOCATION,
                             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            // Background location needs Play's prominent disclosure first.
+                            var showDisclosure by remember { mutableStateOf(false) }
+                            if (showDisclosure) {
+                                DisclosureDialog(
+                                    title = BACKGROUND_LOCATION_DISCLOSURE_TITLE,
+                                    text = BACKGROUND_LOCATION_DISCLOSURE,
+                                    onAgree = {
+                                        showDisclosure = false
+                                        backgroundLocationLauncher.launch(
+                                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                        )
+                                    },
+                                    onDismiss = { showDisclosure = false },
+                                )
+                            }
                             LocationPermissionBanner(
                                 onRequestPermission = {
                                     if (!hasFineLocation) {
@@ -264,9 +297,7 @@ fun TaskListScreen(
                                             )
                                         )
                                     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                        backgroundLocationLauncher.launch(
-                                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                                        )
+                                        showDisclosure = true
                                     }
                                 },
                             )
@@ -886,10 +917,20 @@ private fun ExactAlarmBanner(
 @Composable
 private fun AccessibilityBanner() {
     val context = LocalContext.current
+    var showDisclosure by remember { mutableStateOf(false) }
+    if (showDisclosure) {
+        DisclosureDialog(
+            title = ACCESSIBILITY_DISCLOSURE_TITLE,
+            text = ACCESSIBILITY_DISCLOSURE,
+            onAgree = {
+                showDisclosure = false
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            },
+            onDismiss = { showDisclosure = false },
+        )
+    }
     Card(
-        onClick = {
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        },
+        onClick = { showDisclosure = true },
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -915,4 +956,49 @@ private fun AccessibilityBanner() {
             )
         }
     }
+}
+
+/** shared/CONTRACTS.md, Account deletion. */
+@Composable
+private fun DeleteAccountDialog(
+    onDelete: (onDone: (error: String?) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var deleting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!deleting) onDismiss() },
+        title = { Text("Delete your account?") },
+        text = {
+            Column {
+                Text(
+                    "This permanently deletes your account and everything in it, including your " +
+                        "tasks, blocking rules and history, from Brainfence's servers and this " +
+                        "phone. Blocking stops. You can't undo this.",
+                )
+                error?.let {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Couldn't delete your account: $it", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !deleting,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                onClick = {
+                    deleting = true
+                    error = null
+                    // On success the app signs out, which closes this screen.
+                    onDelete { e ->
+                        deleting = false
+                        error = e
+                    }
+                },
+            ) { Text(if (deleting) "Deleting…" else "Delete account") }
+        },
+        dismissButton = {
+            TextButton(enabled = !deleting, onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }

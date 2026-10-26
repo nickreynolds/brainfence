@@ -3,7 +3,7 @@ import type { AppSettings, ContemplationSettings, HomeLocation } from '@shared/i
 import type { SqlStatement } from '@shared/db'
 import { getActiveTask } from '@shared/repos/tasks'
 import { parseDurationConfig, parseMeditationConfig } from '@shared/verification'
-import { getAuthState, onAuthState, onNotice, signIn, signOut, signUp, takeNotice, userIdForLocalWrites } from './auth'
+import { deleteAccount, getAuthState, onAuthState, onNotice, signIn, signOut, signUp, takeNotice, userIdForLocalWrites } from './auth'
 import { appIcon, listInstalledApps } from './blocking/apps'
 import { setupHostsAccess } from './blocking/hosts'
 import { hideOverlay, overlayContext, overlayWebContentsId, showOverlay } from './blocking/overlay'
@@ -41,6 +41,11 @@ export function registerIpc(): void {
   ipcMain.handle('auth:signUp', (_e, email: string, password: string) => signUp(email, password))
   ipcMain.handle('auth:signOut', async () => {
     await signOut()
+    await clearLocalData()
+    evaluateNow()
+  })
+  ipcMain.handle('auth:deleteAccount', async () => {
+    await deleteAccount()
     await clearLocalData()
     evaluateNow()
   })

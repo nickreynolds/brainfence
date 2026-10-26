@@ -10,14 +10,14 @@ export const VARIANTS = ['icon', 'poster', 'mono'];
 // icon:   flat full-bleed tile, for app icons
 // poster: icon plus halftone and scanlines, for stickers, splash, social
 // mono:   one color (#000) on transparent, for themed and template icons
-export function markBody(mark, p, variant, ctx, { background = true } = {}) {
+export function markBody(mark, p, variant, ctx, { background = true, back = true } = {}) {
   const mono = variant === 'mono';
   const poster = variant === 'poster';
   const pal = mono ? MASK : p;
   const parts = mark.build(ctx, pal, { poster, mono });
   let subject = (mono ? '' : split(parts.silhouette, pal, parts.split)) + parts.art;
   if (mark.glitch) subject = slices(subject, ctx, mark.glitch);
-  const figure = parts.back + subject + parts.front;
+  const figure = (back ? parts.back : '') + subject + parts.front;
 
   if (mono) {
     const id = ctx.uid('mono');
@@ -92,6 +92,27 @@ export function renderBanner(mark, p) {
     streak(620, 1300, 428, 14, p.accent) +
     wordmarkBody(p, { u: 19, x: 560, y: 150 }).body +
     `<g transform="translate(566 302)" stroke="${p.ink}">${tag.body}</g>` +
+    scanlines(ctx, p.ink, 0.05, { w, h });
+  return doc(body, ctx, { w, h, title: 'Brainfence' });
+}
+
+// 1024×500: the Google Play feature graphic. The banner, recomposed for its
+// narrower frame.
+export function renderFeatureGraphic(mark, p) {
+  const ctx = createCtx('f');
+  const w = 1024;
+  const h = 500;
+  const tag = setText(TAGLINE, { u: 4.6, weight: 1.1 });
+  const body =
+    `<rect width="${w}" height="${h}" fill="${p.bg}"/>` +
+    lattice(ctx, { x: 0, y: 0, w, h }, 54, p.bg2, 5) +
+    `<g opacity="0.45">${halftone(ctx, p.split[1], { cx: 250, cy: 250, r: 280, w, h, cell: 22, dot: 6 })}</g>` +
+    nest(20, 20, 460, markBody(mark, p, 'icon', ctx, { background: false })) +
+    streak(470, 1000, 330, 8, p.split[0]) +
+    streak(560, 1010, 346, 5, p.split[1]) +
+    streak(500, 900, 364, 10, p.accent) +
+    wordmarkBody(p, { u: 10.5, x: 480, y: 165 }).body +
+    `<g transform="translate(484 252)" stroke="${p.ink}">${tag.body}</g>` +
     scanlines(ctx, p.ink, 0.05, { w, h });
   return doc(body, ctx, { w, h, title: 'Brainfence' });
 }

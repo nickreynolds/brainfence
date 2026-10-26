@@ -133,6 +133,8 @@ export interface BrainfenceApi {
     signIn(email: string, password: string): Promise<void>
     signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }>
     signOut(): Promise<void>
+    /** Permanently deletes the account and this PC's data (shared/CONTRACTS.md, Account deletion). */
+    deleteAccount(): Promise<void>
     onState(cb: (state: AuthState) => void): () => void
     /** A notice from the last email link (shown on the sign-in screen), cleared once taken. */
     takeNotice(): Promise<string | null>

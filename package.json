@@ -7,12 +7,14 @@
     "brand": "node branding/build.mjs && node branding/teaser/build.mjs",
     "codegen": "node shared/codegen.mjs",
     "codegen:check": "node shared/codegen.mjs --check",
-    "deploy": "npx tsx dev/deploy.ts"
+    "deploy": "npx tsx dev/deploy.ts",
+    "icons": "node branding/icons.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "dotenv": "^16.4.7",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3"

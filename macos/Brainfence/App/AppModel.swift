@@ -198,6 +198,17 @@ final class AppModel {
         debugLog.log("task", "Completed '\(task.title)'")
     }
 
+    /// Permanently deletes the account, then this Mac's data, then signs out
+    /// (shared/CONTRACTS.md, Account deletion). Unlike signing out, this ends
+    /// blocking: the rules are gone.
+    func deleteAccount() async throws {
+        try await session.deleteAccountOnServer()
+        try await db.disconnectAndClear()
+        UserDefaults.standard.removeObject(forKey: Self.lastUserKey)
+        engine.tick()
+        await session.signOutLocally()
+    }
+
     /// Opens the main window on a task's screen.
     func open(taskId: String) {
         navigation.showTask(taskId)

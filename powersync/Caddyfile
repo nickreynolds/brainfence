@@ -1,3 +1,14 @@
 {$CADDY_DOMAIN} {
 	reverse_proxy powersync:8080
 }
+
+# The public website (site/): privacy policy and account deletion pages.
+# `npm run deploy` uploads site/ into the mounted folder.
+{$SITE_DOMAIN:brainfence.online} {
+	root * /srv/site
+	file_server
+}
+
+www.{$SITE_DOMAIN:brainfence.online} {
+	redir https://{$SITE_DOMAIN:brainfence.online}{uri} permanent
+}
