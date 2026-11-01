@@ -1,0 +1,15 @@
+{
+  "description": "Feedback messages (shared/CONTRACTS.md, Feedback). `message` is what was typed; `repeat` builds a long one: `text` repeated `times`, then `suffix`. `expect` is the stored message, or null when it can't be sent (empty after trimming, or over `max_length` Unicode code points). For long messages, `expect_length` says it can be sent and is stored trimmed, with that many code points.",
+  "max_length": 4000,
+  "cases": [
+    { "name": "kept as typed", "message": "The timer skipped a step.", "expect": "The timer skipped a step." },
+    { "name": "surrounding whitespace is trimmed", "message": "  \n\tLove the lime buttons!\n\n ", "expect": "Love the lime buttons!" },
+    { "name": "inner line breaks are kept", "message": "Two things:\n\n1. sync\n2. widgets", "expect": "Two things:\n\n1. sync\n2. widgets" },
+    { "name": "empty can't be sent", "message": "", "expect": null },
+    { "name": "only whitespace can't be sent", "message": " \n\t ", "expect": null },
+    { "name": "exactly the limit", "repeat": { "text": "a", "times": 4000, "suffix": "" }, "expect_length": 4000 },
+    { "name": "one over the limit", "repeat": { "text": "a", "times": 4001, "suffix": "" }, "expect": null },
+    { "name": "an emoji counts as one character", "repeat": { "text": "a", "times": 3999, "suffix": "👍" }, "expect_length": 4000 },
+    { "name": "trimming happens before the limit is checked", "repeat": { "text": "a", "times": 4000, "suffix": "   " }, "expect_length": 4000 }
+  ]
+}

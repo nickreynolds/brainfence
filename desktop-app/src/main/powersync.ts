@@ -10,14 +10,17 @@ import { SYNCED_TABLES } from '@shared/db'
 import type { SyncStatusInfo } from '@shared/ipc'
 import { currentAccessToken, getAuthState, onAuthState, supabase, userIdForLocalWrites } from './auth'
 import { POWERSYNC_URL } from './config'
-import { JSON_COLUMNS, TABLES } from '@shared/schema.generated'
+import { INSERT_ONLY_TABLES, JSON_COLUMNS, TABLES } from '@shared/schema.generated'
 
 // Built from shared/schema.json (see shared/CONTRACTS.md). `id` is implicit.
 export const AppSchema = new Schema(
   Object.fromEntries(
     Object.entries(TABLES).map(([table, columns]) => [
       table,
-      new Table(Object.fromEntries(Object.entries(columns).map(([name, type]) => [name, column[type]]))),
+      new Table(
+        Object.fromEntries(Object.entries(columns).map(([name, type]) => [name, column[type]])),
+        { insertOnly: INSERT_ONLY_TABLES.includes(table) },
+      ),
     ]),
   ),
 )

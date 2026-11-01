@@ -265,6 +265,18 @@ val AppSchema = Schema(
             Column.text("updated_at"),
         ),
     ),
+    Table(
+        name = "feedback",
+        columns = listOf(
+            Column.text("user_id"),
+            Column.text("message"),
+            Column.text("platform"),                  // 'android' | 'windows' | 'macos'
+            Column.text("app_version"),
+            Column.text("source"),                    // 'settings' | 'setup_guide'
+            Column.text("created_at"),
+        ),
+        insertOnly = true,
+    ),
 )
 
 /**

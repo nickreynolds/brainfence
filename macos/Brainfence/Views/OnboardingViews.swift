@@ -19,6 +19,7 @@ struct GuideView: View {
     @State private var picking: PickerTarget?
     @State private var isSaving = false
     @State private var error: String?
+    @State private var sendingFeedback = false
 
     private enum PickerTarget: String, Identifiable { case companions, blocked; var id: String { rawValue } }
 
@@ -203,6 +204,11 @@ struct GuideView: View {
                       text: "A remembrance arrives as a notification a few times a day. Change how often under Contemplations.")
             }
             Point(icon: "gearshape", title: "Run this again", text: "Settings → Run Setup Guide.")
+            Point(icon: "bubble.left", title: "Tell us what you think",
+                  text: "Brainfence is new, and we read every note. Send one any time from Settings → Send Feedback.")
+            Button("Send Feedback…") { sendingFeedback = true }
+                .padding(.leading, 44)
+                .sheet(isPresented: $sendingFeedback) { FeedbackSheet(source: .setupGuide) }
         }
     }
 

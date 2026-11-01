@@ -27,6 +27,10 @@ for (const [table, columns] of tables) {
     if (c.encoding && !['json', 'boolean'].includes(c.encoding)) throw new Error(`${table}.${c.name}: unknown encoding`)
   }
 }
+// Insert-only tables: writes are uploaded but never stored locally or synced down.
+const insertOnly = new Set(schema.insert_only ?? [])
+for (const table of insertOnly) if (!schema.tables[table]) throw new Error(`insert_only: unknown table ${table}`)
+
 // Material 3 roles, then the app's blocking-state roles (blocked, unlocked, pending).
 const colors = Object.entries(tokens.color)
 const blockingColors = Object.entries(tokens.blocking)
@@ -75,7 +79,7 @@ ${columns.map((c) => {
   const comment = columnComment(c)
   return comment ? `${line.padEnd(53)} // ${comment}` : line
 }).join('\n')}
-        ),
+        ),${insertOnly.has(table) ? '\n        insertOnly = true,' : ''}
     ),`).join('\n')}
 )
 
@@ -126,6 +130,9 @@ ${columns.map((c) => {
 }).join('\n')}
   },`).join('\n')}
 } as const
+
+/** Tables whose writes are uploaded but never stored locally or synced down. */
+export const INSERT_ONLY_TABLES: readonly string[] = [${[...insertOnly].map((t) => `'${t}'`).join(', ')}]
 
 /**
  * Table → columns stored locally as JSON text that are structured in Postgres
@@ -182,7 +189,7 @@ ${columns.map((c) => {
   const comment = columnComment(c)
   return comment ? `${line.padEnd(43)} // ${comment}` : line
 }).join('\n')}
-    ]),`).join('\n').replace(/,$/, '')}
+    ]${insertOnly.has(table) ? ', insertOnly: true' : ''}),`).join('\n').replace(/,$/, '')}
 )
 `
 

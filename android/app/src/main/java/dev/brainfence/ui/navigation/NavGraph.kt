@@ -710,6 +710,7 @@ fun BrainfenceNavGraph(
                     onToggleDomain = viewModel::toggleDomain,
                     onAddDomain = viewModel::addDomain,
                     onCreate = viewModel::create,
+                    onSendFeedback = viewModel::sendFeedback,
                     onFinish = leave,
                 )
             }
@@ -743,6 +744,7 @@ fun BrainfenceNavGraph(
                     onOpenDebugLogs = { navController.navigate(Routes.DEBUG) },
                     onSignOut = viewModel::signOut,
                     onDeleteAccount = viewModel::deleteAccount,
+                    onSendFeedback = viewModel::sendFeedback,
                 )
             }
             composable(Routes.HOME_LOCATION) {

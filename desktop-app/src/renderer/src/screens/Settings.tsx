@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/ipc'
+import { FeedbackDialog } from '../components/FeedbackDialog'
 import { Icon } from '../components/Icon'
 import { ConfirmDialog, Switch, TopBar } from '../components/ui'
 import { cleanError, useAuth, useEnforcement, useLocationStatus, useSyncStatus } from '../lib/hooks'
@@ -21,6 +22,7 @@ export function SettingsScreen() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState(false)
   const { navigate } = useRouter()
 
   useEffect(() => {
@@ -95,6 +97,17 @@ export function SettingsScreen() {
         </div>
 
         <div className="stack sm">
+          <div className="title-md">Feedback</div>
+          <div className="card row">
+            <div className="grow">
+              <div className="title-sm">Send feedback</div>
+              <div className="small muted">Something confusing, broken or missing? Tell us.</div>
+            </div>
+            <button className="btn tonal sm" onClick={() => setFeedback(true)}>Send feedback</button>
+          </div>
+        </div>
+
+        <div className="stack sm">
           <div className="title-md">Account & sync</div>
           <div className="card stack sm">
             {auth.status === 'signedIn' && <div>Signed in as <b>{auth.email ?? auth.userId}</b></div>}
@@ -116,6 +129,7 @@ export function SettingsScreen() {
           <SettingsLink title="Debug logs" detail="Recent events, for troubleshooting" onOpen={() => navigate('debug')} />
         </div>
       </div>
+      {feedback && <FeedbackDialog source="settings" onClose={() => setFeedback(false)} />}
       {confirmSignOut && (
         <ConfirmDialog
           title="Sign out?"

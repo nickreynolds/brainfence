@@ -10,6 +10,7 @@ import { DECK_TABLES, getDecks } from '@shared/repos/contemplations'
 import { ONBOARDING_TABLES, applyGuide, dismissOnboarding, finishDeviceSetup, getOnboarding } from '@shared/repos/onboarding'
 import { parseJsonObject } from '@shared/json'
 import { AppPicker, PickedApp } from '../components/AppPicker'
+import { FeedbackDialog } from '../components/FeedbackDialog'
 import { Icon, IconName } from '../components/Icon'
 import { Chip, ErrorText, Field, Switch, TextInput } from '../components/ui'
 import { db, useAction, useQuery, useSyncStatus } from '../lib/hooks'
@@ -151,6 +152,7 @@ export function GuideScreen({ onExit }: { onExit: () => void }) {
   const [blockedApps, setBlockedApps] = useState<PickedApp[]>([])
   const [domains, setDomains] = useState<string[]>([])
   const [domainInput, setDomainInput] = useState('')
+  const [feedback, setFeedback] = useState(false)
   const action = useAction()
 
   useEffect(() => {
@@ -343,7 +345,12 @@ export function GuideScreen({ onExit }: { onExit: () => void }) {
             {plan.rule && plan.rule.blocked_domains.length > 0 && <Point icon="globe" title="Website blocking">Windows needs a one-time permission to block sites. Settings → Website blocking.</Point>}
             {plan.add_remembrances && <Point icon="history" title="Contemplations">A remembrance arrives as a notification a few times a day. Change how often under Contemplations.</Point>}
             <Point icon="settings" title="Run this again">Settings → Run setup guide.</Point>
+            <Point icon="feedback" title="Tell us what you think">
+              Brainfence is new, and we read every note. Send one any time from Settings → Send feedback.
+              <div style={{ marginTop: 8 }}><button className="btn tonal sm" onClick={() => setFeedback(true)}>Send feedback</button></div>
+            </Point>
           </div>
+          {feedback && <FeedbackDialog source="setup_guide" onClose={() => setFeedback(false)} />}
         </Page>
       )
   }

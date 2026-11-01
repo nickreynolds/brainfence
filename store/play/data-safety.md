@@ -28,7 +28,7 @@ Nothing is processed ephemerally. Every purpose is **App functionality**, plus
 | Location → Precise location | ✅ | Optional | A GPS task's completion proof, and places chosen for tasks |
 | Location → Approximate location | ✅ | Optional | Same data (precise location implies it) |
 | App activity → Installed apps | ✅ | Optional | The apps the user picks to block, or as companion apps |
-| App activity → Other user-generated content | ✅ | Required | Tasks, routines, shopping lists, journal entries, notes, contemplations, reports |
+| App activity → Other user-generated content | ✅ | Required | Tasks, routines, shopping lists, journal entries, notes, contemplations, reports, and feedback the user chooses to send (with the app's platform and version) |
 | App activity → App interactions | ✅ | Required | Task completions, including time spent in a companion app |
 | Web browsing → Web browsing history | ❌ | | Addresses are only checked on the device. The blocked domains the user types are user-generated content. |
 | App info and performance (crash logs, diagnostics) | ❌ | | Debug logs stay on the device |

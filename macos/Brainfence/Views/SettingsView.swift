@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var confirmingDelete = false
     @State private var deleting = false
     @State private var deleteError: String?
+    @State private var sendingFeedback = false
 
     var body: some View {
         @Bindable var navigation = model.navigation
@@ -35,6 +36,14 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Section("Feedback") {
+                Button("Send Feedback…") { sendingFeedback = true }
+                Text("Something confusing, broken or missing? Tell us.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .sheet(isPresented: $sendingFeedback) { FeedbackSheet(source: .settings) }
 
             Section("Account") {
                 if case .signedIn(_, let email) = model.session.state {

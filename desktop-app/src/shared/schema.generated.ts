@@ -197,7 +197,18 @@ export const TABLES = {
     created_at: 'text',
     updated_at: 'text',
   },
+  feedback: {
+    user_id: 'text',
+    message: 'text',
+    platform: 'text',                    // 'android' | 'windows' | 'macos'
+    app_version: 'text',
+    source: 'text',                      // 'settings' | 'setup_guide'
+    created_at: 'text',
+  },
 } as const
+
+/** Tables whose writes are uploaded but never stored locally or synced down. */
+export const INSERT_ONLY_TABLES: readonly string[] = ['feedback']
 
 /**
  * Table → columns stored locally as JSON text that are structured in Postgres

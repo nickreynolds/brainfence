@@ -25,6 +25,7 @@ Last reviewed: 2026-11-01.
 | Sign-up | ✅ | ✅ | ✅ | |
 | Email confirmation link opens the app (`brainfence://auth-callback`) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Email links). Signs in on the device that signed up; elsewhere it says the email is confirmed. |
 | Offline-first sync (PowerSync + Supabase) | ✅ | ✅ | ✅ | Schema generated from `shared/schema.json`. |
+| Send feedback (saved to the `feedback` table, queued offline) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Feedback). Settings → Send feedback, and introduced with a button on the setup guide's last page. Insert-only: uploaded, never synced down; read it in the Supabase dashboard. |
 | Delete account (in the app, plus a web page for requests) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Account deletion). Settings on every platform. Clears local data and ends blocking. Web: `site/delete-account/`. |
 
 ## Setup guide
@@ -109,7 +110,7 @@ an allowed exception. See [Parity policy](#parity-policy).
 | --- | :-: | :-: | :-: | --- |
 | Brand palette (Foil), light and dark, following the system | ✅ | ✅ | ✅ | `shared/tokens.json`, generated per client. macOS keeps system text colors and uses the palette for tint and fills. |
 | Blocking-state colors (blocked, unlocked, pending) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Colors). |
-| Four sections: Tasks, Blocking rules, Review (Journal and Reports tabs), Settings | ✅ | ✅ | ✅ | Android: bottom bar, hidden on editors and task screens. Windows and Mac: sidebar. Settings holds Home location (not on Mac), Contemplations, the setup guide, account and debug logs. Blocking shows a count of what's blocked. |
+| Four sections: Tasks, Blocking rules, Review (Journal and Reports tabs), Settings | ✅ | ✅ | ✅ | Android: bottom bar, hidden on editors and task screens. Windows and Mac: sidebar. Settings holds Home location (not on Mac), Contemplations, the setup guide, feedback, account and debug logs. Blocking shows a count of what's blocked. |
 | Each section's create action in the brand lime (New task, New rule, New report) | ✅ | ✅ | ✅ | Android: floating button that shrinks to "+" as the list scrolls. Windows and Mac: top-bar button. |
 
 ## Platform-specific (not parity items)

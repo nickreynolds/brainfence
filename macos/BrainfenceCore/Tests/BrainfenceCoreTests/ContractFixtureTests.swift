@@ -162,4 +162,27 @@ final class ContractFixtureTests: XCTestCase {
             XCTAssertEqual(actual, c["result"], text)
         }
     }
+
+    func testFeedbackMessages() throws {
+        let f = try fixture("feedback.json")
+        XCTAssertEqual(f["max_length"]?.intValue, Feedback.maxLength)
+        let cases = try XCTUnwrap(f["cases"]?.arrayValue)
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let name = c["name"]?.stringValue ?? ""
+            let message: String
+            if let r = c["repeat"] {
+                message = String(repeating: r["text"]?.stringValue ?? "", count: r["times"]?.intValue ?? 0) + (r["suffix"]?.stringValue ?? "")
+            } else {
+                message = try XCTUnwrap(c["message"]?.stringValue, name)
+            }
+            let actual = Feedback.normalize(message)
+            if let length = c["expect_length"]?.intValue {
+                XCTAssertEqual(actual, message.trimmingCharacters(in: .whitespacesAndNewlines), name)
+                XCTAssertEqual(actual.map(Feedback.length), length, name)
+            } else {
+                XCTAssertEqual(actual, c["expect"]?.stringValue, name)
+            }
+        }
+    }
 }

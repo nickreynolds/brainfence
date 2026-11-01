@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -34,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import dev.brainfence.ui.feedback.FeedbackDialog
 
 /**
  * The Settings section: what used to live in the task list's ⋮ menu, grouped
@@ -49,10 +51,15 @@ fun SettingsScreen(
     onOpenDebugLogs: () -> Unit,
     onSignOut: () -> Unit,
     onDeleteAccount: (onDone: (error: String?) -> Unit) -> Unit,
+    onSendFeedback: (message: String, onDone: (error: String?) -> Unit) -> Unit,
 ) {
     var showDeleteAccount by remember { mutableStateOf(false) }
     if (showDeleteAccount) {
         DeleteAccountDialog(onDelete = onDeleteAccount, onDismiss = { showDeleteAccount = false })
+    }
+    var showFeedback by remember { mutableStateOf(false) }
+    if (showFeedback) {
+        FeedbackDialog(onSend = onSendFeedback, onDismiss = { showFeedback = false })
     }
 
     Scaffold(
@@ -88,6 +95,16 @@ fun SettingsScreen(
                     title = "Run setup guide",
                     detail = "How Brainfence works, and the starter tasks and blocking rule",
                     onClick = onOpenSetupGuide,
+                )
+            }
+
+            item { SectionHeader("Feedback") }
+            item {
+                SettingsRow(
+                    icon = Icons.Default.Feedback,
+                    title = "Send feedback",
+                    detail = "Something confusing, broken or missing? Tell us",
+                    onClick = { showFeedback = true },
                 )
             }
 

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.brainfence.data.auth.AccountDeletion
 import dev.brainfence.data.auth.SessionRepository
+import dev.brainfence.data.feedback.FeedbackRepository
+import dev.brainfence.domain.feedback.Feedback
 import dev.brainfence.ui.onboarding.OnboardingGate
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -15,6 +17,7 @@ class SettingsViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val accountDeletion: AccountDeletion,
     private val onboardingGate: OnboardingGate,
+    private val feedbackRepository: FeedbackRepository,
 ) : ViewModel() {
 
     val email: String? get() = sessionRepository.currentUser?.email
@@ -35,6 +38,20 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("SettingsViewModel", "Account deletion failed", e)
                 e.message ?: "Check your connection and try again."
+            }
+            onDone(error)
+        }
+    }
+
+    /** Sends feedback; [onDone] gets null, or why it couldn't be sent. */
+    fun sendFeedback(message: String, onDone: (error: String?) -> Unit) {
+        viewModelScope.launch {
+            val error = try {
+                feedbackRepository.send(message, Feedback.Source.SETTINGS)
+                null
+            } catch (e: Exception) {
+                Log.e("SettingsViewModel", "Feedback failed", e)
+                e.message ?: "Try again."
             }
             onDone(error)
         }

@@ -9,10 +9,12 @@ import dev.brainfence.data.apps.InstalledAppsProvider
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.contemplation.ContemplationRepository
 import dev.brainfence.data.contemplation.ContemplationSettingsRepository
+import dev.brainfence.data.feedback.FeedbackRepository
 import dev.brainfence.data.onboarding.OnboardingRepository
 import dev.brainfence.data.settings.HomeLocation
 import dev.brainfence.data.settings.HomeLocationRepository
 import dev.brainfence.domain.blocking.RuleContracts
+import dev.brainfence.domain.feedback.Feedback
 import dev.brainfence.domain.onboarding.DeferredStep
 import dev.brainfence.domain.onboarding.Onboarding
 import dev.brainfence.domain.onboarding.OnboardingChoices
@@ -129,6 +131,7 @@ class GuideViewModel @Inject constructor(
     private val homeLocationRepository: HomeLocationRepository,
     private val contemplationSettings: ContemplationSettingsRepository,
     private val contemplationScheduler: ContemplationScheduler,
+    private val feedbackRepository: FeedbackRepository,
     installedAppsProvider: InstalledAppsProvider,
 ) : ViewModel() {
 
@@ -228,6 +231,20 @@ class GuideViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isSaving = false, error = e.message)
             }
+        }
+    }
+
+    /** Sends feedback; [onDone] gets null, or why it couldn't be sent. */
+    fun sendFeedback(message: String, onDone: (error: String?) -> Unit) {
+        viewModelScope.launch {
+            val error = try {
+                feedbackRepository.send(message, Feedback.Source.SETUP_GUIDE)
+                null
+            } catch (e: Exception) {
+                Log.e(TAG, "Feedback failed", e)
+                e.message ?: "Try again."
+            }
+            onDone(error)
         }
     }
 

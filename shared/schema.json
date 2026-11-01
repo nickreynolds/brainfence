@@ -1,5 +1,5 @@
 {
-  "description": "Synced tables as stored locally by PowerSync (`id` is implicit). `type` is the local SQLite column type. `encoding: json` marks JSONB and Postgres array columns, stored locally as JSON text and parsed before upload; `encoding: boolean` marks BOOLEAN columns, stored locally as 0/1. Run `npm run codegen` after editing. See shared/CONTRACTS.md.",
+  "description": "Synced tables as stored locally by PowerSync (`id` is implicit). `type` is the local SQLite column type. `encoding: json` marks JSONB and Postgres array columns, stored locally as JSON text and parsed before upload; `encoding: boolean` marks BOOLEAN columns, stored locally as 0/1. `insert_only` tables are written and uploaded but never stored or synced down (PowerSync insert-only tables). Run `npm run codegen` after editing. See shared/CONTRACTS.md.",
   "tables": {
     "groups": [
       {"name": "user_id", "type": "text"},
@@ -194,6 +194,15 @@
       {"name": "outgoing_links", "type": "text", "encoding": "json"},
       {"name": "created_at", "type": "text"},
       {"name": "updated_at", "type": "text"}
+    ],
+    "feedback": [
+      {"name": "user_id", "type": "text"},
+      {"name": "message", "type": "text"},
+      {"name": "platform", "type": "text", "note": "'android' | 'windows' | 'macos'"},
+      {"name": "app_version", "type": "text"},
+      {"name": "source", "type": "text", "note": "'settings' | 'setup_guide'"},
+      {"name": "created_at", "type": "text"}
     ]
-  }
+  },
+  "insert_only": ["feedback"]
 }

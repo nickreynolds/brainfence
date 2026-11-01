@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { config as loadEnv } from 'dotenv'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
@@ -8,6 +9,7 @@ import react from '@vitejs/plugin-react'
 const env = { ...loadEnv({ path: resolve(__dirname, '../.env') }).parsed, ...process.env }
 
 const shared = { '@shared': resolve(__dirname, 'src/shared') }
+const { version } = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
 
 export default defineConfig({
   main: {
@@ -26,5 +28,6 @@ export default defineConfig({
   renderer: {
     resolve: { alias: shared },
     plugins: [react()],
+    define: { __APP_VERSION__: JSON.stringify(version) },
   },
 })

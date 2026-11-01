@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mood
@@ -76,6 +77,7 @@ import dev.brainfence.domain.onboarding.OnboardingPlan
 import dev.brainfence.domain.onboarding.StarterKey
 import dev.brainfence.domain.recurrence.parseTaskTime
 import dev.brainfence.ui.components.LocationPickerMap
+import dev.brainfence.ui.feedback.FeedbackDialog
 import java.util.Locale
 
 private fun starterIcon(key: StarterKey): ImageVector = when (key) {
@@ -110,8 +112,13 @@ fun GuideScreen(
     onToggleDomain: (String) -> Unit,
     onAddDomain: (String) -> Boolean,
     onCreate: () -> Unit,
+    onSendFeedback: (message: String, onDone: (error: String?) -> Unit) -> Unit,
     onFinish: () -> Unit,
 ) {
+    var showFeedback by remember { mutableStateOf(false) }
+    if (showFeedback) {
+        FeedbackDialog(onSend = onSendFeedback, onDismiss = { showFeedback = false })
+    }
     val steps = state.steps
     val index = steps.indexOf(state.step)
     val progress = if (state.step == GuideStep.WELCOME || state.step == GuideStep.DONE) null
@@ -271,6 +278,11 @@ fun GuideScreen(
                     "A remembrance arrives as a notification a few times a day. Tap \"I remember\". Change how often under Contemplations.")
             }
             Point(Icons.Default.Settings, "Run this again", "Settings → Run setup guide.")
+            Point(Icons.Default.Feedback, "Tell us what you think",
+                "Brainfence is new, and we read every note. Send one any time from Settings → Send feedback.")
+            OutlinedButton(onClick = { showFeedback = true }, modifier = Modifier.padding(start = 38.dp)) {
+                Text("Send feedback")
+            }
         }
     }
 }

@@ -28,6 +28,7 @@ final class AppModel {
     @ObservationIgnored let reportRepository: ReportRepository
     @ObservationIgnored let contemplationRepository: ContemplationRepository
     @ObservationIgnored let onboardingRepository: OnboardingRepository
+    @ObservationIgnored let feedbackRepository: FeedbackRepository
     @ObservationIgnored let notifications: NotificationService
     @ObservationIgnored let webEnforcer: WebEnforcer
     @ObservationIgnored private let appEnforcer: AppEnforcer
@@ -82,6 +83,7 @@ final class AppModel {
         reportRepository = ReportRepository(db: db)
         contemplationRepository = ContemplationRepository(db: db)
         onboardingRepository = OnboardingRepository(db: db)
+        feedbackRepository = FeedbackRepository(db: db)
         engine = BlockingEngine(taskRepository: taskRepository, blockingRepository: blockingRepository)
 
         shield = ShieldPresenter()

@@ -213,6 +213,32 @@ A link is classified like this (`fixtures/auth-callback.json`):
 
 Other `brainfence://` URLs (and other schemes) aren't auth callbacks.
 
+## Feedback
+
+Every client has **Send feedback** in Settings, and the setup guide's last page
+introduces it with a button to send some there and then. Both open the same
+short form: a text box, a note that the message is saved with the account
+along with the platform and app version, and Send.
+
+A note is one row in `feedback`, an insert-only table: it's queued locally
+(so it can be sent offline) and uploaded, but never stored on the device or
+synced down. Nobody reads it back in the app; it's read from the Supabase
+dashboard.
+
+| Column | Value |
+| --- | --- |
+| `id` | a new UUID |
+| `user_id` | the signed-in user |
+| `message` | the text with surrounding whitespace trimmed (`fixtures/feedback.json`) |
+| `platform` | `android`, `windows` or `macos` |
+| `app_version` | the app's version name |
+| `source` | `settings` or `setup_guide` |
+| `created_at` | now |
+
+Send is disabled while the trimmed text is empty or longer than 4000
+characters, counted in Unicode code points as Postgres does (an emoji is one).
+Account deletion removes feedback with everything else.
+
 ## Account deletion
 
 Every client offers **Delete account** next to Sign out (Google Play requires

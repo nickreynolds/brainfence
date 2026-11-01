@@ -10,6 +10,7 @@ import { appRefKey, isMoreRestrictive, mapRule, normalizeDomain, parseBlockedApp
 import { mapOnboarding } from '../src/shared/repos/onboarding'
 import { buildOnboardingPlan, onboardingRoute } from '../src/shared/onboarding'
 import { parseAuthCallback } from '../src/shared/authCallback'
+import { FEEDBACK_MAX_LENGTH, codePointLength, normalizeFeedback } from '../src/shared/feedback'
 
 const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, '../../shared/fixtures', name), 'utf8'))
 
@@ -65,5 +66,21 @@ test('onboarding plan', () => {
 test('auth callback links', () => {
   for (const c of fixture('auth-callback.json').cases) {
     assert.deepEqual(parseAuthCallback(c.url), c.result, c.url)
+  }
+})
+
+test('feedback messages', () => {
+  const { max_length, cases } = fixture('feedback.json')
+  assert.equal(FEEDBACK_MAX_LENGTH, max_length)
+  assert.ok(cases.length > 0)
+  for (const c of cases) {
+    const message: string = c.repeat ? c.repeat.text.repeat(c.repeat.times) + c.repeat.suffix : c.message
+    const actual = normalizeFeedback(message)
+    if ('expect_length' in c) {
+      assert.equal(actual, message.trim(), c.name)
+      assert.equal(codePointLength(actual!), c.expect_length, c.name)
+    } else {
+      assert.equal(actual, c.expect, c.name)
+    }
   }
 })

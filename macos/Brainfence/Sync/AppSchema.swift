@@ -203,5 +203,13 @@ let AppSchema = Schema(
         .text("outgoing_links"),            // json
         .text("created_at"),
         .text("updated_at"),
-    ])
+    ]),
+    Table(name: "feedback", columns: [
+        .text("user_id"),
+        .text("message"),
+        .text("platform"),                  // 'android' | 'windows' | 'macos'
+        .text("app_version"),
+        .text("source"),                    // 'settings' | 'setup_guide'
+        .text("created_at"),
+    ], insertOnly: true)
 )
