@@ -1,15 +1,20 @@
 package dev.brainfence.data.db
 
 import com.powersync.connector.supabase.SupabaseConnector
+import com.powersync.connectors.PowerSyncCredentials
 import com.powersync.db.crud.CrudEntry
 import com.powersync.db.crud.UpdateType
 import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.ExperimentalTime
 
 /**
  * Wrapper around PowerSync's SupabaseConnector that correctly handles columns
@@ -30,6 +35,24 @@ class SupabasePowerSyncConnector @Inject constructor(
     supabase: SupabaseClient,
     @Named("powerSyncUrl") powerSyncUrl: String,
 ) : SupabaseConnector(supabase, powerSyncUrl) {
+
+    /**
+     * Hands PowerSync a token that's still valid. supabase-kt schedules its
+     * refresh with a coroutine delay, and that clock stops while the phone is
+     * in deep sleep, so the token (which expires by the wall clock) can be
+     * long dead by the time the refresh fires. The base connector passes the
+     * in-memory token on regardless, and every sync and upload then fails with
+     * "JWT has expired" until the refresh catches up.
+     */
+    @OptIn(ExperimentalTime::class)
+    override suspend fun fetchCredentials(): PowerSyncCredentials {
+        val auth = supabaseClient.auth
+        val session = auth.currentSessionOrNull()
+        if (session != null && session.expiresAt < Clock.System.now() + EXPIRY_MARGIN) {
+            auth.refreshCurrentSession()
+        }
+        return super.fetchCredentials()
+    }
 
     override suspend fun uploadCrudEntry(entry: CrudEntry) {
         val jsonEncodedCols = JSON_ENCODED_COLUMNS[entry.table]
@@ -74,3 +97,6 @@ class SupabasePowerSyncConnector @Inject constructor(
         }
     }
 }
+
+/** Refresh this long before expiry, so a token can't lapse mid-connection. */
+private val EXPIRY_MARGIN = 5.minutes
