@@ -26,10 +26,12 @@ test-core:
 test: test-core
 
 ## Build Release and copy it to /Applications (where the login agent can register).
+## Quit only closes the window while the agent is on, so restart launchd's copy
+## to run the new build (or open it if the agent isn't registered yet).
 install: release
 	rm -rf /Applications/Brainfence.app
 	cp -R $(DERIVED)/Build/Products/Release/Brainfence.app /Applications/
-	open /Applications/Brainfence.app
+	launchctl kickstart -k gui/$$(id -u)/dev.brainfence.macos.agent 2>/dev/null || open /Applications/Brainfence.app
 
 clean:
 	rm -rf build Brainfence.xcodeproj Brainfence/Generated

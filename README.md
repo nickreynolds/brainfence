@@ -450,7 +450,8 @@ The app's first-launch setup wizard should guide the user through enabling the a
 #### Always Running
 
 - A launchd agent registered with `SMAppService` starts the app at login and relaunches it if it is force-quit or crashes (`KeepAlive.SuccessfulExit = false`)
-- `applicationShouldTerminate` refuses to quit while anything is blocking
+- `applicationShouldTerminate` refuses to quit while anything is blocking. Otherwise, while the agent is on, Quit only closes the window: the app stays in the menu bar, and turning the agent off in Login Items is how it's stopped
+- A copy opened from Finder or the Dock (not watched by launchd) starts the agent with `launchctl kickstart` and hands over to it
 
 #### Anti-Bypass
 

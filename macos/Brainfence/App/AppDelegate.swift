@@ -9,12 +9,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set when the system is logging out / shutting down, or when this
     /// instance hands over to the launchd-managed one.
     private var allowTermination = false
+    /// Set when this launchd-managed copy replaces one the user opened.
+    private var showOnLaunch = false
     private let logger = Logger(subsystem: "dev.brainfence.macos", category: "app")
 
     private static let yieldNotification = Notification.Name("dev.brainfence.macos.yield")
     private static let showNotification = Notification.Name("dev.brainfence.macos.show")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Listen before ensureSingleInstance, which may start the copy that posts it.
+        let distributed = DistributedNotificationCenter.default()
+        distributed.addObserver(forName: Self.yieldNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.yieldToManagedInstance() }
+        }
         guard ensureSingleInstance() else { return }
 
         model.openMainWindow = { [weak self] in self?.showMainWindow() }
@@ -25,14 +32,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.allowTermination = true }
         }
-        let distributed = DistributedNotificationCenter.default()
         distributed.addObserver(forName: Self.showNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.showMainWindow() }
         }
-        distributed.addObserver(forName: Self.yieldNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.yieldToManagedInstance() }
-        }
 
+        if showOnLaunch { showMainWindow() }
         if case .signedOut = model.session.state { showMainWindow() }
         // The session state resolves asynchronously; show sign-in once known.
         Task { @MainActor in
@@ -42,16 +46,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// One Brainfence per user. The launchd-managed instance (which is
-    /// relaunched if killed) always wins; a manually started one hands over.
+    /// relaunched if killed) always wins; a manually started one hands over,
+    /// starting it first if it isn't running (say, after the app was quit
+    /// before the agent kept it running).
     private func ensureSingleInstance() -> Bool {
         let others = NSRunningApplication
             .runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             .filter { $0 != NSRunningApplication.current }
-        guard !others.isEmpty else { return true }
+        guard !others.isEmpty else {
+            if !LaunchAgentManager.isLaunchdManaged, model.launchAgent.startManagedInstance() {
+                logger.info("started the launchd-managed instance; it will take over")
+            }
+            return true
+        }
 
         let distributed = DistributedNotificationCenter.default()
         if LaunchAgentManager.isLaunchdManaged {
             distributed.postNotificationName(Self.yieldNotification, object: nil, userInfo: nil, deliverImmediately: true)
+            showOnLaunch = true
             return true
         }
         distributed.postNotificationName(Self.showNotification, object: nil, userInfo: nil, deliverImmediately: true)
@@ -79,7 +91,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if allowTermination { return .terminateNow }
-        guard model.engine.state.isBlocking else { return .terminateNow }
+        guard model.engine.state.isBlocking else {
+            model.launchAgent.refresh()
+            guard model.launchAgent.keepsRunning else { return .terminateNow }
+            // Quitting would stop blocking until the next login, so Quit
+            // means close: Brainfence stays in the menu bar.
+            mainWindow?.close()
+            return .terminateCancel
+        }
 
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()

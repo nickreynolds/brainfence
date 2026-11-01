@@ -4,7 +4,8 @@ import ServiceManagement
 
 /// Keeps Brainfence running: a launchd agent (bundled in
 /// Contents/Library/LaunchAgents) starts it at login and relaunches it if it
-/// is force-quit or crashes. A normal quit (exit 0) is left alone.
+/// is force-quit or crashes. While the agent is on, Quit only closes the
+/// window, so the app exits normally (exit 0, left alone) only once it's off.
 @MainActor
 @Observable
 final class LaunchAgentManager {
@@ -52,6 +53,31 @@ final class LaunchAgentManager {
         status = service.status
     }
 
+    /// True while the agent is on: Quit then only closes the window, since
+    /// the copy launchd watches is the one doing the blocking. Turning the
+    /// agent off in Login Items is how Brainfence is stopped for good.
+    /// Reflects the last `refresh()`.
+    var keepsRunning: Bool { canRegister && status == .enabled }
+
+    /// Asks launchd to start its copy of the app, which then takes over from
+    /// this one (a copy opened from Finder isn't relaunched if killed).
+    /// False when the agent is off or launchd refused.
+    func startManagedInstance() -> Bool {
+        refresh()
+        guard keepsRunning else { return false }
+        let launchctl = Process()
+        launchctl.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        launchctl.arguments = ["kickstart", "gui/\(getuid())/\(Self.label)"]
+        do {
+            try launchctl.run()
+            launchctl.waitUntilExit()
+        } catch {
+            logger.error("kickstart: \(error.localizedDescription)")
+            return false
+        }
+        return launchctl.terminationStatus == 0
+    }
+
     func openLoginItemsSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }
@@ -61,7 +87,7 @@ final class LaunchAgentManager {
             return "Install Brainfence in /Applications to start it at login"
         }
         return switch status {
-        case .enabled: "Starts at login and relaunches if quit unexpectedly"
+        case .enabled: "Starts at login and keeps running. Turn it off in Login Items to quit."
         case .requiresApproval: "Needs approval in System Settings → Login Items"
         case .notRegistered: "Not registered"
         case .notFound: "Agent not found in app bundle"

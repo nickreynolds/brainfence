@@ -30,7 +30,10 @@ struct MenuBarContent: View {
             HStack {
                 Button("Open Brainfence") { model.openMainWindow() }
                 Spacer()
-                Button("Quit") { NSApp.terminate(nil) }
+                // While the login agent keeps Brainfence running, Quit would only close it.
+                if !model.launchAgent.keepsRunning {
+                    Button("Quit") { NSApp.terminate(nil) }
+                }
             }
         }
         .padding(14)

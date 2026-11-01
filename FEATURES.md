@@ -15,7 +15,7 @@ Update it in the same change as any feature work.
 | ⚠️ | Implemented, but differs from the parity policy (see the note) |
 | ➕ | Allowed exception to the parity policy (see the note) |
 
-Last reviewed: 2026-10-25.
+Last reviewed: 2026-10-26.
 
 ## Account and sync
 
@@ -81,7 +81,7 @@ an allowed exception. See [Parity policy](#parity-policy).
 | Time-locked loosening edits, cancelling pending changes | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` |
 | Other platforms' app entries kept when editing | ✅ | ✅ | ✅ | |
 | Starts at login / always running | ✅ | ✅ | ✅ | Android: foreground service and boot receiver. Windows: login item and tray. Mac: launchd agent. |
-| Resists quitting | ➖ | 🟡 | ✅ | Android: the system manages the service. Windows asks for confirmation but doesn't relaunch if killed. Mac refuses to quit while blocking and relaunches if killed. **Wanted on every platform:** refusing to quit while blocking, and relaunching if killed. Windows is next (planned). |
+| Resists quitting | ➖ | 🟡 | ✅ | Android: the system manages the service. Windows asks for confirmation but doesn't relaunch if killed. Mac refuses to quit while blocking, relaunches if killed, and otherwise treats Quit as closing the window while its login agent is on (turn the agent off in Login Items to stop it); a copy opened from Finder hands over to the agent's copy. **Wanted on every platform:** refusing to quit while blocking, and relaunching if killed. Windows is next (planned). |
 | Multi-step disable flow | 📋 | 📋 | 📋 | |
 
 ## Contemplations, reports and tools
