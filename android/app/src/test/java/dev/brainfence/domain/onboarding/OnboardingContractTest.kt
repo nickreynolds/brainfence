@@ -89,6 +89,7 @@ class OnboardingContractTest {
                         put("available_from", t.availableFrom ?: JSONObject.NULL)
                         put("due_at", t.dueAt ?: JSONObject.NULL)
                         put("sort_order", t.sortOrder)
+                        put("report", t.report ?: JSONObject.NULL)
                         put("steps", JSONArray(t.steps.map { s ->
                             JSONObject().put("title", s.title).put("step_type", s.stepType).put("config", s.config)
                         }))

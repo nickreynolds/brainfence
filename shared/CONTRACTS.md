@@ -143,11 +143,19 @@ changed. Everything else is fixed. All starters are `status = 'active'`, with
 | `morning_routine` | 0 | Morning Routine | `routine` / null | daily | yes | 06:00–09:00 | `{}`; steps Make Bed (checkbox), Take Pills (checkbox), Reverse Plank (timed, 30 s) |
 | `morning_walk` | 1 | Morning Walk | `simple` / `gps` | daily | yes | 06:00–11:00 | leave home: `latitude`, `longitude`, `radius_meters` from the home location, `mode: "leave"`, `min_duration_m: 0` |
 | `meditation` | 2 | Meditation | `simple` / `meditation` | daily | yes | 06:00–19:00 | `duration_seconds: 600`, `short_sit_seconds: 120`, `companion_apps` from this platform |
-| `journaling` | 3 | Journal | `journal` / `journal` | daily | no | 18:00–23:00 | `{}` |
-| `groceries` | 4 | Groceries | `shopping` / `gps` | none | no | none | the store's `latitude` / `longitude`, `radius_meters: 100`, `mode: "notify"`, `notify_window` every day 08:00–21:00 |
+| `afternoon_mood` | 3 | Afternoon Mood | `report` / `report` | daily | no | 16:00–19:00 | `{"report_id"}`: the account's `mood` library report (see below) |
+| `journaling` | 4 | Journal | `journal` / `journal` | daily | no | 18:00–23:00 | `{}` |
+| `groceries` | 5 | Groceries | `shopping` / `gps` | none | no | none | the store's `latitude` / `longitude`, `radius_meters: 100`, `mode: "notify"`, `notify_window` every day 08:00–21:00 |
 | `five_remembrances` | | | the `five_remembrances` library deck, unless the account already has one | | | | |
 
 - `sort_order` is the order column, so starters keep their order even when created later.
+- Every starter is on when the guide opens except `afternoon_mood`, which the
+  user turns on.
+- **`afternoon_mood`** records the Mood report: the plan task's `report` is
+  `"mood"` and its `verification_config` is `{}`. When writing it, the guide
+  sets `report_id` to the account's report with `library_key = 'mood'`,
+  copying the library's Mood report (and its metrics) in the same write if
+  there's none.
 - **Location starters** (`morning_walk` needs a home, `groceries` a store) are
   *deferred* when the location isn't known, which is always the case on the
   Mac. A deferred starter isn't created; it goes in `deferred_steps` as

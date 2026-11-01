@@ -53,6 +53,15 @@ struct OnboardingRepository: Sendable {
             parameters: [StarterKey.fiveRemembrances.rawValue]
         ) { try $0.getString(index: 0) } != nil
         let deck = contemplationLibrary.first { $0.key == StarterKey.fiveRemembrances.rawValue }
+        // Report starters record the account's copy of a library report, made below if missing.
+        var existingReports: [String: String?] = [:]
+        for key in Set(plan.tasks.compactMap(\.report)) {
+            existingReports[key] = try await db.getOptional(
+                sql: "SELECT id FROM reports WHERE library_key = ? ORDER BY created_at LIMIT 1",
+                parameters: [key]
+            ) { try $0.getString(index: 0) }
+        }
+        let reportsBefore = existingReports
 
         let taskIds = Dictionary(uniqueKeysWithValues: plan.tasks.map { ($0.key, UUID().uuidString.lowercased()) })
         let ruleId = plan.rule == nil ? nil : UUID().uuidString.lowercased()
@@ -74,8 +83,18 @@ struct OnboardingRepository: Sendable {
         let rowColumns = columns
 
         try await db.writeTransaction { tx in
+            var reportIds: [String: String] = [:]
+            for (key, id) in reportsBefore {
+                guard let starter = reportLibrary.first(where: { $0.key == key }) else { continue }
+                reportIds[key] = try id ?? ReportRepository.insertLibraryReport(tx, starter, userId: userId)
+            }
             for task in plan.tasks {
-                try Self.insert(tx, task: task, id: taskIds[task.key]!, userId: userId)
+                var config = task.verificationConfig
+                if let key = task.report, let reportId = reportIds[key], case .object(var fields) = config {
+                    fields["report_id"] = .string(reportId)
+                    config = .object(fields)
+                }
+                try Self.insert(tx, task: task, verificationConfig: config, id: taskIds[task.key]!, userId: userId)
             }
             if plan.addRemembrances, !hasRemembrances, let deck {
                 try ContemplationRepository.insertLibraryDeck(tx, deck, userId: userId)
@@ -161,7 +180,10 @@ struct OnboardingRepository: Sendable {
         }
     }
 
-    private static func insert(_ tx: any ConnectionContext, task: PlannedTask, id: String, userId: String) throws {
+    /// [verificationConfig] replaces the planned one (a report starter's, with its `report_id`).
+    private static func insert(
+        _ tx: any ConnectionContext, task: PlannedTask, verificationConfig: JSONValue? = nil, id: String, userId: String
+    ) throws {
         let now = Timestamp.format(Date())
         // tags / blocking_rule_ids are Postgres arrays: locally a JSON array.
         try tx.execute(
@@ -175,7 +197,7 @@ struct OnboardingRepository: Sendable {
                 """,
             parameters: [
                 id, userId, task.title, task.taskType, task.recurrenceType, task.recurrenceConfig.jsonString,
-                task.verificationType, task.verificationConfig.jsonString, task.sortOrder, task.isBlockingCondition ? 1 : 0,
+                task.verificationType, (verificationConfig ?? task.verificationConfig).jsonString, task.sortOrder, task.isBlockingCondition ? 1 : 0,
                 task.availableFrom, task.dueAt, now, now,
             ]
         )

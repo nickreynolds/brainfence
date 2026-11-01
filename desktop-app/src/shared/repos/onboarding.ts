@@ -6,11 +6,13 @@ import { Db, PLATFORM, SqlStatement, requireUserId } from '../db'
 import { nowIso, parseJsonArray, parseJsonObject, uuid } from '../json'
 import type { AppRef } from '../models'
 import { CONTEMPLATION_LIBRARY } from '../contemplationLibrary'
+import { REPORT_LIBRARY } from '../reports'
 import {
   DeferredStep, OnboardingPlan, OnboardingPlatform, OnboardingRow, PlannedTask, StarterKey, canLocate,
 } from '../onboarding'
 import { appRefKey, getRule, scheduleRuleChange } from './blocking'
 import { libraryDeckStatements } from './contemplations'
+import { libraryReportStatements } from './reports'
 import { insertStepStatement } from './routines'
 
 export const ONBOARDING_TABLES = ['onboarding']
@@ -97,10 +99,22 @@ export async function applyGuide(db: Db, plan: OnboardingPlan, platform: Onboard
   const now = nowIso()
   const statements: SqlStatement[] = []
   const taskIds: GuideResult['taskIds'] = {}
+  // Report starters record the account's copy of a library report, made here if missing.
+  const reportIds: Record<string, string> = {}
+  for (const key of new Set(plan.tasks.map((t) => t.report).filter((k): k is string => k != null))) {
+    const existing = await db.getOptional<{ id: string }>('SELECT id FROM reports WHERE library_key = ? ORDER BY created_at LIMIT 1', [key])
+    if (existing) {
+      reportIds[key] = existing.id
+    } else {
+      reportIds[key] = uuid()
+      statements.push(...libraryReportStatements(userId, REPORT_LIBRARY.find((r) => r.key === key)!, reportIds[key]))
+    }
+  }
   for (const task of plan.tasks) {
     const id = uuid()
     taskIds[task.key] = id
-    statements.push(...taskStatements(userId, task, id))
+    const written = task.report ? { ...task, verification_config: { ...task.verification_config, report_id: reportIds[task.report] } } : task
+    statements.push(...taskStatements(userId, written, id))
   }
   if (plan.add_remembrances) statements.push(...(await remembrancesStatements(db, userId)))
 

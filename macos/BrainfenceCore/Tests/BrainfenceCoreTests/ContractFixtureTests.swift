@@ -128,7 +128,7 @@ final class ContractFixtureTests: XCTestCase {
                         "verification_type": optional(t.verificationType), "verification_config": t.verificationConfig,
                         "recurrence_type": optional(t.recurrenceType), "recurrence_config": t.recurrenceConfig,
                         "is_blocking_condition": .bool(t.isBlockingCondition), "available_from": optional(t.availableFrom),
-                        "due_at": optional(t.dueAt), "sort_order": .int(t.sortOrder),
+                        "due_at": optional(t.dueAt), "sort_order": .int(t.sortOrder), "report": optional(t.report),
                         "steps": .array(t.steps.map { .object(["title": .string($0.title), "step_type": .string($0.stepType), "config": $0.config]) }),
                     ])
                 }),

@@ -169,8 +169,14 @@ export async function deleteMetric(db: Db, metricId: string): Promise<void> {
 /** Copies a starter report and its metrics into the user's tables. */
 export async function addReportFromLibrary(db: Db, starter: StarterReport): Promise<string> {
   const userId = await requireUserId(db)
-  const now = nowIso()
   const reportId = uuid()
+  await db.batch(libraryReportStatements(userId, starter, reportId))
+  return reportId
+}
+
+/** The writes that copy [starter] and its metrics into the user's tables as [reportId]. */
+export function libraryReportStatements(userId: string, starter: StarterReport, reportId: string): SqlStatement[] {
+  const now = nowIso()
   const statements: SqlStatement[] = []
   const metricIds = starter.metrics.map((m) => {
     const id = uuid()
@@ -187,8 +193,7 @@ export async function addReportFromLibrary(db: Db, starter: StarterReport): Prom
       params: [uuid(), userId, reportId, metricId, index, now],
     })
   })
-  await db.batch(statements)
-  return reportId
+  return statements
 }
 
 /**

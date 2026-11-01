@@ -5,7 +5,7 @@
 import { normalizeDomain } from './repos/blocking'
 import type { AppRef } from './models'
 
-export type StarterKey = 'morning_routine' | 'morning_walk' | 'meditation' | 'journaling' | 'groceries' | 'five_remembrances'
+export type StarterKey = 'morning_routine' | 'morning_walk' | 'meditation' | 'afternoon_mood' | 'journaling' | 'groceries' | 'five_remembrances'
 
 export interface StarterStep {
   title: string
@@ -27,15 +27,18 @@ export interface StarterDef {
   /** Which location the starter needs; deferred until it's known. */
   needs: 'home' | 'store' | null
   sortOrder: number
+  /** Turned on when the guide opens. */
+  onByDefault: boolean
 }
 
 export const STARTERS: StarterDef[] = [
-  { key: 'morning_routine', title: 'Morning Routine', summary: 'A checklist you run through: make bed, take pills, then a 30-second reverse plank.', hasWindow: true, availableFrom: '06:00', dueAt: '09:00', blocks: true, needs: null, sortOrder: 0 },
-  { key: 'morning_walk', title: 'Morning Walk', summary: 'Completes on its own when your phone leaves home.', hasWindow: true, availableFrom: '06:00', dueAt: '11:00', blocks: true, needs: 'home', sortOrder: 1 },
-  { key: 'meditation', title: 'Meditation', summary: 'Ten minutes with the built-in timer or a meditation app you choose.', hasWindow: true, availableFrom: '06:00', dueAt: '19:00', blocks: true, needs: null, sortOrder: 2 },
-  { key: 'journaling', title: 'Journal', summary: 'Write a short entry each evening. Past entries are kept in Journal.', hasWindow: true, availableFrom: '18:00', dueAt: '23:00', blocks: false, needs: null, sortOrder: 3 },
-  { key: 'groceries', title: 'Groceries', summary: "A running shopping list that reminds you when you're near the store.", hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: 'store', sortOrder: 4 },
-  { key: 'five_remembrances', title: 'The Five Remembrances', summary: 'Short reflections delivered a few times a day. Tap "I remember" to acknowledge one.', hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: null, sortOrder: 5 },
+  { key: 'morning_routine', title: 'Morning Routine', summary: 'A checklist you run through: make bed, take pills, then a 30-second reverse plank.', hasWindow: true, availableFrom: '06:00', dueAt: '09:00', blocks: true, needs: null, sortOrder: 0, onByDefault: true },
+  { key: 'morning_walk', title: 'Morning Walk', summary: 'Completes on its own when your phone leaves home.', hasWindow: true, availableFrom: '06:00', dueAt: '11:00', blocks: true, needs: 'home', sortOrder: 1, onByDefault: true },
+  { key: 'meditation', title: 'Meditation', summary: 'Ten minutes with the built-in timer or a meditation app you choose.', hasWindow: true, availableFrom: '06:00', dueAt: '19:00', blocks: true, needs: null, sortOrder: 2, onByDefault: true },
+  { key: 'afternoon_mood', title: 'Afternoon Mood', summary: 'Rate depression, anxiety and happiness from 1 to 5 each afternoon. Answers are kept in Review.', hasWindow: true, availableFrom: '16:00', dueAt: '19:00', blocks: false, needs: null, sortOrder: 3, onByDefault: false },
+  { key: 'journaling', title: 'Journal', summary: 'Write a short entry each evening. Past entries are kept in Journal.', hasWindow: true, availableFrom: '18:00', dueAt: '23:00', blocks: false, needs: null, sortOrder: 4, onByDefault: true },
+  { key: 'groceries', title: 'Groceries', summary: "A running shopping list that reminds you when you're near the store.", hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: 'store', sortOrder: 5, onByDefault: true },
+  { key: 'five_remembrances', title: 'The Five Remembrances', summary: 'Short reflections delivered a few times a day. Tap "I remember" to acknowledge one.', hasWindow: false, availableFrom: null, dueAt: null, blocks: false, needs: null, sortOrder: 6, onByDefault: true },
 ]
 
 export const starterDef = (key: StarterKey): StarterDef => STARTERS.find((s) => s.key === key)!
@@ -50,6 +53,8 @@ export const ONBOARDING_RULE_NAME = 'Distractions'
 export const MEDITATION_SECONDS = 600
 export const MEDITATION_SHORT_SIT_SECONDS = 120
 export const GROCERIES_RADIUS_M = 100
+/** The library report the afternoon mood check records. */
+export const AFTERNOON_MOOD_REPORT = 'mood'
 const EVERY_DAY = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
 // ── Routing ─────────────────────────────────────────────────────────────────
@@ -127,6 +132,8 @@ export interface PlannedTask {
   due_at: string | null
   sort_order: number
   steps: StarterStep[]
+  /** Library key of the report the task records; its `report_id` is filled in when written. */
+  report: string | null
 }
 
 export interface PlannedRule {
@@ -178,6 +185,7 @@ function starterTask(def: StarterDef, choices: OnboardingChoices, place: PlaceCh
     key: def.key, title: def.title, task_type: 'simple', verification_type: null as string | null,
     verification_config: {} as Record<string, unknown>, recurrence_type: 'daily' as string | null,
     recurrence_config: {}, is_blocking_condition: def.blocks, sort_order: def.sortOrder, steps: [] as StarterStep[],
+    report: null as string | null,
   }
   switch (def.key) {
     case 'morning_routine':
@@ -192,6 +200,8 @@ function starterTask(def: StarterDef, choices: OnboardingChoices, place: PlaceCh
         ...base, verification_type: 'meditation',
         verification_config: { duration_seconds: MEDITATION_SECONDS, short_sit_seconds: MEDITATION_SHORT_SIT_SECONDS, companion_apps: choices.companion_apps },
       }
+    case 'afternoon_mood':
+      return { ...base, task_type: 'report', verification_type: 'report', report: AFTERNOON_MOOD_REPORT }
     case 'journaling':
       return { ...base, task_type: 'journal', verification_type: 'journal' }
     case 'groceries':

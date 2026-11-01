@@ -8,6 +8,7 @@ public enum StarterKey: String, Sendable, CaseIterable, Hashable {
     case morningRoutine = "morning_routine"
     case morningWalk = "morning_walk"
     case meditation
+    case afternoonMood = "afternoon_mood"
     case journaling
     case groceries
     case fiveRemembrances = "five_remembrances"
@@ -35,14 +36,17 @@ public struct StarterDef: Sendable {
     /// The location the starter needs; deferred until it's known.
     public let needs: Place?
     public let sortOrder: Int
+    /// Turned on when the guide opens.
+    public var onByDefault = true
 
     public static let all: [StarterDef] = [
         StarterDef(key: .morningRoutine, title: "Morning Routine", summary: "A checklist you run through: make bed, take pills, then a 30-second reverse plank.", hasWindow: true, availableFrom: "06:00", dueAt: "09:00", blocks: true, needs: nil, sortOrder: 0),
         StarterDef(key: .morningWalk, title: "Morning Walk", summary: "Completes on its own when your phone leaves home.", hasWindow: true, availableFrom: "06:00", dueAt: "11:00", blocks: true, needs: .home, sortOrder: 1),
         StarterDef(key: .meditation, title: "Meditation", summary: "Ten minutes with the built-in timer or a meditation app you choose.", hasWindow: true, availableFrom: "06:00", dueAt: "19:00", blocks: true, needs: nil, sortOrder: 2),
-        StarterDef(key: .journaling, title: "Journal", summary: "Write a short entry each evening. Past entries are kept in Journal.", hasWindow: true, availableFrom: "18:00", dueAt: "23:00", blocks: false, needs: nil, sortOrder: 3),
-        StarterDef(key: .groceries, title: "Groceries", summary: "A running shopping list that reminds you when you're near the store.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: .store, sortOrder: 4),
-        StarterDef(key: .fiveRemembrances, title: "The Five Remembrances", summary: "Short reflections delivered a few times a day. Click \"I remember\" to acknowledge one.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: nil, sortOrder: 5),
+        StarterDef(key: .afternoonMood, title: "Afternoon Mood", summary: "Rate depression, anxiety and happiness from 1 to 5 each afternoon. Answers are kept in Review.", hasWindow: true, availableFrom: "16:00", dueAt: "19:00", blocks: false, needs: nil, sortOrder: 3, onByDefault: false),
+        StarterDef(key: .journaling, title: "Journal", summary: "Write a short entry each evening. Past entries are kept in Journal.", hasWindow: true, availableFrom: "18:00", dueAt: "23:00", blocks: false, needs: nil, sortOrder: 4),
+        StarterDef(key: .groceries, title: "Groceries", summary: "A running shopping list that reminds you when you're near the store.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: .store, sortOrder: 5),
+        StarterDef(key: .fiveRemembrances, title: "The Five Remembrances", summary: "Short reflections delivered a few times a day. Click \"I remember\" to acknowledge one.", hasWindow: false, availableFrom: nil, dueAt: nil, blocks: false, needs: nil, sortOrder: 6),
     ]
 
     public static func of(_ key: StarterKey) -> StarterDef { all.first { $0.key == key }! }
@@ -53,6 +57,8 @@ public enum Onboarding {
     public static let meditationSeconds = 600
     public static let meditationShortSitSeconds = 120
     public static let groceriesRadiusMeters = 100
+    /// The library report the afternoon mood check records.
+    public static let afternoonMoodReport = "mood"
     public static let suggestedDomains = ["youtube.com", "reddit.com", "x.com", "instagram.com", "facebook.com", "tiktok.com"]
     public static let morningRoutineSteps = [
         StarterStep(title: "Make Bed", stepType: "checkbox", config: .object([:])),
@@ -197,6 +203,8 @@ public struct PlannedTask: Sendable, Equatable {
     public let dueAt: String?
     public let sortOrder: Int
     public let steps: [StarterStep]
+    /// Library key of the report the task records; its `report_id` is filled in when written.
+    public let report: String?
 }
 
 public struct PlannedRule: Sendable, Equatable {
@@ -251,6 +259,7 @@ public struct OnboardingPlan: Sendable, Equatable {
         var config: [String: JSONValue] = [:]
         var recurrence: String? = "daily"
         var steps: [StarterStep] = []
+        var report: String?
         switch def.key {
         case .morningRoutine:
             taskType = "routine"
@@ -268,6 +277,10 @@ public struct OnboardingPlan: Sendable, Equatable {
                 "short_sit_seconds": .int(Onboarding.meditationShortSitSeconds),
                 "companion_apps": BlockedApp.encodeList(choices.companionApps),
             ]
+        case .afternoonMood:
+            taskType = "report"
+            verificationType = "report"
+            report = Onboarding.afternoonMoodReport
         case .journaling:
             taskType = "journal"
             verificationType = "journal"
@@ -286,7 +299,8 @@ public struct OnboardingPlan: Sendable, Equatable {
         return PlannedTask(
             key: def.key, title: def.title, taskType: taskType, verificationType: verificationType,
             verificationConfig: .object(config), recurrenceType: recurrence, recurrenceConfig: .object([:]),
-            isBlockingCondition: def.blocks, availableFrom: availableFrom, dueAt: dueAt, sortOrder: def.sortOrder, steps: steps
+            isBlockingCondition: def.blocks, availableFrom: availableFrom, dueAt: dueAt, sortOrder: def.sortOrder, steps: steps,
+            report: report
         )
     }
 }

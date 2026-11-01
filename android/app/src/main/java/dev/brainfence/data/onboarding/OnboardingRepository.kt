@@ -7,6 +7,8 @@ import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.data.blocking.BlockingRepository
 import dev.brainfence.data.contemplation.ContemplationLibrary
 import dev.brainfence.data.contemplation.ContemplationRepository
+import dev.brainfence.data.report.ReportLibrary
+import dev.brainfence.data.report.ReportRepository
 import dev.brainfence.domain.onboarding.DeferredStep
 import dev.brainfence.domain.onboarding.Onboarding
 import dev.brainfence.domain.onboarding.OnboardingPlan
@@ -66,6 +68,13 @@ class OnboardingRepository @Inject constructor(
             sql = "SELECT id FROM contemplation_decks WHERE library_key = ?",
             parameters = listOf(ContemplationLibrary.FIVE_REMEMBRANCES.key),
         ) { cursor -> cursor.getString(0) ?: "" } != null
+        // Report starters record the account's copy of a library report, made below if missing.
+        val reportIds = plan.tasks.mapNotNull { it.report }.distinct().associateWith { key ->
+            database.getOptional(
+                sql = "SELECT id FROM reports WHERE library_key = ? ORDER BY created_at LIMIT 1",
+                parameters = listOf(key),
+            ) { cursor -> cursor.getString(0) ?: "" }
+        }
         val taskIds = plan.tasks.associate { it.key to UUID.randomUUID().toString() }
         val ruleId = plan.rule?.let { UUID.randomUUID().toString() }
         val now = Instant.now().toString()
@@ -85,7 +94,16 @@ class OnboardingRepository @Inject constructor(
         }
 
         database.writeTransaction { tx ->
-            for (task in plan.tasks) insertTask(tx, task, taskIds.getValue(task.key), userId)
+            val reports = reportIds.mapValues { (key, id) ->
+                id ?: ReportRepository.insertLibraryReport(tx, ReportLibrary.reports.first { it.key == key }, userId)
+            }
+            for (task in plan.tasks) {
+                val reportId = task.report?.let(reports::getValue)
+                val written = if (reportId == null) task else task.copy(
+                    verificationConfig = JSONObject(task.verificationConfig.toString()).put("report_id", reportId),
+                )
+                insertTask(tx, written, taskIds.getValue(task.key), userId)
+            }
             if (plan.addRemembrances && !hasRemembrances) {
                 ContemplationRepository.insertLibraryDeck(tx, ContemplationLibrary.FIVE_REMEMBRANCES, userId)
             }

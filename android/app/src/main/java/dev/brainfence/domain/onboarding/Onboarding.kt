@@ -13,6 +13,7 @@ enum class StarterKey(val key: String) {
     MORNING_ROUTINE("morning_routine"),
     MORNING_WALK("morning_walk"),
     MEDITATION("meditation"),
+    AFTERNOON_MOOD("afternoon_mood"),
     JOURNALING("journaling"),
     GROCERIES("groceries"),
     FIVE_REMEMBRANCES("five_remembrances");
@@ -38,6 +39,8 @@ data class StarterDef(
     /** The location the starter needs; deferred until it's known. */
     val needs: Place?,
     val sortOrder: Int,
+    /** Turned on when the guide opens. */
+    val onByDefault: Boolean = true,
 ) {
     enum class Place { HOME, STORE }
 }
@@ -47,6 +50,8 @@ object Onboarding {
     const val MEDITATION_SECONDS = 600
     const val MEDITATION_SHORT_SIT_SECONDS = 120
     const val GROCERIES_RADIUS_M = 100
+    /** The library report the afternoon mood check records. */
+    const val AFTERNOON_MOOD_REPORT = "mood"
     const val PLATFORM = "android"
     val SUGGESTED_DOMAINS = listOf("youtube.com", "reddit.com", "x.com", "instagram.com", "facebook.com", "tiktok.com")
     internal val EVERY_DAY = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -55,9 +60,10 @@ object Onboarding {
         StarterDef(StarterKey.MORNING_ROUTINE, "Morning Routine", "A checklist you run through: make bed, take pills, then a 30-second reverse plank.", true, "06:00", "09:00", true, null, 0),
         StarterDef(StarterKey.MORNING_WALK, "Morning Walk", "Completes on its own when your phone leaves home.", true, "06:00", "11:00", true, StarterDef.Place.HOME, 1),
         StarterDef(StarterKey.MEDITATION, "Meditation", "Ten minutes with the built-in timer or a meditation app you choose.", true, "06:00", "19:00", true, null, 2),
-        StarterDef(StarterKey.JOURNALING, "Journal", "Write a short entry each evening. Past entries are kept in Journal history.", true, "18:00", "23:00", false, null, 3),
-        StarterDef(StarterKey.GROCERIES, "Groceries", "A running shopping list that reminds you when you're near the store.", false, null, null, false, StarterDef.Place.STORE, 4),
-        StarterDef(StarterKey.FIVE_REMEMBRANCES, "The Five Remembrances", "Short reflections delivered a few times a day. Tap \"I remember\" to acknowledge one.", false, null, null, false, null, 5),
+        StarterDef(StarterKey.AFTERNOON_MOOD, "Afternoon Mood", "Rate depression, anxiety and happiness from 1 to 5 each afternoon. Answers are kept in Review.", true, "16:00", "19:00", false, null, 3, onByDefault = false),
+        StarterDef(StarterKey.JOURNALING, "Journal", "Write a short entry each evening. Past entries are kept in Journal history.", true, "18:00", "23:00", false, null, 4),
+        StarterDef(StarterKey.GROCERIES, "Groceries", "A running shopping list that reminds you when you're near the store.", false, null, null, false, StarterDef.Place.STORE, 5),
+        StarterDef(StarterKey.FIVE_REMEMBRANCES, "The Five Remembrances", "Short reflections delivered a few times a day. Tap \"I remember\" to acknowledge one.", false, null, null, false, null, 6),
     )
 
     fun starter(key: StarterKey): StarterDef = STARTERS.first { it.key == key }
@@ -165,6 +171,8 @@ data class PlannedTask(
     val dueAt: String?,
     val sortOrder: Int,
     val steps: List<StarterStep>,
+    /** Library key of the report the task records; its `report_id` is filled in when written. */
+    val report: String? = null,
 )
 
 data class PlannedRule(
@@ -223,6 +231,7 @@ private fun starterTask(def: StarterDef, choices: OnboardingChoices, place: Plac
     val config = JSONObject()
     var recurrence: String? = "daily"
     var steps = emptyList<StarterStep>()
+    var report: String? = null
     when (def.key) {
         StarterKey.MORNING_ROUTINE -> {
             taskType = "routine"
@@ -241,6 +250,11 @@ private fun starterTask(def: StarterDef, choices: OnboardingChoices, place: Plac
             config.put("duration_seconds", Onboarding.MEDITATION_SECONDS)
             config.put("short_sit_seconds", Onboarding.MEDITATION_SHORT_SIT_SECONDS)
             config.put("companion_apps", JSONArray(choices.companionApps))
+        }
+        StarterKey.AFTERNOON_MOOD -> {
+            taskType = "report"
+            verificationType = "report"
+            report = Onboarding.AFTERNOON_MOOD_REPORT
         }
         StarterKey.JOURNALING -> {
             taskType = "journal"
@@ -266,6 +280,7 @@ private fun starterTask(def: StarterDef, choices: OnboardingChoices, place: Plac
         key = def.key, title = def.title, taskType = taskType, verificationType = verificationType,
         verificationConfig = config, recurrenceType = recurrence, recurrenceConfig = JSONObject(),
         isBlockingCondition = def.blocks, availableFrom = from, dueAt = due, sortOrder = def.sortOrder, steps = steps,
+        report = report,
     )
 }
 

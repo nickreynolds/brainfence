@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -81,6 +82,7 @@ private fun starterIcon(key: StarterKey): ImageVector = when (key) {
     StarterKey.MORNING_ROUTINE -> Icons.Default.Checklist
     StarterKey.MORNING_WALK -> Icons.AutoMirrored.Filled.DirectionsWalk
     StarterKey.MEDITATION -> Icons.Default.SelfImprovement
+    StarterKey.AFTERNOON_MOOD -> Icons.Default.Mood
     StarterKey.JOURNALING -> Icons.AutoMirrored.Filled.Article
     StarterKey.GROCERIES -> Icons.Default.ShoppingCart
     StarterKey.FIVE_REMEMBRANCES -> Icons.Default.FormatQuote

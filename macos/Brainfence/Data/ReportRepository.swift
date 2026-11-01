@@ -215,27 +215,33 @@ struct ReportRepository: Sendable {
 
     /// Copies a starter report and its metrics into the user's tables.
     func addFromLibrary(_ starter: StarterReport, userId: String) async throws {
+        try await db.writeTransaction { tx in
+            _ = try Self.insertLibraryReport(tx, starter, userId: userId)
+        }
+    }
+
+    /// Copies [starter] and its metrics into the user's tables within [tx]; returns the report id.
+    static func insertLibraryReport(_ tx: any ConnectionContext, _ starter: StarterReport, userId: String) throws -> String {
         let now = Timestamp.format(Date())
         let reportId = UUID().uuidString.lowercased()
         let metrics = starter.metrics.map { (id: UUID().uuidString.lowercased(), metric: $0) }
-        try await db.writeTransaction { tx in
-            for m in metrics {
-                try Self.insertMetric(
-                    tx, id: m.id, userId: userId, name: m.metric.name, description: m.metric.description,
-                    kind: m.metric.kind, labels: m.metric.options, now: now
-                )
-            }
-            try tx.execute(
-                sql: "INSERT INTO reports (id, user_id, name, include_note, library_key, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, ?)",
-                parameters: [reportId, userId, starter.name, starter.key, now, now]
+        for m in metrics {
+            try insertMetric(
+                tx, id: m.id, userId: userId, name: m.metric.name, description: m.metric.description,
+                kind: m.metric.kind, labels: m.metric.options, now: now
             )
-            for (index, m) in metrics.enumerated() {
-                try tx.execute(
-                    sql: "INSERT INTO report_metrics (id, user_id, report_id, metric_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    parameters: [UUID().uuidString.lowercased(), userId, reportId, m.id, index, now]
-                )
-            }
         }
+        try tx.execute(
+            sql: "INSERT INTO reports (id, user_id, name, include_note, library_key, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, ?)",
+            parameters: [reportId, userId, starter.name, starter.key, now, now]
+        )
+        for (index, m) in metrics.enumerated() {
+            try tx.execute(
+                sql: "INSERT INTO report_metrics (id, user_id, report_id, metric_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                parameters: [UUID().uuidString.lowercased(), userId, reportId, m.id, index, now]
+            )
+        }
+        return reportId
     }
 
     /// Records a filled-in report: one submission plus an entry per answer.

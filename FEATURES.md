@@ -15,7 +15,7 @@ Update it in the same change as any feature work.
 | ⚠️ | Implemented, but differs from the parity policy (see the note) |
 | ➕ | Allowed exception to the parity policy (see the note) |
 
-Last reviewed: 2026-10-26.
+Last reviewed: 2026-11-01.
 
 ## Account and sync
 
@@ -31,7 +31,7 @@ Last reviewed: 2026-10-26.
 
 | Feature | Android | Windows | macOS | Notes |
 | --- | :-: | :-: | :-: | --- |
-| First-run setup guide: how Brainfence works, starter tasks (Morning Routine, Morning Walk, Meditation, Journal, Groceries, Five Remembrances) with adjustable windows, apps and sites to block | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Onboarding). Synced `onboarding` table, so finishing on one device carries over. Existing accounts are dismissed quietly. |
+| First-run setup guide: how Brainfence works, starter tasks (Morning Routine, Morning Walk, Meditation, an optional Afternoon Mood check, Journal, Groceries, Five Remembrances) with adjustable windows, apps and sites to block | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Onboarding). Afternoon Mood (16:00–19:00, records the Mood report, made from the library if the account has none) starts off. Synced `onboarding` table, so finishing on one device carries over. Existing accounts are dismissed quietly. |
 | Home and store location in the guide | ✅ | ➕ | ➖ | Android: map picker. Windows: the PC's location or coordinates (allowed exception). The Mac defers Morning Walk and Groceries to a device with location. |
 | Device setup on a second device (its apps for the guide's rule, companion apps, contemplation delivery, deferred starters) | ✅ | ✅ | ✅ | The Mac doesn't finish deferred starters (location). |
 | Run the guide again from settings | ✅ | ✅ | ✅ | Settings → Run setup guide. |

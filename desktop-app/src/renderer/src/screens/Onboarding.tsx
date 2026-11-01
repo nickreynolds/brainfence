@@ -90,7 +90,7 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
 }
 
 const STARTER_ICONS: Record<StarterKey, IconName> = {
-  morning_routine: 'tasks', morning_walk: 'place', meditation: 'meditation', journaling: 'article', groceries: 'cart', five_remembrances: 'history',
+  morning_routine: 'tasks', morning_walk: 'place', meditation: 'meditation', afternoon_mood: 'mood', journaling: 'article', groceries: 'cart', five_remembrances: 'history',
 }
 
 function isValidPlace(lat: string, lng: string): PlaceChoice | null {
@@ -143,7 +143,7 @@ type GuideStep = 'welcome' | 'starters' | 'places' | 'meditation' | 'blocking' |
 export function GuideScreen({ onExit }: { onExit: () => void }) {
   const [step, setStep] = useState<GuideStep>('welcome')
   const [starters, setStarters] = useState<Partial<Record<StarterKey, StarterChoice>>>(
-    Object.fromEntries(STARTERS.map((s) => [s.key, {}])),
+    Object.fromEntries(STARTERS.filter((s) => s.onByDefault).map((s) => [s.key, {}])),
   )
   const [home, setHome] = useState({ lat: '', lng: '' })
   const [store, setStore] = useState({ lat: '', lng: '' })

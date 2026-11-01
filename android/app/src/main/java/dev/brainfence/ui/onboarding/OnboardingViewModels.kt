@@ -100,7 +100,8 @@ enum class GuideStep { WELCOME, STARTERS, PLACES, MEDITATION, BLOCKING, REVIEW, 
 
 data class GuideState(
     val step: GuideStep = GuideStep.WELCOME,
-    val starters: Map<StarterKey, StarterChoice> = StarterKey.entries.associateWith { StarterChoice() },
+    val starters: Map<StarterKey, StarterChoice> =
+        Onboarding.STARTERS.filter { it.onByDefault }.associate { it.key to StarterChoice() },
     val home: PlaceInput = PlaceInput(),
     val homeRadiusMeters: Int = HomeLocationRepository.DEFAULT_RADIUS_M,
     val store: PlaceInput = PlaceInput(),

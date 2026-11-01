@@ -11,7 +11,7 @@ struct GuideView: View {
     private enum Step: Hashable { case welcome, starters, meditation, blocking, review, done }
 
     @State private var step: Step = .welcome
-    @State private var starters: [StarterKey: StarterChoice] = Dictionary(uniqueKeysWithValues: StarterKey.allCases.map { ($0, StarterChoice()) })
+    @State private var starters: [StarterKey: StarterChoice] = Dictionary(uniqueKeysWithValues: StarterDef.all.filter(\.onByDefault).map { ($0.key, StarterChoice()) })
     @State private var companionApps: [String] = []    // bundle IDs
     @State private var blockedApps: [String] = []
     @State private var domains: [String] = []
@@ -281,6 +281,7 @@ private struct StarterCard: View {
         case .morningRoutine: "sunrise"
         case .morningWalk: "figure.walk"
         case .meditation: "brain.head.profile"
+        case .afternoonMood: "face.smiling"
         case .journaling: "book"
         case .groceries: "cart"
         case .fiveRemembrances: "quote.bubble"

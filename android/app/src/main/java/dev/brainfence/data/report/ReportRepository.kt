@@ -2,6 +2,7 @@ package dev.brainfence.data.report
 
 import com.powersync.PowerSyncDatabase
 import com.powersync.db.SqlCursor
+import com.powersync.db.internal.PowerSyncTransaction
 import dev.brainfence.data.auth.SessionRepository
 import dev.brainfence.domain.model.Metric
 import dev.brainfence.domain.model.MetricEntry
@@ -256,29 +257,8 @@ class ReportRepository @Inject constructor(
 
     /** Copies a starter report and its metrics into the user's tables. */
     suspend fun addFromLibrary(starter: ReportLibrary.StarterReport): String {
-        val metricIds = starter.metrics.map { createMetric(it.name, it.description, it.kind, it.options) }
         val userId = requireUserId()
-        val now = Instant.now().toString()
-        val reportId = UUID.randomUUID().toString()
-        database.writeTransaction { tx ->
-            tx.execute(
-                sql = """
-                    INSERT INTO reports (id, user_id, name, include_note, library_key, created_at, updated_at)
-                    VALUES (?, ?, ?, 1, ?, ?, ?)
-                """.trimIndent(),
-                parameters = listOf(reportId, userId, starter.name, starter.key, now, now),
-            )
-            metricIds.forEachIndexed { index, metricId ->
-                tx.execute(
-                    sql = """
-                        INSERT INTO report_metrics (id, user_id, report_id, metric_id, sort_order, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """.trimIndent(),
-                    parameters = listOf(UUID.randomUUID().toString(), userId, reportId, metricId, index.toLong(), now),
-                )
-            }
-        }
-        return reportId
+        return database.writeTransaction { tx -> insertLibraryReport(tx, starter, userId) }
     }
 
     // ── Submissions ──────────────────────────────────────────────────
@@ -403,4 +383,49 @@ class ReportRepository @Inject constructor(
 
     private suspend fun requireUserId(): String =
         sessionRepository.userIdForLocalWrites() ?: error("Not authenticated")
+
+    companion object {
+        /** Copies [starter] and its metrics into the user's tables within [tx]; returns the report id. */
+        fun insertLibraryReport(tx: PowerSyncTransaction, starter: ReportLibrary.StarterReport, userId: String): String {
+            val now = Instant.now().toString()
+            val reportId = UUID.randomUUID().toString()
+            val metricIds = starter.metrics.map { metric ->
+                val metricId = UUID.randomUUID().toString()
+                tx.execute(
+                    sql = """
+                        INSERT INTO metrics (id, user_id, name, description, kind, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """.trimIndent(),
+                    parameters = listOf(metricId, userId, metric.name, metric.description, metric.kind.key, now, now),
+                )
+                metric.options.forEachIndexed { index, label ->
+                    tx.execute(
+                        sql = """
+                            INSERT INTO metric_options (id, user_id, metric_id, label, sort_order, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """.trimIndent(),
+                        parameters = listOf(UUID.randomUUID().toString(), userId, metricId, label, index.toLong(), now, now),
+                    )
+                }
+                metricId
+            }
+            tx.execute(
+                sql = """
+                    INSERT INTO reports (id, user_id, name, include_note, library_key, created_at, updated_at)
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                """.trimIndent(),
+                parameters = listOf(reportId, userId, starter.name, starter.key, now, now),
+            )
+            metricIds.forEachIndexed { index, metricId ->
+                tx.execute(
+                    sql = """
+                        INSERT INTO report_metrics (id, user_id, report_id, metric_id, sort_order, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """.trimIndent(),
+                    parameters = listOf(UUID.randomUUID().toString(), userId, reportId, metricId, index.toLong(), now),
+                )
+            }
+            return reportId
+        }
+    }
 }
