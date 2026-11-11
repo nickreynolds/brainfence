@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,7 +61,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
@@ -92,10 +92,10 @@ fun TaskListScreen(
     meditationTimerStates: Map<String, dev.brainfence.service.MeditationTimerState>,
     shoppingItemCounts: Map<String, Int>,
     isAccessibilityEnabled: Boolean,
-    hasLocationPermission: Boolean,
+    locationAccess: LocationAccess,
     needsUsageStatsPermission: Boolean,
     needsExactAlarmPermission: Boolean,
-    onLocationPermissionResult: (Boolean) -> Unit,
+    onRefreshLocationAccess: () -> Unit,
     onUsageStatsPermissionResult: () -> Unit,
     onExactAlarmPermissionResult: () -> Unit,
     onSelectTab: (HomeTab) -> Unit,
@@ -116,23 +116,42 @@ fun TaskListScreen(
         activeRules.flatMap { it.conditionTaskIds }.toSet()
     }
 
+    // Location can be changed in system settings, so re-check on every return.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) onRefreshLocationAccess()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    var locationRequestedAt by remember { mutableStateOf(0L) }
+    val onLocationResult = { granted: Boolean ->
+        onRefreshLocationAccess()
+        // After repeated denials Android answers at once without showing anything.
+        // Go to the app's settings then, or the banner would appear to do nothing.
+        if (!granted && SystemClock.elapsedRealtime() - locationRequestedAt < NO_PROMPT_SHOWN_MS) {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.fromParts("package", context.packageName, null)
+                }
+            )
+        }
+    }
+
     // Foreground location permission launcher
     val fineLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        if (fineGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            onLocationPermissionResult(false)
-        } else {
-            onLocationPermissionResult(fineGranted)
-        }
+        onLocationResult(permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true)
     }
 
     // Background location launcher (must be requested separately on Android 10+)
     val backgroundLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        onLocationPermissionResult(granted)
+        onLocationResult(granted)
     }
 
     Scaffold(
@@ -196,11 +215,8 @@ fun TaskListScreen(
                             AccessibilityBanner()
                         }
                     }
-                    if (!hasLocationPermission) {
+                    if (locationAccess != LocationAccess.ALWAYS) {
                         item(key = "location_banner") {
-                            val hasFineLocation = ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.ACCESS_FINE_LOCATION,
-                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                             // Background location needs Play's prominent disclosure first.
                             var showDisclosure by remember { mutableStateOf(false) }
                             if (showDisclosure) {
@@ -209,6 +225,7 @@ fun TaskListScreen(
                                     text = BACKGROUND_LOCATION_DISCLOSURE,
                                     onAgree = {
                                         showDisclosure = false
+                                        locationRequestedAt = SystemClock.elapsedRealtime()
                                         backgroundLocationLauncher.launch(
                                             Manifest.permission.ACCESS_BACKGROUND_LOCATION
                                         )
@@ -217,15 +234,17 @@ fun TaskListScreen(
                                 )
                             }
                             LocationPermissionBanner(
+                                access = locationAccess,
                                 onRequestPermission = {
-                                    if (!hasFineLocation) {
+                                    if (locationAccess == LocationAccess.NONE) {
+                                        locationRequestedAt = SystemClock.elapsedRealtime()
                                         fineLocationLauncher.launch(
                                             arrayOf(
                                                 Manifest.permission.ACCESS_FINE_LOCATION,
                                                 Manifest.permission.ACCESS_COARSE_LOCATION,
                                             )
                                         )
-                                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    } else {
                                         showDisclosure = true
                                     }
                                 },
@@ -705,8 +724,11 @@ private fun AppIcon(packageName: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** A permission answer this fast means Android didn't show the user anything. */
+private const val NO_PROMPT_SHOWN_MS = 500L
+
 @Composable
-private fun LocationPermissionBanner(onRequestPermission: () -> Unit) {
+private fun LocationPermissionBanner(access: LocationAccess, onRequestPermission: () -> Unit) {
     Card(
         onClick = onRequestPermission,
         modifier = Modifier
@@ -728,7 +750,11 @@ private fun LocationPermissionBanner(onRequestPermission: () -> Unit) {
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                text = "Location permission needed for GPS tasks. Tap to grant.",
+                text = if (access == LocationAccess.NONE) {
+                    "GPS tasks need precise location. Tap to allow it."
+                } else {
+                    "GPS tasks work with the app closed only if location is set to \"Allow all the time\". Tap to change it."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )

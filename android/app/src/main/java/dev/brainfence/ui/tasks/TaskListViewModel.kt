@@ -49,6 +49,9 @@ data class BlockingStatusState(
 
 enum class HomeTab { ACTIVE, COMPLETED, UPCOMING }
 
+/** How much location access GPS tasks have. They need [ALWAYS] to work with the app closed. */
+enum class LocationAccess { NONE, WHILE_IN_USE, ALWAYS }
+
 @HiltViewModel
 class TaskListViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -260,25 +263,24 @@ class TaskListViewModel @Inject constructor(
         initialValue = BlockingStatusState(emptyList(), emptyList(), false),
     )
 
-    private val _hasLocationPermission = MutableStateFlow(checkLocationPermission())
-    val hasLocationPermission = _hasLocationPermission.asStateFlow()
+    private val _locationAccess = MutableStateFlow(checkLocationAccess())
+    val locationAccess = _locationAccess.asStateFlow()
 
-    fun onLocationPermissionResult(granted: Boolean) {
-        _hasLocationPermission.value = checkLocationPermission()
+    /** After a permission prompt, and whenever the screen resumes (it can change in system settings). */
+    fun refreshLocationAccess() {
+        _locationAccess.value = checkLocationAccess()
     }
 
-    private fun checkLocationPermission(): Boolean {
+    private fun checkLocationAccess(): LocationAccess {
         val fine = ContextCompat.checkSelfPermission(
             context, Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
-        val background = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (!fine) return LocationAccess.NONE
+        val background = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
-        return fine && background
+        return if (background) LocationAccess.ALWAYS else LocationAccess.WHILE_IN_USE
     }
 
     // The task currently awaiting confirmation; null = no dialog shown
