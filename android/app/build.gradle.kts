@@ -35,7 +35,7 @@ android {
     compileSdk  = 36
 
     defaultConfig {
-        applicationId   = "dev.brainfence"
+        applicationId   = "com.online.brainfence"
         minSdk          = 26
         targetSdk       = 36
         // Every Play upload needs a higher versionCode (RELEASING.md).

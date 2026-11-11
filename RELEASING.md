@@ -64,7 +64,9 @@ For the website APK: `./gradlew :app:assembleRelease`
 1. Finish identity and device verification in Play Console.
 2. **Create app**: Brainfence, English, App, Free (it can never become paid
    later), and accept the declarations.
-3. **The package name `dev.brainfence` is permanent** once a bundle is uploaded.
+3. **The package name `com.online.brainfence` is permanent** once a bundle is
+   uploaded. It's the `applicationId` only: the code's namespace stays
+   `dev.brainfence`.
 4. On the first upload, Play asks about app signing: choose to **use your own
    key** (export and upload a key from a Java keystore) and follow its PEPK
    steps with the keystore above, so Play and website builds share a signature.
