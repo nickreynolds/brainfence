@@ -243,3 +243,120 @@ private func nextAllowedDay(_ today: CivilDate, _ allowed: Set<Weekday>, _ clock
 func parseDays(_ value: JSONValue) -> Set<Weekday> {
     Set((value.arrayValue ?? []).compactMap { $0.stringValue.flatMap(Weekday.init(abbreviation:)) })
 }
+
+// MARK: - Task status (shared/CONTRACTS.md: Task occurrences and blocking)
+
+/// Whether a task is due, done or overdue right now. Every surface (task list,
+/// blocking, notifications, task screens) reads this, so all clients agree
+/// (`shared/fixtures/task-status.json`).
+public struct TaskStatus: Sendable, Equatable {
+    /// An occurrence is open now: due today, or carried over from an earlier day.
+    public let scheduled: Bool
+    /// The open occurrence is done (with none open: completed today).
+    public let completed: Bool
+    /// The open occurrence started on an earlier day.
+    public let carriedOver: Bool
+    /// Window phase; pastDue when carried over; nil with no window or no open occurrence.
+    public let phase: TimeGatePhase?
+    /// The open occurrence's date, for recurring tasks.
+    public let occurrenceDate: CivilDate?
+}
+
+/// How far back carry-over looks for the previous occurrence.
+private let carryOverLookbackDays = 400
+
+public func computeTaskStatus(
+    recurrenceType: String?,
+    recurrenceConfig: String,
+    carryOver: Bool,
+    availableFrom: String?,
+    dueAt: String?,
+    createdAt: Date?,
+    lastCompletionAt: Date?,
+    now: Date,
+    timeZone: TimeZone = .current
+) -> TaskStatus {
+    let clock = ZonedClock(timeZone: timeZone)
+    let today = clock.date(of: now)
+    let phase = computeTaskPhase(availableFrom: availableFrom, dueAt: dueAt, now: now, timeZone: timeZone)
+    let lastDate = lastCompletionAt.map { clock.date(of: $0) }
+    let completedToday = lastDate == today
+
+    guard let recurrenceType else {
+        return TaskStatus(scheduled: true, completed: lastCompletionAt != nil, carriedOver: false, phase: phase, occurrenceDate: nil)
+    }
+    // interval: open all the time, done for today once completed today.
+    guard let scheduledOn = schedulePredicate(recurrenceType, recurrenceConfig) else {
+        return TaskStatus(scheduled: true, completed: completedToday, carriedOver: false, phase: phase, occurrenceDate: nil)
+    }
+
+    var open: CivilDate?
+    if scheduledOn(today) {
+        open = today
+    } else if carryOver {
+        let earliest = createdAt.map { clock.date(of: $0) }
+        for back in 1...carryOverLookbackDays {
+            let candidate = today.plusDays(-back)
+            if let earliest, candidate < earliest { break }
+            if scheduledOn(candidate) { open = candidate; break }
+        }
+    }
+    guard let open else {
+        return TaskStatus(scheduled: false, completed: completedToday, carriedOver: false, phase: nil, occurrenceDate: nil)
+    }
+    let carriedOver = open != today
+    return TaskStatus(
+        scheduled: true,
+        completed: lastDate.map { $0 >= open } ?? false,
+        carriedOver: carriedOver,
+        phase: carriedOver ? .pastDue : phase,
+        occurrenceDate: open
+    )
+}
+
+/// Whether a recurrence lands on a date. Nil for types with no calendar dates
+/// (interval). A config that can't be parsed lands on every day (fail closed).
+private func schedulePredicate(_ type: String, _ configJson: String) -> ((CivilDate) -> Bool)? {
+    let everyDay: (CivilDate) -> Bool = { _ in true }
+    guard let config = JSONValue.parse(configJson), config.objectValue != nil else {
+        return type == "interval" ? nil : everyDay
+    }
+    switch type {
+    case "daily":
+        guard let days = config["days"] else { return everyDay }
+        guard let items = days.arrayValue else { return everyDay }
+        let parsed = items.map { $0.stringValue.flatMap(Weekday.init(abbreviation:)) }
+        if parsed.contains(where: { $0 == nil }) { return everyDay }
+        let allowed = Set(parsed.compactMap { $0 })
+        return { allowed.contains($0.dayOfWeek) }
+    case "weekly":
+        guard let targetDay = config["day"]?.stringValue.flatMap(Weekday.init(abbreviation:)) else { return everyDay }
+        let interval = config["interval"]?.intValue ?? 1
+        return { $0.dayOfWeek == targetDay && findWeeklyDueDate(today: $0, targetDay: targetDay, interval: interval) == $0 }
+    case "monthly":
+        guard let week = config["week"]?.intValue,
+              let targetDay = config["day"]?.stringValue.flatMap(Weekday.init(abbreviation:)) else { return everyDay }
+        return { nthDayOfWeekInMonth(year: $0.year, month: $0.month, n: week, day: targetDay) == $0 }
+    case "interval":
+        return nil
+    default:
+        return everyDay
+    }
+}
+
+extension BrainTask {
+    /// computeTaskStatus for a loaded task.
+    public func status(now: Date = Date(), timeZone: TimeZone = .current) -> TaskStatus {
+        computeTaskStatus(
+            recurrenceType: recurrenceType,
+            recurrenceConfig: recurrenceConfig,
+            carryOver: carryOver,
+            availableFrom: availableFrom,
+            dueAt: dueAt,
+            createdAt: Timestamp.parse(createdAt),
+            lastCompletionAt: Timestamp.parse(lastCompletionAt),
+            now: now,
+            timeZone: timeZone
+        )
+    }
+}

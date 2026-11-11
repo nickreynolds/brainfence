@@ -35,7 +35,9 @@ private val ACTIVE_TASKS_SQL = """
         t.created_at,
         t.updated_at,
         CASE WHEN COUNT(tc.id) > 0 THEN 1 ELSE 0 END AS completed_today,
-        (SELECT MAX(tc2.completed_at) FROM task_completions tc2 WHERE tc2.task_id = t.id) AS last_completion_at
+        (SELECT MAX(tc2.completed_at) FROM task_completions tc2 WHERE tc2.task_id = t.id) AS last_completion_at,
+        t.carry_over,
+        t.completion_alternatives
     FROM tasks t
     LEFT JOIN task_completions tc
         ON tc.task_id = t.id
@@ -101,6 +103,8 @@ class TaskRepository @Inject constructor(
             dueAt               = cursor.getString(16),
             homeOnlyBlocking    = (cursor.getLong(17) ?: 0L) != 0L,
             blockingDaysOfWeek  = cursor.getString(18) ?: "[]",
+            carryOver           = (cursor.getLong(23) ?: 0L) != 0L,
+            completionAlternatives = cursor.getString(24) ?: "[]",
             createdAt           = cursor.getString(19)!!,
             updatedAt           = cursor.getString(20)!!,
             completedToday      = completedToday,

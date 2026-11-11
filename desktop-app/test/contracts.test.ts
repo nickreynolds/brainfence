@@ -11,6 +11,11 @@ import { mapOnboarding } from '../src/shared/repos/onboarding'
 import { buildOnboardingPlan, onboardingRoute } from '../src/shared/onboarding'
 import { parseAuthCallback } from '../src/shared/authCallback'
 import { FEEDBACK_MAX_LENGTH, codePointLength, normalizeFeedback } from '../src/shared/feedback'
+import { HomePresence, isConditionUnmet } from '../src/shared/blocking'
+import { computeTaskStatus } from '../src/shared/recurrence'
+import { parseGpsAlternatives } from '../src/shared/verification'
+import { parseTimedSetsConfig, timedSetsHangCount, timedSetsRestAfter, timedSetsSetOf, timedSetsSideOf } from '../src/shared/timedSets'
+import { task as baseTask } from './helpers'
 
 const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, '../../shared/fixtures', name), 'utf8'))
 
@@ -82,5 +87,62 @@ test('feedback messages', () => {
     } else {
       assert.equal(actual, c.expect, c.name)
     }
+  }
+})
+
+test('task status', () => {
+  const { time_zone, base_task, cases } = fixture('task-status.json')
+  process.env.TZ = time_zone
+  assert.ok(cases.length > 0)
+  for (const c of cases) {
+    const row = { ...base_task, ...c.task }
+    const t = baseTask({
+      recurrenceType: row.recurrence_type,
+      recurrenceConfig: JSON.stringify(row.recurrence_config),
+      carryOver: row.carry_over === 1,
+      availableFrom: row.available_from,
+      dueAt: row.due_at,
+      homeOnlyBlocking: row.home_only_blocking === 1,
+      blockingDaysOfWeek: JSON.stringify(row.blocking_days_of_week),
+      createdAt: row.created_at,
+      lastCompletionAt: c.last_completion_at ?? null,
+    })
+    const now = new Date(c.now)
+    const status = computeTaskStatus(t, now)
+    assert.deepEqual(
+      {
+        scheduled: status.scheduled,
+        completed: status.completed,
+        carried_over: status.carriedOver,
+        phase: status.phase,
+        unmet: isConditionUnmet(t, now, c.home as HomePresence),
+      },
+      c.expect,
+      c.name,
+    )
+  }
+})
+
+test('completion alternatives', () => {
+  for (const c of fixture('completion-alternatives.json').cases) {
+    const actual = parseGpsAlternatives(JSON.stringify(c.input)).map((a) => ({
+      index: a.index, label: a.label, lat: a.config.lat, lng: a.config.lng,
+      radius_m: a.config.radiusM, mode: a.config.mode, min_duration_m: a.config.minDurationM,
+    }))
+    assert.deepEqual(actual, c.gps, c.name)
+  }
+})
+
+test('timed sets', () => {
+  for (const c of fixture('timed-sets.json').cases) {
+    const config = parseTimedSetsConfig(JSON.stringify(c.config))
+    const hangs = timedSetsHangCount(config)
+    assert.equal(hangs, c.hangs, c.name)
+    assert.equal(config.weight, c.weight, c.name)
+    assert.equal(config.weightPrompt, c.weight_prompt, c.name)
+    const each = (f: (i: number) => number) => Array.from({ length: hangs }, (_, i) => f(i))
+    assert.deepEqual(each((i) => timedSetsSetOf(config, i)), c.set_of, c.name)
+    assert.deepEqual(each((i) => timedSetsSideOf(config, i)), c.side_of, c.name)
+    assert.deepEqual(each((i) => timedSetsRestAfter(config, i, c.last_step)), c.rest_after, c.name)
   }
 })

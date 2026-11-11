@@ -406,6 +406,15 @@ private struct ScheduleStep: View {
             if s.recurrenceType == "weekly" {
                 DayPicker(selection: $s.weeklyDays)
             }
+            if s.recurrenceType != nil && s.recurrenceType != "interval" {
+                Toggle(isOn: $s.carryOver) {
+                    VStack(alignment: .leading) {
+                        Text("Carry over until done")
+                        Text("If you miss it, it stays due (and overdue, so it can block) until you do it or the next one starts.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         Section {
             TimeField(label: "Available from", text: $s.availableFrom)
@@ -439,5 +448,44 @@ private struct ScheduleStep: View {
                 }
             }
         }
+        if s.supportsAlternativeLocation {
+            AlternativeLocationFields(loc: $s.alternativeLocation)
+        }
+    }
+}
+
+/// "Or be at a location": a GPS completion alternative (shared/CONTRACTS.md).
+/// The Mac doesn't use location, so it's entered as coordinates and your
+/// phone completes it.
+private struct AlternativeLocationFields: View {
+    @Binding var loc: AlternativeLocation
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $loc.enabled) {
+                VStack(alignment: .leading) {
+                    Text("Or be at a location")
+                    Text("Also completes when you spend time at a place, e.g. a workout that's done if you go to the gym instead. Your phone completes it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if loc.enabled {
+                TextField("Place name", text: $loc.label)
+                TextField("Latitude", text: $loc.latitude)
+                TextField("Longitude", text: $loc.longitude)
+                Stepper("Radius: \(loc.radiusMeters) m", value: $loc.radiusMeters, in: 10...5000, step: 10)
+                Stepper("Minutes there: \(loc.minDurationMinutes)", value: $loc.minDurationMinutes, in: 0...600, step: 5)
+                Link("Look up on a map", destination: mapURL)
+            }
+        } header: {
+            Text("Another way to complete it")
+        }
+    }
+
+    private var mapURL: URL {
+        if let lat = Double(loc.latitude), let lng = Double(loc.longitude) {
+            return URL(string: "https://www.openstreetmap.org/?mlat=\(lat)&mlon=\(lng)#map=17/\(lat)/\(lng)")!
+        }
+        return URL(string: "https://www.openstreetmap.org/")!
     }
 }

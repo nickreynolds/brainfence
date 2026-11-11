@@ -14,7 +14,7 @@ import dev.brainfence.data.shopping.ShoppingRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
-import dev.brainfence.domain.recurrence.computeTaskPhase
+import dev.brainfence.domain.recurrence.status
 import dev.brainfence.service.BrainfenceService
 import dev.brainfence.service.CompanionUsageVerifier
 import dev.brainfence.service.MeditationTimerManager
@@ -139,10 +139,11 @@ class TaskListViewModel @Inject constructor(
         val now = Instant.now()
         val zone = ZoneId.systemDefault()
         allTasks
-            .map { task -> task to computeTaskPhase(task.availableFrom, task.dueAt, now, zone) }
-            .filter { (task, phase) ->
-                !task.completedToday && phase != TimeGatePhase.BEFORE_START
+            .map { task -> task to task.status(now, zone) }
+            .filter { (_, status) ->
+                status.scheduled && !status.completed && status.phase != TimeGatePhase.BEFORE_START
             }
+            .map { (task, status) -> task to status.phase }
             .sortedWith(
                 compareBy<Pair<Task, TimeGatePhase?>> { (task, phase) ->
                     when {
@@ -179,17 +180,21 @@ class TaskListViewModel @Inject constructor(
         initialValue = emptyList(),
     )
 
-    /** Tasks not yet available: before available_from time, or completed recurring tasks awaiting next occurrence. */
+    /**
+     * Tasks not available now: completed recurring tasks awaiting their next
+     * occurrence, recurring tasks not due today, and tasks before their window
+     * (shared/CONTRACTS.md: Task occurrences and blocking).
+     */
     val upcomingTasks = tasks.map { allTasks ->
         val now = Instant.now()
         val zone = ZoneId.systemDefault()
         allTasks.filter { task ->
-            // Completed recurring tasks — next occurrence is upcoming
-            if (task.completedToday && task.recurrenceType != null) return@filter true
-            // Not-yet-available tasks (before their available_from window)
-            if (task.completedToday) return@filter false
-            val phase = computeTaskPhase(task.availableFrom, task.dueAt, now, zone)
-            phase == TimeGatePhase.BEFORE_START
+            val status = task.status(now, zone)
+            when {
+                status.completed -> task.recurrenceType != null
+                !status.scheduled -> task.recurrenceType != null
+                else -> status.phase == TimeGatePhase.BEFORE_START
+            }
         }
     }.stateIn(
         scope = viewModelScope,
@@ -234,7 +239,7 @@ class TaskListViewModel @Inject constructor(
 
         val incompleteTasks = requiredTaskIds
             .mapNotNull { taskById[it] }
-            .filter { !it.completedToday }
+            .filter { !it.status().completed }
             .distinctBy { it.id }
 
         val blockedApps = blockingState.blockedApps.map { pkg ->
@@ -288,7 +293,7 @@ class TaskListViewModel @Inject constructor(
     val pendingTask = _pendingTask.asStateFlow()
 
     fun requestComplete(task: Task) {
-        if (!task.completedToday) _pendingTask.value = task
+        if (!task.status().completed) _pendingTask.value = task
     }
 
     fun confirmComplete() {

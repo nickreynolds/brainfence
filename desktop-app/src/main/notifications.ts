@@ -5,6 +5,7 @@
 
 import { Notification } from 'electron'
 import type { Task } from '@shared/models'
+import { computeTaskStatus } from '@shared/recurrence'
 import { parseTaskTime, secondsOfDay, todayKey } from '@shared/time'
 import { resourcePath, showMainWindow } from './windows'
 
@@ -22,6 +23,12 @@ export function notify(title: string, body: string, onClick?: () => void): void 
  * @param enforcedTaskIds tasks that are a condition of an active blocking rule —
  *   the only ones a "blocking soon" warning is meaningful for.
  */
+/** Today's own occurrence is open and not done (carried-over ones are already overdue). */
+function dueToday(task: Task, now: Date): boolean {
+  const status = computeTaskStatus(task, now)
+  return status.scheduled && !status.completed && !status.carriedOver
+}
+
 export function evaluateTaskNotifications(tasks: Task[], enforcedTaskIds: Set<string>, now = new Date()): void {
   const today = todayKey(now)
   if (lastResetDate !== today) {
@@ -33,7 +40,7 @@ export function evaluateTaskNotifications(tasks: Task[], enforcedTaskIds: Set<st
   // Task ready: grouped by available_from, within 2 minutes of it.
   const byStart = new Map<string, Task[]>()
   for (const task of tasks) {
-    if (task.completedToday || !task.availableFrom || task.taskType === 'shopping') continue
+    if (!dueToday(task, now) || !task.availableFrom || task.taskType === 'shopping') continue
     byStart.set(task.availableFrom, [...(byStart.get(task.availableFrom) ?? []), task])
   }
   for (const [availableFrom, group] of byStart) {
@@ -52,7 +59,7 @@ export function evaluateTaskNotifications(tasks: Task[], enforcedTaskIds: Set<st
   // Blocking soon: once, anytime in the hour before due_at.
   const warn: Task[] = []
   for (const task of tasks) {
-    if (task.completedToday || !task.dueAt || !enforcedTaskIds.has(task.id)) continue
+    if (!dueToday(task, now) || !task.dueAt || !enforcedTaskIds.has(task.id)) continue
     const key = `blocking:${today}:${task.id}`
     const due = parseTaskTime(task.dueAt)
     if (sentToday.has(key) || due == null) continue

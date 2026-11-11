@@ -20,6 +20,10 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
     public var dueAt: String?                // "HH:MM" — when an incomplete task starts blocking
     public var homeOnlyBlocking: Bool
     public var blockingDaysOfWeek: String    // JSON array of "mon"…"sun"; empty = every day
+    /// A missed occurrence stays due until done or the next one starts.
+    public var carryOver: Bool
+    /// JSON array of other ways to complete the task (see parseGpsAlternatives).
+    public var completionAlternatives: String
     public var createdAt: String
     public var updatedAt: String
     /// Derived: completed in the current occurrence (today for recurring tasks, ever for one-offs).
@@ -44,6 +48,8 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
         dueAt: String? = nil,
         homeOnlyBlocking: Bool = false,
         blockingDaysOfWeek: String = "[]",
+        carryOver: Bool = false,
+        completionAlternatives: String = "[]",
         createdAt: String = "",
         updatedAt: String = "",
         completedToday: Bool = false,
@@ -66,6 +72,8 @@ public struct BrainTask: Sendable, Hashable, Identifiable {
         self.dueAt = dueAt
         self.homeOnlyBlocking = homeOnlyBlocking
         self.blockingDaysOfWeek = blockingDaysOfWeek
+        self.carryOver = carryOver
+        self.completionAlternatives = completionAlternatives
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.completedToday = completedToday

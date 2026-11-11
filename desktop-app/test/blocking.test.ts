@@ -14,8 +14,8 @@ test('time window drives blocking', () => {
   assert.deepEqual(blocked(evaluateBlocking([rule()], [task()], at16(6))), [])
   assert.deepEqual(blocked(evaluateBlocking([rule()], [task()], at16(8))), [])
   assert.deepEqual(blocked(evaluateBlocking([rule()], [task()], at16(11))), ['discord.exe'])
-  assert.deepEqual(blocked(evaluateBlocking([rule()], [task({ completedToday: true })], at16(11))), [])
-  assert.deepEqual(blocked(evaluateBlocking([rule()], [task({ completedToday: true })], at16(15))), [])
+  assert.deepEqual(blocked(evaluateBlocking([rule()], [task({ completedToday: true, lastCompletionAt: at16(8).toISOString() })], at16(11))), [])
+  assert.deepEqual(blocked(evaluateBlocking([rule()], [task({ completedToday: true, lastCompletionAt: at16(8).toISOString() })], at16(15))), [])
 })
 
 test('all / any logic with mixed tasks', () => {
@@ -46,7 +46,7 @@ test('blocking days of week', () => {
 test('unknown condition tasks fail closed', () => {
   assert.deepEqual(blocked(evaluateBlocking([rule({ conditionTaskIds: ['missing'] })], [], at16(11))), ['discord.exe'])
   const anyRule = rule({ conditionTaskIds: ['task-1', 'ghost'], conditionLogic: 'any' })
-  assert.deepEqual(blocked(evaluateBlocking([anyRule], [task({ completedToday: true })], at16(11))), [])
+  assert.deepEqual(blocked(evaluateBlocking([anyRule], [task({ completedToday: true, lastCompletionAt: at16(8).toISOString() })], at16(11))), [])
 })
 
 test('inactive rules and rules without conditions', () => {

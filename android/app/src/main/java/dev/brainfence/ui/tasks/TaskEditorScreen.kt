@@ -101,6 +101,8 @@ fun TaskEditorScreen(
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
     onSetHomeOnlyBlocking: (Boolean) -> Unit,
+    onSetCarryOver: (Boolean) -> Unit,
+    onUpdateAlternativeLocation: ((AlternativeLocation) -> AlternativeLocation) -> Unit,
     onToggleBlockingDay: (String) -> Unit,
     onSetAvailableFrom: (String) -> Unit,
     onSetDueAt: (String) -> Unit,
@@ -227,6 +229,8 @@ fun TaskEditorScreen(
                         onToggleWeeklyDay = onToggleWeeklyDay,
                         onSetBlockingCondition = onSetBlockingCondition,
                         onSetHomeOnlyBlocking = onSetHomeOnlyBlocking,
+                        onSetCarryOver = onSetCarryOver,
+                        onUpdateAlternativeLocation = onUpdateAlternativeLocation,
                         onToggleBlockingDay = onToggleBlockingDay,
                         onSetAvailableFrom = onSetAvailableFrom,
                         onSetDueAt = onSetDueAt,
@@ -1245,6 +1249,8 @@ private fun ScheduleStep(
     onToggleWeeklyDay: (String) -> Unit,
     onSetBlockingCondition: (Boolean) -> Unit,
     onSetHomeOnlyBlocking: (Boolean) -> Unit,
+    onSetCarryOver: (Boolean) -> Unit,
+    onUpdateAlternativeLocation: ((AlternativeLocation) -> AlternativeLocation) -> Unit,
     onToggleBlockingDay: (String) -> Unit,
     onSetAvailableFrom: (String) -> Unit,
     onSetDueAt: (String) -> Unit,
@@ -1295,6 +1301,26 @@ private fun ScheduleStep(
                             label = { Text(dayLabels[index], style = MaterialTheme.typography.labelSmall) },
                         )
                     }
+                }
+            }
+        }
+
+        if (state.recurrenceType != null && state.recurrenceType != "interval") {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Carry over until done")
+                        Text(
+                            text = "If you miss it, it stays due (and overdue, so it can block) until you do it or the next one starts.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = state.carryOver, onCheckedChange = onSetCarryOver)
                 }
             }
         }
@@ -1397,6 +1423,12 @@ private fun ScheduleStep(
             }
         }
 
+        if (state.supportsAlternativeLocation) {
+            item {
+                AlternativeLocationSection(state.alternativeLocation, onUpdateAlternativeLocation)
+            }
+        }
+
         item { Spacer(Modifier.height(48.dp)) }
     }
 }
@@ -1485,6 +1517,71 @@ private fun LazyListScope.companionAppPickerSection(
                             onCheckedChange = { onToggle(app.packageName) },
                         )
                     },
+                )
+            }
+        }
+    }
+}
+
+/** "Or be at a location": a GPS completion alternative (shared/CONTRACTS.md). */
+@Composable
+private fun AlternativeLocationSection(
+    loc: AlternativeLocation,
+    onUpdate: ((AlternativeLocation) -> AlternativeLocation) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Another way to complete it", style = MaterialTheme.typography.titleSmall)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Or be at a location")
+                Text(
+                    text = "Also completes when you spend time at a place, e.g. a workout that's done if you go to the gym instead.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = loc.enabled, onCheckedChange = { enabled -> onUpdate { it.copy(enabled = enabled) } })
+        }
+        if (loc.enabled) {
+            OutlinedTextField(
+                value = loc.label,
+                onValueChange = { label -> onUpdate { it.copy(label = label) } },
+                label = { Text("Place name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LocationPickerMap(
+                latitude = loc.latitude.toDoubleOrNull(),
+                longitude = loc.longitude.toDoubleOrNull(),
+                radiusMeters = loc.radiusMeters,
+                onLocationSelected = { lat, lng ->
+                    onUpdate { it.copy(latitude = "%.6f".format(java.util.Locale.US, lat), longitude = "%.6f".format(java.util.Locale.US, lng)) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = loc.radiusMeters.toString(),
+                    onValueChange = { v -> v.toIntOrNull()?.let { r -> onUpdate { it.copy(radiusMeters = r) } } },
+                    label = { Text("Radius (m)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = loc.minDurationM.toString(),
+                    onValueChange = { v -> v.toIntOrNull()?.let { m -> onUpdate { it.copy(minDurationM = m) } } },
+                    label = { Text("Minutes there") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }

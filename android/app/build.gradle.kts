@@ -134,6 +134,9 @@ dependencies {
     // OpenStreetMap
     implementation(libs.osmdroid)
 
+    // Routine step images (cached)
+    implementation(libs.coil.compose)
+
     // PowerSync
     implementation(libs.powersync.core)
     implementation(libs.powersync.connector.supabase)

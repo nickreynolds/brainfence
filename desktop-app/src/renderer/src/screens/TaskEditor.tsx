@@ -3,7 +3,7 @@ import type { Report } from '@shared/models'
 import { REPORT_DEFINITION_TABLES, getReports } from '@shared/repos/reports'
 import { windowsAppRef } from '@shared/repos/blocking'
 import {
-  EditableStep, TaskEditorState, emptyEditorState, loadEditorState, newEditableStep, saveTask, totalSteps,
+  AlternativeLocation, EditableStep, TaskEditorState, emptyEditorState, loadEditorState, newEditableStep, saveTask, supportsAlternativeLocation, totalSteps,
   validateForSave, validateStep, verificationForType,
 } from '@shared/taskEditor'
 import { AppPicker, PickedApp } from '../components/AppPicker'
@@ -125,6 +125,61 @@ function BasicsStep({ s, update }: StepProps) {
 }
 
 function ConfigStep({ s, update, reports }: StepProps & { reports: Report[] }) {
+  return (
+    <>
+      <TypeConfig s={s} update={update} reports={reports} />
+      {supportsAlternativeLocation(s) && <AlternativeLocationFields s={s} update={update} />}
+    </>
+  )
+}
+
+/** "Or be at a location": a GPS completion alternative (shared/CONTRACTS.md). */
+function AlternativeLocationFields({ s, update }: StepProps) {
+  const loc = s.alternativeLocation
+  const set = (patch: Partial<AlternativeLocation>) => update({ alternativeLocation: { ...loc, ...patch } })
+  const [locating, setLocating] = useState(false)
+  const [locError, setLocError] = useState<string | null>(null)
+  const useCurrent = async () => {
+    setLocating(true)
+    setLocError(null)
+    const status = await window.api.location.refresh()
+    setLocating(false)
+    if (status.lastFix && status.access === 'allowed') {
+      set({ latitude: status.lastFix.latitude.toFixed(6), longitude: status.lastFix.longitude.toFixed(6) })
+    } else setLocError(status.error ?? 'Location unavailable')
+  }
+  return (
+    <>
+      <div className="section-label">Another way to complete it</div>
+      <div className="row top">
+        <div className="grow">
+          <div>Or be at a location</div>
+          <div className="small muted">Also completes when you spend time at a place, e.g. a workout that's done if you go to the gym instead.</div>
+        </div>
+        <Switch checked={loc.enabled} onChange={(enabled) => set({ enabled })} label="Or be at a location" />
+      </div>
+      {loc.enabled && (
+        <>
+          <Field label="Place name"><TextInput value={loc.label} onChange={(label) => set({ label })} /></Field>
+          <div className="grid2">
+            <Field label="Latitude"><TextInput value={loc.latitude} onChange={(latitude) => set({ latitude })} invalid={loc.latitude !== '' && !Number.isFinite(Number(loc.latitude))} /></Field>
+            <Field label="Longitude"><TextInput value={loc.longitude} onChange={(longitude) => set({ longitude })} invalid={loc.longitude !== '' && !Number.isFinite(Number(loc.longitude))} /></Field>
+          </div>
+          <div className="row wrap">
+            <button className="btn tonal sm" onClick={() => void useCurrent()} disabled={locating}><Icon name="place" size="sm" /> {locating ? 'Locating…' : 'Use current location'}</button>
+            {locError && <span className="small err-text">{locError}</span>}
+          </div>
+          <div className="grid2">
+            <Field label="Radius (meters)"><NumberInput value={loc.radiusMeters} min={10} onChange={(radiusMeters) => set({ radiusMeters: Math.max(10, radiusMeters) })} /></Field>
+            <Field label="Minutes there"><NumberInput value={loc.minDurationM} min={0} onChange={(minDurationM) => set({ minDurationM })} /></Field>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+function TypeConfig({ s, update, reports }: StepProps & { reports: Report[] }) {
   switch (s.taskType) {
     case 'timed': return <TimedConfig s={s} update={update} />
     case 'routine':
@@ -372,6 +427,15 @@ function ScheduleStep({ s, update }: StepProps) {
           <div className="section-label">Days</div>
           <DayChips selected={s.weeklyDays} onToggle={(d) => update({ weeklyDays: toggle(s.weeklyDays, d) })} />
         </>
+      )}
+      {s.recurrenceType != null && s.recurrenceType !== 'interval' && (
+        <div className="row top">
+          <div className="grow">
+            <div>Carry over until done</div>
+            <div className="small muted">If you miss it, it stays due (and overdue, so it can block) until you do it or the next one starts.</div>
+          </div>
+          <Switch checked={s.carryOver} onChange={(carryOver) => update({ carryOver })} label="Carry over until done" />
+        </div>
       )}
       <div className="section-label">Availability Window</div>
       <div className="small muted">When this task can be completed and when it becomes overdue</div>

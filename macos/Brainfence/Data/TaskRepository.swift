@@ -13,7 +13,7 @@ struct TaskRepository: Sendable {
             t.recurrence_type, t.recurrence_config, t.verification_type, t.verification_config,
             t.group_id, t.sort_order, t.is_blocking_condition,
             t.available_from, t.due_at, t.home_only_blocking, t.blocking_days_of_week,
-            t.created_at, t.updated_at,
+            t.carry_over, t.completion_alternatives, t.created_at, t.updated_at,
             CASE WHEN COUNT(tc.id) > 0 THEN 1 ELSE 0 END AS completed_today,
             (SELECT MAX(tc2.completed_at) FROM task_completions tc2 WHERE tc2.task_id = t.id) AS last_completion_at
         FROM tasks t
@@ -42,7 +42,8 @@ struct TaskRepository: Sendable {
             sql: """
                 SELECT title, description, task_type, recurrence_type, recurrence_config,
                        verification_type, verification_config, is_blocking_condition,
-                       home_only_blocking, blocking_days_of_week, available_from, due_at
+                       home_only_blocking, blocking_days_of_week, available_from, due_at,
+                       carry_over, completion_alternatives
                 FROM tasks WHERE id = ?
                 """,
             parameters: [id]
@@ -59,7 +60,9 @@ struct TaskRepository: Sendable {
                 homeOnlyBlocking: (try c.getInt64Optional(name: "home_only_blocking") ?? 0) != 0,
                 blockingDaysOfWeek: try c.getStringOptional(name: "blocking_days_of_week"),
                 availableFrom: try c.getStringOptional(name: "available_from"),
-                dueAt: try c.getStringOptional(name: "due_at")
+                dueAt: try c.getStringOptional(name: "due_at"),
+                carryOver: (try c.getInt64Optional(name: "carry_over") ?? 0) != 0,
+                completionAlternatives: try c.getStringOptional(name: "completion_alternatives")
             )
         }
     }
@@ -92,13 +95,14 @@ struct TaskRepository: Sendable {
                             (id, user_id, title, description, task_type, status, recurrence_type, recurrence_config,
                              verification_type, verification_config, tags, sort_order, is_blocking_condition,
                              blocking_rule_ids, available_from, due_at, home_only_blocking, blocking_days_of_week,
-                             created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, '[]', 0, ?, '[]', ?, ?, ?, ?, ?, ?)
+                             carry_over, completion_alternatives, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, '[]', 0, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                     parameters: [
                         taskId, userId, w.title, w.description, w.taskType, w.recurrenceType, w.recurrenceConfig,
                         w.verificationType, w.verificationConfig, w.isBlockingCondition ? 1 : 0,
-                        w.availableFrom, w.dueAt, w.homeOnlyBlocking ? 1 : 0, w.blockingDaysOfWeek, now, now,
+                        w.availableFrom, w.dueAt, w.homeOnlyBlocking ? 1 : 0, w.blockingDaysOfWeek,
+                        w.carryOver ? 1 : 0, w.completionAlternatives, now, now,
                     ]
                 )
             } else {
@@ -108,14 +112,14 @@ struct TaskRepository: Sendable {
                             title = ?, description = ?, task_type = ?, recurrence_type = ?, recurrence_config = ?,
                             verification_type = ?, verification_config = ?, is_blocking_condition = ?,
                             available_from = ?, due_at = ?, home_only_blocking = ?, blocking_days_of_week = ?,
-                            updated_at = ?
+                            carry_over = ?, completion_alternatives = ?, updated_at = ?
                         WHERE id = ?
                         """,
                     parameters: [
                         w.title, w.description, w.taskType, w.recurrenceType, w.recurrenceConfig,
                         w.verificationType, w.verificationConfig, w.isBlockingCondition ? 1 : 0,
                         w.availableFrom, w.dueAt, w.homeOnlyBlocking ? 1 : 0, w.blockingDaysOfWeek,
-                        now, taskId,
+                        w.carryOver ? 1 : 0, w.completionAlternatives, now, taskId,
                     ]
                 )
             }
@@ -176,6 +180,8 @@ struct TaskRepository: Sendable {
             dueAt: try c.getStringOptional(name: "due_at"),
             homeOnlyBlocking: (try c.getInt64Optional(name: "home_only_blocking") ?? 0) != 0,
             blockingDaysOfWeek: try c.getStringOptional(name: "blocking_days_of_week") ?? "[]",
+            carryOver: (try c.getInt64Optional(name: "carry_over") ?? 0) != 0,
+            completionAlternatives: try c.getStringOptional(name: "completion_alternatives") ?? "[]",
             createdAt: try c.getStringOptional(name: "created_at") ?? "",
             updatedAt: try c.getStringOptional(name: "updated_at") ?? "",
             completedToday: completedToday,

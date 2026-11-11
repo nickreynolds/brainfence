@@ -11,11 +11,11 @@
 import { distanceMeters } from '@shared/blocking'
 import type { GpsCheckResult, LocationFix } from '@shared/ipc'
 import type { Task } from '@shared/models'
-import { computeTaskPhase } from '@shared/recurrence'
+import { computeTaskStatus } from '@shared/recurrence'
 import { getOpenItems } from '@shared/repos/shopping'
 import { completeTask, getActiveTasks } from '@shared/repos/tasks'
 import { shouldNotifyShopping } from '@shared/shopping'
-import { type GpsConfig, parseGpsConfig } from '@shared/verification'
+import { type GpsConfig, parseGpsAlternatives, parseGpsConfig } from '@shared/verification'
 import { todayKey } from '@shared/time'
 import { log } from './debugLog'
 import { getLocationStatus, refreshLocation } from './location'
@@ -26,11 +26,37 @@ import { showMainWindow } from './windows'
 
 type Arrivals = Record<string, { at: string; date: string }>
 
-export function gpsTasks(tasks: Task[]): { task: Task; config: GpsConfig }[] {
-  return tasks
-    .filter((t) => t.verificationType === 'gps')
-    .map((task) => ({ task, config: parseGpsConfig(task.verificationConfig) }))
-    .filter((x): x is { task: Task; config: GpsConfig } => x.config != null)
+/**
+ * A geofence to watch: a GPS task's own location, or one of a task's GPS
+ * completion alternatives (shared/CONTRACTS.md). [key] tracks arrivals.
+ */
+export interface GpsTarget {
+  task: Task
+  config: GpsConfig
+  key: string
+  /** Index in completion_alternatives; null for the task's own GPS check. */
+  alternative: number | null
+}
+
+export function gpsTasks(tasks: Task[]): GpsTarget[] {
+  const out: GpsTarget[] = []
+  for (const task of tasks) {
+    if (task.verificationType === 'gps') {
+      const config = parseGpsConfig(task.verificationConfig)
+      if (config) out.push({ task, config, key: task.id, alternative: null })
+    }
+    for (const alt of parseGpsAlternatives(task.completionAlternatives)) {
+      out.push({ task, config: alt.config, key: `${task.id}#alt${alt.index}`, alternative: alt.index })
+    }
+  }
+  return out
+}
+
+/** Whether a GPS target still needs watching: notify always; others while due and open. */
+export function needsGpsCheck(target: GpsTarget, now: Date): boolean {
+  if (target.config.mode === 'notify') return true
+  const status = computeTaskStatus(target.task, now)
+  return status.scheduled && !status.completed && status.phase !== 'BEFORE_START'
 }
 
 /** Apply a location fix to every GPS task. Returns a message per task id. */
@@ -41,7 +67,7 @@ export async function processFix(fix: LocationFix, onlyTaskId?: string): Promise
   const now = new Date()
   const acc = fix.accuracyM ?? 0
 
-  for (const { task, config } of gpsTasks(tasks)) {
+  for (const { task, config, key, alternative } of gpsTasks(tasks)) {
     if (onlyTaskId && task.id !== onlyTaskId) continue
     const distance = distanceMeters(fix.latitude, fix.longitude, config.lat, config.lng)
     const inside = distance <= config.radiusM
@@ -51,12 +77,17 @@ export async function processFix(fix: LocationFix, onlyTaskId?: string): Promise
       if (task.taskType === 'shopping' && inside) await maybeShoppingReminder(task, config, now)
       continue
     }
-    if (task.completedToday) {
-      messages[task.id] = 'Already completed today'
+    const status = computeTaskStatus(task, now)
+    if (status.completed) {
+      messages[task.id] = 'Already completed'
+      continue
+    }
+    if (!status.scheduled) {
+      messages[task.id] = 'Not due today'
       continue
     }
     // Before available_from the task isn't completable yet.
-    if (computeTaskPhase(task.availableFrom, task.dueAt, now) === 'BEFORE_START') {
+    if (status.phase === 'BEFORE_START') {
       messages[task.id] = `Not available until ${task.availableFrom}`
       continue
     }
@@ -65,6 +96,7 @@ export async function processFix(fix: LocationFix, onlyTaskId?: string): Promise
       if (clearlyOutside) {
         await completeTask(mainDb, task.id, JSON.stringify({
           departed_at: now.toISOString(), lat: fix.latitude, lng: fix.longitude, ...(fix.accuracyM != null ? { accuracy_m: fix.accuracyM } : {}),
+          ...alternativeProof(alternative),
         }))
         log('geofence', `Outside geofence for '${task.title}' (${Math.round(distance)}m away), completing`)
         messages[task.id] = `Completed — you're ${Math.round(distance)} m from the location`
@@ -78,18 +110,19 @@ export async function processFix(fix: LocationFix, onlyTaskId?: string): Promise
 
     // Enter mode.
     if (!inside) {
-      if (arrivals[task.id]) delete arrivals[task.id]
+      if (arrivals[key]) delete arrivals[key]
       messages[task.id] = `${Math.round(distance)} m away — not at the location yet`
       continue
     }
-    const arrival = arrivals[task.id]?.date === todayKey(now) ? arrivals[task.id] : (arrivals[task.id] = { at: now.toISOString(), date: todayKey(now) })
+    const arrival = arrivals[key]?.date === todayKey(now) ? arrivals[key] : (arrivals[key] = { at: now.toISOString(), date: todayKey(now) })
     const stayedMin = (now.getTime() - new Date(arrival.at).getTime()) / 60_000
     if (stayedMin >= config.minDurationM) {
       await completeTask(mainDb, task.id, JSON.stringify({
         lat: fix.latitude, lng: fix.longitude, ...(fix.accuracyM != null ? { accuracy_m: fix.accuracyM } : {}),
         arrived_at: arrival.at, duration_m: config.minDurationM,
+        ...alternativeProof(alternative),
       }))
-      delete arrivals[task.id]
+      delete arrivals[key]
       log('geofence', `At location for '${task.title}', completing`)
       messages[task.id] = 'Completed — you\'re at the location'
     } else {
@@ -98,6 +131,11 @@ export async function processFix(fix: LocationFix, onlyTaskId?: string): Promise
   }
   setValue('gpsArrivals', arrivals)
   return messages
+}
+
+/** Marks a completion made through a completion alternative. */
+function alternativeProof(alternative: number | null): Record<string, unknown> {
+  return alternative == null ? {} : { method: 'completion_alternative', alternative }
 }
 
 async function maybeShoppingReminder(task: Task, config: GpsConfig, now: Date): Promise<void> {

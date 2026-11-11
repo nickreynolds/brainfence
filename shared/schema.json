@@ -29,6 +29,8 @@
       {"name": "due_at", "type": "text", "note": "HH:MM \u2014 when task becomes overdue / triggers blocking"},
       {"name": "home_only_blocking", "type": "integer", "encoding": "boolean", "note": "1 = only block when user is at configured home location"},
       {"name": "blocking_days_of_week", "type": "text", "encoding": "json", "note": "JSON array of \"mon\"\u2026\"sun\". Empty = block every day."},
+      {"name": "carry_over", "type": "integer", "encoding": "boolean", "note": "1 = a missed occurrence stays due until done or the next one starts"},
+      {"name": "completion_alternatives", "type": "text", "encoding": "json", "note": "other ways to complete the task, e.g. [{\"verification_type\": \"gps\", ...}]"},
       {"name": "created_at", "type": "text"},
       {"name": "updated_at", "type": "text"}
     ],
@@ -41,6 +43,7 @@
       {"name": "config", "type": "text", "encoding": "json"},
       {"name": "superset_group", "type": "text"},
       {"name": "description", "type": "text", "note": "optional notes shown with the step"},
+      {"name": "image_url", "type": "text", "note": "optional https PNG shown with the step"},
       {"name": "created_at", "type": "text"}
     ],
     "shopping_items": [

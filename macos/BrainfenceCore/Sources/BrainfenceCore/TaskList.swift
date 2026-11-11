@@ -9,9 +9,8 @@ public struct TaskPartition: Sendable, Equatable {
 }
 
 public func partitionTasks(_ tasks: [BrainTask], now: Date, timeZone: TimeZone = .current) -> TaskPartition {
-    func phase(_ t: BrainTask) -> TimeGatePhase? {
-        computeTaskPhase(availableFrom: t.availableFrom, dueAt: t.dueAt, now: now, timeZone: timeZone)
-    }
+    let statuses = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0.status(now: now, timeZone: timeZone)) })
+    func status(_ t: BrainTask) -> TaskStatus { statuses[t.id]! }
     func urgency(_ t: BrainTask, _ p: TimeGatePhase?) -> Int {
         if t.isBlockingCondition && (p == .pastDue || t.dueAt == nil) { return 0 }
         if t.isBlockingCondition { return 1 }
@@ -20,8 +19,8 @@ public func partitionTasks(_ tasks: [BrainTask], now: Date, timeZone: TimeZone =
     }
 
     let active = tasks
-        .map { (task: $0, phase: phase($0)) }
-        .filter { !$0.task.completedToday && $0.phase != .beforeStart }
+        .map { (task: $0, phase: status($0).phase) }
+        .filter { status($0.task).scheduled && !status($0.task).completed && $0.phase != .beforeStart }
         .sorted { a, b in
             let ua = urgency(a.task, a.phase), ub = urgency(b.task, b.phase)
             if ua != ub { return ua < ub }
@@ -32,9 +31,12 @@ public func partitionTasks(_ tasks: [BrainTask], now: Date, timeZone: TimeZone =
         }
         .map(\.task)
     let done = tasks.filter(\.completedToday)
+    // Completed recurring tasks awaiting the next occurrence, recurring tasks
+    // not due today, and tasks before their window (shared/CONTRACTS.md).
     let upcoming = tasks.filter { t in
-        if t.completedToday { return t.recurrenceType != nil }
-        return phase(t) == .beforeStart
+        let s = status(t)
+        if s.completed || !s.scheduled { return t.recurrenceType != nil }
+        return s.phase == .beforeStart
     }
     return TaskPartition(active: active, done: done, upcoming: upcoming)
 }
@@ -65,7 +67,12 @@ public func dueTaskNotifications(
     var out: [TaskNotification] = []
 
     var byStart: [String: [BrainTask]] = [:]
-    for task in tasks where !task.completedToday && task.taskType != "shopping" {
+    // Today's own occurrence, open and not done (a carried-over one is already overdue).
+    func dueToday(_ task: BrainTask) -> Bool {
+        let s = task.status(now: now, timeZone: timeZone)
+        return s.scheduled && !s.completed && !s.carriedOver
+    }
+    for task in tasks where dueToday(task) && task.taskType != "shopping" {
         guard let from = task.availableFrom else { continue }
         byStart[from, default: []].append(task)
     }
@@ -81,7 +88,7 @@ public func dueTaskNotifications(
     }
 
     var warn: [BrainTask] = []
-    for task in tasks where !task.completedToday && enforcedTaskIds.contains(task.id) {
+    for task in tasks where dueToday(task) && enforcedTaskIds.contains(task.id) {
         guard let dueAt = task.dueAt, let due = TimeOfDay(dueAt)?.seconds else { continue }
         let key = "blocking:\(today):\(task.id)"
         if !sentKeys.contains(key) && t >= due - 3600 && t < due {

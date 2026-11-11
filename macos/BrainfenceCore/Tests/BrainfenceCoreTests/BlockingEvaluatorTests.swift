@@ -18,12 +18,14 @@ final class BlockingEvaluatorTests: XCTestCase {
         BrainTask(
             id: id, title: "Morning routine", availableFrom: availableFrom, dueAt: dueAt,
             homeOnlyBlocking: homeOnlyBlocking, blockingDaysOfWeek: blockingDaysOfWeek,
-            completedToday: completedToday
+            completedToday: completedToday,
+            lastCompletionAt: completedToday ? "2026-04-16T12:00:00Z" : nil
         )
     }
 
     private func manualTask(id: String = "task-2", completedToday: Bool = false, blockingDaysOfWeek: String = "[]") -> BrainTask {
-        BrainTask(id: id, title: "Manual task", blockingDaysOfWeek: blockingDaysOfWeek, completedToday: completedToday)
+        BrainTask(id: id, title: "Manual task", blockingDaysOfWeek: blockingDaysOfWeek, completedToday: completedToday,
+                  lastCompletionAt: completedToday ? "2026-04-16T12:00:00Z" : nil)
     }
 
     private func rule(_ conditionTaskIds: [String] = ["task-1"], logic: String = "all") -> BlockingRule {

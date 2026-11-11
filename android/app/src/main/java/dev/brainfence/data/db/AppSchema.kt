@@ -50,6 +50,8 @@ val AppSchema = Schema(
             Column.text("due_at"),                    // HH:MM — when task becomes overdue / triggers blocking
             Column.integer("home_only_blocking"),     // boolean — 1 = only block when user is at configured home location
             Column.text("blocking_days_of_week"),     // json — JSON array of "mon"…"sun". Empty = block every day.
+            Column.integer("carry_over"),             // boolean — 1 = a missed occurrence stays due until done or the next one starts
+            Column.text("completion_alternatives"),   // json — other ways to complete the task, e.g. [{"verification_type": "gps", ...}]
             Column.text("created_at"),
             Column.text("updated_at"),
         ),
@@ -65,6 +67,7 @@ val AppSchema = Schema(
             Column.text("config"),                    // json
             Column.text("superset_group"),
             Column.text("description"),               // optional notes shown with the step
+            Column.text("image_url"),                 // optional https PNG shown with the step
             Column.text("created_at"),
         ),
     ),
@@ -287,7 +290,7 @@ val AppSchema = Schema(
  */
 val JSON_ENCODED_COLUMNS: Map<String, Set<String>> = mapOf(
     "groups" to setOf("visibility_schedule"),
-    "tasks" to setOf("recurrence_config", "verification_config", "tags", "blocking_rule_ids", "blocking_days_of_week"),
+    "tasks" to setOf("recurrence_config", "verification_config", "tags", "blocking_rule_ids", "blocking_days_of_week", "completion_alternatives"),
     "routine_steps" to setOf("config"),
     "task_completions" to setOf("verification_data"),
     "step_completions" to setOf("data"),

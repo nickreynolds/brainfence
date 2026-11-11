@@ -1,0 +1,24 @@
+{
+  "description": "Parsing tasks.completion_alternatives into the GPS alternatives a device monitors. `gps` is the list of supported entries, with their index in the array. Entries a client doesn't support are skipped (and kept as-is by editors). See shared/CONTRACTS.md (Completion alternatives).",
+  "cases": [
+    {"name": "empty", "input": [], "gps": []},
+    {"name": "not an array", "input": {"verification_type": "gps"}, "gps": []},
+    {"name": "climbing gym",
+     "input": [{"verification_type": "gps", "label": "Climbing gym",
+                "verification_config": {"latitude": 40.70692, "longitude": -73.924, "radius_meters": 150, "mode": "enter", "min_duration_m": 30}}],
+     "gps": [{"index": 0, "label": "Climbing gym", "lat": 40.70692, "lng": -73.924, "radius_m": 150, "mode": "enter", "min_duration_m": 30}]},
+    {"name": "short spellings and defaults",
+     "input": [{"verification_type": "gps", "verification_config": {"lat": 1.5, "lng": 2.5}}],
+     "gps": [{"index": 0, "label": null, "lat": 1.5, "lng": 2.5, "radius_m": 100, "mode": "enter", "min_duration_m": 0}]},
+    {"name": "leave mode",
+     "input": [{"verification_type": "gps", "verification_config": {"lat": 1, "lng": 2, "radius_m": 80, "mode": "leave"}}],
+     "gps": [{"index": 0, "label": null, "lat": 1, "lng": 2, "radius_m": 80, "mode": "leave", "min_duration_m": 0}]},
+    {"name": "unsupported entries are skipped but keep their index",
+     "input": [{"verification_type": "duration", "verification_config": {"duration_seconds": 60}},
+               {"verification_type": "gps", "verification_config": {"lat": 1, "lng": 2, "mode": "notify"}},
+               {"verification_type": "gps", "verification_config": {"lat": "x", "lng": 2}},
+               "junk",
+               {"verification_type": "gps", "verification_config": {"lat": 3, "lng": 4}}],
+     "gps": [{"index": 4, "label": null, "lat": 3, "lng": 4, "radius_m": 100, "mode": "enter", "min_duration_m": 0}]}
+  ]
+}

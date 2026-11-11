@@ -103,16 +103,22 @@ private func conditionUnmetTaskIds(
         // Fail closed: a condition task we can't resolve (deleted/archived task,
         // or tasks not loaded yet) counts as unmet so blocking never silently lifts.
         guard let task = taskById[taskId] else { return true }
-        if task.completedToday { return false }
-        if task.homeOnlyBlocking && homePresence == .away { return false }
-        let allowedDays = parseDays(JSONValue.parse(task.blockingDaysOfWeek) ?? .array([]))
-        if !allowedDays.isEmpty {
-            let dow = ZonedClock(timeZone: timeZone).date(of: now).dayOfWeek
-            if !allowedDays.contains(dow) { return false }
-        }
-        let phase = computeTaskPhase(availableFrom: task.availableFrom, dueAt: task.dueAt, now: now, timeZone: timeZone)
-        return phase == nil || phase == .pastDue
+        return isConditionUnmet(task, now: now, timeZone: timeZone, homePresence: homePresence)
     })
+}
+
+/// Whether one condition task is causing its rule to block right now: an
+/// occurrence is open (due today or carried over), it isn't done, it's past
+/// due (or has no window), today is a blocking day, and the user isn't known
+/// to be away for a home-only task. See shared/CONTRACTS.md (Task occurrences
+/// and blocking).
+public func isConditionUnmet(_ task: BrainTask, now: Date, timeZone: TimeZone = .current, homePresence: HomePresence) -> Bool {
+    let status = task.status(now: now, timeZone: timeZone)
+    if !status.scheduled || status.completed { return false }
+    if task.homeOnlyBlocking && homePresence == .away { return false }
+    let allowedDays = parseDays(JSONValue.parse(task.blockingDaysOfWeek) ?? .array([]))
+    if !allowedDays.isEmpty && !allowedDays.contains(ZonedClock(timeZone: timeZone).date(of: now).dayOfWeek) { return false }
+    return status.phase == nil || status.phase == .pastDue
 }
 
 /// Earliest future instant at which the evaluation could change purely due to

@@ -16,7 +16,9 @@ import dev.brainfence.domain.model.Report
 import dev.brainfence.domain.model.ReportSubmission
 import dev.brainfence.domain.model.RoutineStep
 import dev.brainfence.domain.model.Task
+import dev.brainfence.domain.verification.TimedSetsConfig
 import dev.brainfence.ui.report.reportIdFromConfig
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,8 +57,11 @@ data class SupersetRoundState(
     val currentRound: Int = 1,
 )
 
-/** Phase of an automatic routine's timer. */
-enum class AutoPhase { IDLE, COUNTDOWN, WORK, REST, PAUSED, COMPLETED }
+/**
+ * Phase of an automatic routine's timer. WEIGHT: waiting for the weight of
+ * the set about to start (timed_sets weight_prompt "each_set").
+ */
+enum class AutoPhase { IDLE, COUNTDOWN, WORK, REST, WEIGHT, PAUSED, COMPLETED }
 
 /** Observable progress for an automatic routine. */
 data class AutoRoutineProgress(
@@ -214,8 +219,9 @@ class RoutineTaskViewModel @Inject constructor(
         val states = stepList.associate { step ->
             val setCount = defaultSetCount(step)
 
-            // For superset steps, sets represent rounds (1 set per round)
-            val inSuperset = step.supersetGroup != null
+            // For superset steps, sets represent rounds (1 set per round). A
+            // timed_sets step always has exactly one entry per hang.
+            val inSuperset = step.supersetGroup != null || step.stepType == "timed_sets"
             val numSets = if (inSuperset) {
                 // Round count comes from the default_sets of the step
                 setCount
@@ -421,7 +427,7 @@ class RoutineTaskViewModel @Inject constructor(
         viewModelScope.launch {
             val states = _stepStates.value
             val stepData = states.mapValues { (_, state) ->
-                state.sets.map { entry ->
+                state.sets.mapIndexed { index, entry ->
                     val json = JSONObject()
                     when (state.step.stepType) {
                         "checkbox" -> json.put("completed", entry.completed)
@@ -438,8 +444,10 @@ class RoutineTaskViewModel @Inject constructor(
                         }
                         "timed_sets" -> {
                             json.put("completed", entry.completed)
-                            val stepConfig = JSONObject(state.step.config)
-                            json.put("work_seconds", stepConfig.optInt("work_seconds", 0))
+                            val stepConfig = TimedSetsConfig.parse(state.step.config)
+                            json.put("work_seconds", stepConfig.workSeconds)
+                            if (stepConfig.weight != null) entry.weight?.let { json.put("weight", it) }
+                            if (stepConfig.sides == 2) json.put("side", if (stepConfig.sideOf(index) == 0) "left" else "right")
                         }
                         "report" -> {
                             json.put("completed", entry.completed)
@@ -491,15 +499,31 @@ class RoutineTaskViewModel @Inject constructor(
             val countdownSeconds = taskConfig.optInt("countdown_seconds", 3)
 
             var isFirstWorkPeriod = true
+            // A set whose weight is asked right before it (weight_prompt each_set).
+            fun promptsBefore(exIndex: Int, hang: Int): Boolean =
+                stepList.getOrNull(exIndex)?.let { TimedSetsConfig.parse(it.config).promptsBefore(hang) } == true
             for ((exerciseIndex, step) in stepList.withIndex()) {
                 if (exerciseIndex < startExercise) continue
-                val stepConfig = JSONObject(step.config)
-                val reps = stepConfig.optInt("reps", 1)
-                val workSeconds = stepConfig.optInt("work_seconds", 10)
-                val restSeconds = stepConfig.optInt("rest_seconds", 20)
+                val stepConfig = TimedSetsConfig.parse(step.config)
+                val reps = stepConfig.hangCount
+                val workSeconds = stepConfig.workSeconds
 
                 for (rep in 0 until reps) {
                     if (exerciseIndex == startExercise && rep < startRep) continue
+
+                    // Ask for this set's weight, then count down into it.
+                    if (promptsBefore(exerciseIndex, rep)) {
+                        _autoProgress.value = AutoRoutineProgress(
+                            phase = AutoPhase.WEIGHT,
+                            exerciseIndex = exerciseIndex,
+                            rep = rep,
+                        )
+                        playTick()
+                        val waiter = CompletableDeferred<Unit>()
+                        weightWaiter = waiter
+                        waiter.await()
+                        isFirstWorkPeriod = true
+                    }
 
                     // Countdown before the first work period we run
                     if (isFirstWorkPeriod) {
@@ -533,14 +557,18 @@ class RoutineTaskViewModel @Inject constructor(
                     // Rest phase (skip after last rep of last exercise)
                     val isLastRep = rep == reps - 1
                     val isLastExercise = exerciseIndex == stepList.size - 1
+                    val restSeconds = stepConfig.restAfter(rep, isLastExercise)
                     if (!(isLastRep && isLastExercise)) {
                         // Point to what's coming next during rest
                         val nextExIdx = if (isLastRep) exerciseIndex + 1 else exerciseIndex
                         val nextRep = if (isLastRep) 0 else rep + 1
 
-                        // Rest period with countdown embedded in last N seconds
+                        // Rest period with countdown embedded in last N seconds,
+                        // unless the next set asks for its weight first (its
+                        // countdown runs once the weight is confirmed).
+                        val promptNext = promptsBefore(nextExIdx, nextRep)
                         for (s in restSeconds downTo 1) {
-                            val inCountdown = s <= countdownSeconds
+                            val inCountdown = !promptNext && s <= countdownSeconds
                             _autoProgress.value = AutoRoutineProgress(
                                 phase = if (inCountdown) AutoPhase.COUNTDOWN else AutoPhase.REST,
                                 exerciseIndex = nextExIdx,
@@ -550,7 +578,7 @@ class RoutineTaskViewModel @Inject constructor(
                             if (inCountdown && s <= 2) playTick()
                             delay(1_000)
                         }
-                        playBeep()
+                        if (!promptNext) playBeep()
                     }
                 }
             }
@@ -558,6 +586,30 @@ class RoutineTaskViewModel @Inject constructor(
             _autoProgress.value = AutoRoutineProgress(phase = AutoPhase.COMPLETED)
             playBeep()
         }
+    }
+
+    /**
+     * Sets the weight of a timed_sets step's set [setIndex] (0-based) and every
+     * later set, on each of their hangs.
+     */
+    fun setTimedSetWeight(stepId: String, setIndex: Int, weight: Double?) {
+        _stepStates.value = _stepStates.value.toMutableMap().apply {
+            val state = this[stepId] ?: return
+            val config = TimedSetsConfig.parse(state.step.config)
+            this[stepId] = state.copy(
+                sets = state.sets.mapIndexed { i, e -> if (config.setOf(i) >= setIndex) e.copy(weight = weight) else e },
+            )
+        }
+        saveProgress()
+    }
+
+    /** The runner's wait for a set's weight; completed by [confirmSetWeight]. */
+    private var weightWaiter: CompletableDeferred<Unit>? = null
+
+    /** Confirms the weight of the set the runner is waiting on and starts it. */
+    fun confirmSetWeight() {
+        weightWaiter?.complete(Unit)
+        weightWaiter = null
     }
 
     fun stopAutoRoutine() {
@@ -615,7 +667,7 @@ class RoutineTaskViewModel @Inject constructor(
         val config = JSONObject(step.config)
         return when (step.stepType) {
             "weight_reps", "just_reps" -> config.optInt("default_sets", 3)
-            "timed_sets" -> config.optInt("reps", 1)
+            "timed_sets" -> TimedSetsConfig.parse(step.config).hangCount
             else -> 1
         }
     }
@@ -716,7 +768,12 @@ class RoutineTaskViewModel @Inject constructor(
                     (1..defaultSetCount(step)).map { StepSetEntry() }
                 }
                 val activeSetIndex = savedStep.optInt("activeSetIndex", 0)
-                step.id to StepUiState(step = step, sets = sets, activeSetIndex = activeSetIndex)
+                if (step.stepType == "timed_sets" && sets.size != defaultSetCount(step)) {
+                    // Sets or reps changed since the save: start the step over.
+                    step.id to StepUiState(step = step, sets = (1..defaultSetCount(step)).map { StepSetEntry() })
+                } else {
+                    step.id to StepUiState(step = step, sets = sets, activeSetIndex = activeSetIndex)
+                }
             } else {
                 // New step added since last save — use defaults
                 step.id to StepUiState(step = step, sets = (1..defaultSetCount(step)).map { StepSetEntry() })

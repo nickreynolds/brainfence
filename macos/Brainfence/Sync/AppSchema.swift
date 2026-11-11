@@ -38,6 +38,8 @@ let AppSchema = Schema(
         .text("due_at"),                    // HH:MM — when task becomes overdue / triggers blocking
         .integer("home_only_blocking"),     // boolean — 1 = only block when user is at configured home location
         .text("blocking_days_of_week"),     // json — JSON array of "mon"…"sun". Empty = block every day.
+        .integer("carry_over"),             // boolean — 1 = a missed occurrence stays due until done or the next one starts
+        .text("completion_alternatives"),   // json — other ways to complete the task, e.g. [{"verification_type": "gps", ...}]
         .text("created_at"),
         .text("updated_at"),
     ]),
@@ -50,6 +52,7 @@ let AppSchema = Schema(
         .text("config"),                    // json
         .text("superset_group"),
         .text("description"),               // optional notes shown with the step
+        .text("image_url"),                 // optional https PNG shown with the step
         .text("created_at"),
     ]),
     Table(name: "shopping_items", columns: [

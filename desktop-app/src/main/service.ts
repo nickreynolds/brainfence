@@ -13,7 +13,7 @@ import { PLATFORM } from '@shared/db'
 import { foregroundExe, onForegroundChange, setBlockedApps, startEnforcer } from './blocking/enforcer'
 import { applyBlockedDomains, isHostsWritable, websiteStatus } from './blocking/hosts'
 import { log } from './debugLog'
-import { gpsTasks, processFix } from './gps'
+import { gpsTasks, needsGpsCheck, processFix } from './gps'
 import { getHome, homePresence, onHomeChange, refreshLocation } from './location'
 import { evaluateTaskNotifications } from './notifications'
 import { mainDb, onTablesChanged } from './powersync'
@@ -114,7 +114,8 @@ async function periodic(): Promise<void> {
 
 /** Location only matters with a home set or GPS tasks; poll more often for GPS. */
 async function locationCycle(): Promise<void> {
-  const active = gpsTasks(tasks).filter(({ task, config }) => config.mode === 'notify' || !task.completedToday)
+  const now = new Date()
+  const active = gpsTasks(tasks).filter((target) => needsGpsCheck(target, now))
   const needed = getHome() != null || active.length > 0
   if (needed) {
     const status = await refreshLocation()

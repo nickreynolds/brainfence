@@ -2,7 +2,7 @@
 // Must stay behaviourally identical to the Android client: both devices
 // evaluate the same synced tasks and must agree on what's due.
 
-import { parseJsonObject } from './json'
+import { parseInstant, parseJsonObject } from './json'
 import {
   LocalDate, DayIndex, compareDates, dayOfWeek, localDateOf, parseDay, parseTaskTime,
   plusDays, plusMonths, sameDate, secondsOfDay, startOfDay, toEpochDay,
@@ -205,6 +205,113 @@ export function computeNextOccurrence(
     }
   } catch {
     return null
+  }
+}
+
+// ── Task status (shared/CONTRACTS.md: Task occurrences and blocking) ──
+
+/** The fields of a task that decide whether it's due, done or overdue. */
+export interface TaskStatusInput {
+  recurrenceType: string | null
+  recurrenceConfig: string
+  carryOver: boolean
+  availableFrom: string | null
+  dueAt: string | null
+  createdAt: string
+  lastCompletionAt: string | null
+}
+
+export interface TaskStatus {
+  /** An occurrence is open now: due today, or carried over from an earlier day. */
+  scheduled: boolean
+  /** The open occurrence is done (with none open: completed today). */
+  completed: boolean
+  /** The open occurrence started on an earlier day. */
+  carriedOver: boolean
+  /** Window phase; PAST_DUE when carried over; null with no window or no open occurrence. */
+  phase: TimeGatePhase | null
+  /** Start of the open occurrence's day, when one is open on a recurring task. */
+  occurrenceDate: LocalDate | null
+}
+
+/** How far back carry-over looks for the previous occurrence. */
+const CARRY_OVER_LOOKBACK_DAYS = 400
+
+export function computeTaskStatus(task: TaskStatusInput, now: Date): TaskStatus {
+  const today = localDateOf(now)
+  const last = parseInstant(task.lastCompletionAt)
+  const phase = computeTaskPhase(task.availableFrom, task.dueAt, now)
+  const completedToday = last != null && sameDate(localDateOf(last), today)
+
+  if (task.recurrenceType == null) {
+    return { scheduled: true, completed: last != null, carriedOver: false, phase, occurrenceDate: null }
+  }
+  const scheduledOn = schedulePredicate(task.recurrenceType, task.recurrenceConfig)
+  if (scheduledOn == null) {
+    // interval: open all the time, done for today once completed today.
+    return { scheduled: true, completed: completedToday, carriedOver: false, phase, occurrenceDate: null }
+  }
+
+  let open: LocalDate | null = null
+  if (scheduledOn(today)) {
+    open = today
+  } else if (task.carryOver) {
+    const created = parseInstant(task.createdAt)
+    const earliest = created ? localDateOf(created) : null
+    for (let back = 1; back <= CARRY_OVER_LOOKBACK_DAYS; back++) {
+      const candidate = plusDays(today, -back)
+      if (earliest && compareDates(candidate, earliest) < 0) break
+      if (scheduledOn(candidate)) {
+        open = candidate
+        break
+      }
+    }
+  }
+
+  if (open == null) {
+    return { scheduled: false, completed: completedToday, carriedOver: false, phase: null, occurrenceDate: null }
+  }
+  const carriedOver = !sameDate(open, today)
+  return {
+    scheduled: true,
+    completed: last != null && compareDates(localDateOf(last), open) >= 0,
+    carriedOver,
+    phase: carriedOver ? 'PAST_DUE' : phase,
+    occurrenceDate: open,
+  }
+}
+
+/**
+ * Whether a recurrence lands on a date. Null for types with no calendar dates
+ * (interval). A config that can't be parsed lands on every day (fail closed).
+ */
+function schedulePredicate(type: string, configJson: string): ((d: LocalDate) => boolean) | null {
+  const everyDay = () => true
+  try {
+    const config = parseJsonObject(configJson)
+    switch (type) {
+      case 'daily': {
+        if (!Array.isArray(config.days)) return everyDay
+        const allowed = parseDays(config.days)
+        return (d) => allowed.has(dayOfWeek(d))
+      }
+      case 'weekly': {
+        const targetDay = requireDay(config.day)
+        const interval = typeof config.interval === 'number' ? config.interval : 1
+        return (d) => dayOfWeek(d) === targetDay && sameDate(findWeeklyDueDate(d, targetDay, interval), d)
+      }
+      case 'monthly': {
+        const week = requireInt(config.week)
+        const targetDay = requireDay(config.day)
+        return (d) => sameDate(nthDayOfWeekInMonth(d.year, d.month, week, targetDay), d)
+      }
+      case 'interval':
+        return null
+      default:
+        return everyDay
+    }
+  } catch {
+    return everyDay
   }
 }
 

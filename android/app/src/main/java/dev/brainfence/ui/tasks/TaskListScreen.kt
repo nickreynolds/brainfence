@@ -65,7 +65,7 @@ import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeNextOccurrence
-import dev.brainfence.domain.recurrence.computeTaskPhase
+import dev.brainfence.domain.recurrence.status
 import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE
 import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE_TITLE
 import dev.brainfence.ui.setup.BACKGROUND_LOCATION_DISCLOSURE
@@ -379,11 +379,14 @@ private fun TaskItem(
         return
     }
 
-    val phase = computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
+    val status = task.status()
+    val phase = status.phase
 
-    val isCompletedRecurring = showAsUpcoming && task.completedToday && task.recurrenceType != null
-    val isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase == TimeGatePhase.BEFORE_START && !task.completedToday)
-    val isOverdue = phase == TimeGatePhase.PAST_DUE && !task.completedToday
+    val isCompletedRecurring = showAsUpcoming && status.completed && task.recurrenceType != null
+    val isNotDueToday = showAsUpcoming && !status.scheduled && !status.completed
+    val isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase == TimeGatePhase.BEFORE_START && !status.completed)
+    val isOverdue = phase == TimeGatePhase.PAST_DUE && !status.completed
+    val overdueText = if (status.carriedOver) "Overdue since ${carriedOverSince(status.occurrenceDate)}" else "Overdue"
     val showMeditationProgress = meditationTimer != null && meditationTimer.targetSeconds > 0 &&
         !showAsCompleted && !isCompletedRecurring
 
@@ -406,12 +409,10 @@ private fun TaskItem(
                 MeditationProgressRow(meditationTimer!!)
             }
             when {
-                isCompletedRecurring -> {
+                isCompletedRecurring || isNotDueToday -> {
                     val zone = ZoneId.systemDefault()
                     val now = Instant.now()
-                    val lastCompletion = task.lastCompletionAt?.let {
-                        try { Instant.parse(it) } catch (_: Exception) { null }
-                    }
+                    val lastCompletion = dev.brainfence.domain.blocking.RuleContracts.parseTimestamp(task.lastCompletionAt)
                     val nextDue = computeNextOccurrence(
                         task.recurrenceType, task.recurrenceConfig,
                         lastCompletion, now, zone,
@@ -429,17 +430,17 @@ private fun TaskItem(
                 }
                 isOverdue && isActivelyBlocking -> {
                     Text(
-                        text = "Overdue \u2014 blocking apps until completed",
+                        text = "$overdueText \u2014 blocking apps until completed",
                         color = MaterialTheme.blockingColors.blocked,
                     )
                 }
                 isOverdue -> {
                     Text(
-                        text = "Overdue",
+                        text = overdueText,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                phase == TimeGatePhase.ACTIVE && task.dueAt != null && !task.completedToday -> {
+                phase == TimeGatePhase.ACTIVE && task.dueAt != null && !status.completed -> {
                     Text(
                         text = "Complete before ${task.dueAt}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -910,5 +911,16 @@ private fun AccessibilityBanner() {
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
         }
+    }
+}
+
+/** "Monday" (or "yesterday") for a carried-over occurrence's date. */
+private fun carriedOverSince(date: java.time.LocalDate?): String {
+    if (date == null) return "earlier"
+    val days = java.time.temporal.ChronoUnit.DAYS.between(date, java.time.LocalDate.now())
+    return when {
+        days == 1L -> "yesterday"
+        days < 7 -> date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+        else -> date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
     }
 }

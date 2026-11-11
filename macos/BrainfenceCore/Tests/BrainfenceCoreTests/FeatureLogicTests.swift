@@ -121,8 +121,8 @@ final class TaskListTests: XCTestCase {
             task("blocker-later") { $0.isBlockingCondition = true; $0.dueAt = "20:00" },
             task("blocker-overdue") { $0.isBlockingCondition = true; $0.dueAt = "09:00" },
             task("not-yet") { $0.availableFrom = "15:00" },
-            task("done-daily") { $0.completedToday = true },
-            task("done-once") { $0.completedToday = true; $0.recurrenceType = nil },
+            task("done-daily") { $0.completedToday = true; $0.lastCompletionAt = "2026-04-16T13:00:00Z" },
+            task("done-once") { $0.completedToday = true; $0.recurrenceType = nil; $0.lastCompletionAt = "2026-04-16T13:00:00Z" },
         ]
         let p = partitionTasks(tasks, now: at("2026-04-16", 12), timeZone: newYork)
         XCTAssertEqual(p.active.map(\.id), ["blocker-overdue", "blocker-later", "due", "plain"])

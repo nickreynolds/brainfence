@@ -36,6 +36,19 @@ data class EditableStep(
     val reportId: String? = null,
     /** Optional notes (form cues, weights…) shown with the step. */
     val description: String = "",
+    /** The loaded step's type and config, so keys this editor doesn't manage survive a save. */
+    val originalStepType: String? = null,
+    val originalConfig: String = "{}",
+)
+
+/** The editor's "or be at a location" option: the first GPS completion alternative. */
+data class AlternativeLocation(
+    val enabled: Boolean = false,
+    val label: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
+    val radiusMeters: Int = 150,
+    val minDurationM: Int = 30,
 )
 
 data class TaskEditorState(
@@ -80,6 +93,14 @@ data class TaskEditorState(
     val homeOnlyBlocking: Boolean = false,
     /** Days of week the blocking condition is enforced. Empty = every day. */
     val blockingDaysOfWeek: Set<String> = emptySet(),
+    /** A missed occurrence stays due until done (shared/CONTRACTS.md). */
+    val carryOver: Boolean = false,
+    val alternativeLocation: AlternativeLocation = AlternativeLocation(),
+    /** The loaded completion_alternatives, written back with only the managed entry changed. */
+    val originalAlternatives: String = "[]",
+    /** The loaded task type and verification_config, so a routine keeps keys like execution_mode. */
+    val originalTaskType: String? = null,
+    val originalVerificationConfig: String = "{}",
     val availableFrom: String = "",  // HH:MM — when task becomes completable
     val dueAt: String = "",          // HH:MM — when task becomes overdue / triggers blocking
     // General
@@ -92,6 +113,9 @@ data class TaskEditorState(
     /** Shopping tasks skip the Schedule step — they never recur, block, or expire. */
     val totalSteps: Int get() = if (taskType == "shopping") 2 else 3
     val isLastStep: Boolean get() = currentStep == totalSteps - 1
+    /** Whether the task type can carry an "or be at a location" alternative. */
+    val supportsAlternativeLocation: Boolean
+        get() = taskType != "shopping" && !(taskType == "simple" && verificationType == "gps")
 }
 
 @HiltViewModel
@@ -129,7 +153,8 @@ class TaskEditorViewModel @Inject constructor(
                     sql = """
                         SELECT id, title, description, task_type, recurrence_type, recurrence_config,
                                verification_type, verification_config, is_blocking_condition,
-                               available_from, due_at, home_only_blocking, blocking_days_of_week
+                               available_from, due_at, home_only_blocking, blocking_days_of_week,
+                               carry_over, completion_alternatives
                         FROM tasks WHERE id = ?
                     """.trimIndent(),
                     parameters = listOf(taskId),
@@ -147,6 +172,8 @@ class TaskEditorViewModel @Inject constructor(
                         val dueAt = c.getString(10) ?: ""
                         val homeOnlyBlocking = (c.getLong(11) ?: 0L) != 0L
                         val blockingDaysOfWeek = c.getString(12) ?: "[]"
+                        val carryOver = (c.getLong(13) ?: 0L) != 0L
+                        val completionAlternatives = c.getString(14) ?: "[]"
                     }
                 } ?: run {
                     _state.value = _state.value.copy(isLoading = false, error = "Task not found")
@@ -165,11 +192,13 @@ class TaskEditorViewModel @Inject constructor(
                             id = rs.id,
                             title = rs.title,
                             stepType = rs.stepType,
-                            defaultSets = sConfig.optInt("default_sets", 3),
-                            durationSeconds = sConfig.optInt("duration_seconds", 60),
+                            defaultSets = sConfig.optInt("default_sets", sConfig.optInt("reps", 3)),
+                            durationSeconds = sConfig.optInt("duration_seconds", sConfig.optInt("work_seconds", 60)),
                             supersetGroup = rs.supersetGroup,
                             reportId = sConfig.optString("report_id").takeIf { it.isNotBlank() },
                             description = rs.description.orEmpty(),
+                            originalStepType = rs.stepType,
+                            originalConfig = rs.config,
                         )
                     }
                 } else emptyList()
@@ -226,6 +255,11 @@ class TaskEditorViewModel @Inject constructor(
                     blockingDaysOfWeek = parseBlockingDaysJson(task.blockingDaysOfWeek),
                     availableFrom = task.availableFrom,
                     dueAt = task.dueAt,
+                    carryOver = task.carryOver,
+                    alternativeLocation = loadAlternativeLocation(task.completionAlternatives),
+                    originalAlternatives = task.completionAlternatives,
+                    originalTaskType = task.taskType,
+                    originalVerificationConfig = task.verificationConfig,
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
@@ -491,6 +525,14 @@ class TaskEditorViewModel @Inject constructor(
         _state.value = _state.value.copy(isBlockingCondition = enabled)
     }
 
+    fun setCarryOver(enabled: Boolean) {
+        _state.value = _state.value.copy(carryOver = enabled)
+    }
+
+    fun updateAlternativeLocation(update: (AlternativeLocation) -> AlternativeLocation) {
+        _state.value = _state.value.copy(alternativeLocation = update(_state.value.alternativeLocation))
+    }
+
     fun setHomeOnlyBlocking(enabled: Boolean) {
         _state.value = _state.value.copy(homeOnlyBlocking = enabled)
     }
@@ -536,6 +578,12 @@ class TaskEditorViewModel @Inject constructor(
             _state.value = s.copy(error = "Choose a report for each report step")
             return
         }
+        if (s.alternativeLocation.enabled && s.supportsAlternativeLocation &&
+            (s.alternativeLocation.latitude.toDoubleOrNull() == null || s.alternativeLocation.longitude.toDoubleOrNull() == null)
+        ) {
+            _state.value = s.copy(error = "Pick the \"or be at\" location on the map")
+            return
+        }
         _state.value = s.copy(isSaving = true, error = null)
 
         viewModelScope.launch {
@@ -568,6 +616,9 @@ class TaskEditorViewModel @Inject constructor(
                 val availableFrom = if (taskType == "shopping") null else s.availableFrom.ifBlank { null }
                 val dueAt = if (taskType == "shopping") null else s.dueAt.ifBlank { null }
                 val blockingDaysJson = JSONArray(s.blockingDaysOfWeek.toList()).toString()
+                // Carry-over only means something for calendar recurrences.
+                val carryOver = if (s.carryOver && effectiveRecurrenceType in setOf("daily", "weekly", "monthly")) 1 else 0
+                val completionAlternatives = buildCompletionAlternatives(s)
 
                 val existingId = s.editingTaskId
                 if (existingId != null) {
@@ -578,7 +629,8 @@ class TaskEditorViewModel @Inject constructor(
                                 recurrence_type = ?, recurrence_config = ?,
                                 verification_type = ?, verification_config = ?,
                                 is_blocking_condition = ?, available_from = ?, due_at = ?,
-                                home_only_blocking = ?, blocking_days_of_week = ?, updated_at = ?
+                                home_only_blocking = ?, blocking_days_of_week = ?, carry_over = ?,
+                                completion_alternatives = ?, updated_at = ?
                             WHERE id = ?
                         """.trimIndent(),
                         parameters = listOf(
@@ -586,7 +638,8 @@ class TaskEditorViewModel @Inject constructor(
                             effectiveRecurrenceType, recurrenceConfig,
                             verificationType, verificationConfig,
                             if (isBlockingCondition) 1 else 0, availableFrom, dueAt,
-                            if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson, now,
+                            if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson, carryOver,
+                            completionAlternatives, now,
                             existingId,
                         ),
                     )
@@ -603,8 +656,8 @@ class TaskEditorViewModel @Inject constructor(
                                  verification_type, verification_config,
                                  tags, sort_order, is_blocking_condition, blocking_rule_ids,
                                  available_from, due_at, home_only_blocking, blocking_days_of_week,
-                                 created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 carry_over, completion_alternatives, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """.trimIndent(),
                         parameters = listOf(
                             taskId, userId, s.title, s.description.ifBlank { null },
@@ -617,7 +670,7 @@ class TaskEditorViewModel @Inject constructor(
                             // rejects the row (22P02) and PowerSync silently discards it.
                             "[]", 0, if (isBlockingCondition) 1 else 0, "[]",
                             availableFrom, dueAt, if (s.homeOnlyBlocking) 1 else 0, blockingDaysJson,
-                            now, now,
+                            carryOver, completionAlternatives, now, now,
                         ),
                     )
 
@@ -695,17 +748,80 @@ class TaskEditorViewModel @Inject constructor(
         }
     }
 
+    /**
+     * A step's config: the keys this editor manages, over whatever else the step
+     * already had (rest periods, sets, weight logging…) when its type is unchanged.
+     */
     private fun stepConfigJson(step: EditableStep): JSONObject {
-        val cfg = JSONObject()
+        val cfg = if (step.originalStepType == step.stepType) {
+            runCatching { JSONObject(step.originalConfig) }.getOrDefault(JSONObject())
+        } else JSONObject()
         when (step.stepType) {
             "weight_reps", "just_reps" -> cfg.put("default_sets", step.defaultSets)
             "timed" -> cfg.put("duration_seconds", step.durationSeconds)
-            "report" -> step.reportId?.let { cfg.put("report_id", it) }
+            "timed_sets" -> {
+                cfg.put("reps", step.defaultSets)
+                cfg.put("work_seconds", step.durationSeconds)
+                if (!cfg.has("rest_seconds")) cfg.put("rest_seconds", 20)
+            }
+            "report" -> {
+                cfg.remove("report_id")
+                step.reportId?.let { cfg.put("report_id", it) }
+            }
         }
         return cfg
     }
 
+    private fun loadAlternativeLocation(json: String): AlternativeLocation {
+        val entries = runCatching { JSONArray(json) }.getOrDefault(JSONArray())
+        val entry = managedAlternative(entries)?.let { entries.getJSONObject(it) } ?: return AlternativeLocation()
+        val c = entry.optJSONObject("verification_config") ?: JSONObject()
+        return AlternativeLocation(
+            enabled = true,
+            label = entry.optString("label", ""),
+            latitude = (if (c.has("latitude")) c.optDouble("latitude", 0.0) else c.optDouble("lat", 0.0)).toString(),
+            longitude = (if (c.has("longitude")) c.optDouble("longitude", 0.0) else c.optDouble("lng", 0.0)).toString(),
+            radiusMeters = if (c.has("radius_meters")) c.optInt("radius_meters", 150) else c.optInt("radius_m", 150),
+            minDurationM = c.optInt("min_duration_m", 0),
+        )
+    }
+
+    /** Index of the entry the editor manages: the first GPS alternative. */
+    private fun managedAlternative(entries: JSONArray): Int? =
+        (0 until entries.length()).firstOrNull {
+            (entries.opt(it) as? JSONObject)?.optString("verification_type") == "gps"
+        }
+
+    /** completion_alternatives to save: other entries untouched, the managed one replaced or removed. */
+    private fun buildCompletionAlternatives(s: TaskEditorState): String {
+        val entries = runCatching { JSONArray(s.originalAlternatives) }.getOrDefault(JSONArray())
+        val index = managedAlternative(entries)
+        val loc = s.alternativeLocation
+        if (!loc.enabled || !s.supportsAlternativeLocation) {
+            if (index != null) entries.remove(index)
+            return entries.toString()
+        }
+        val entry = index?.let { JSONObject(entries.getJSONObject(it).toString()) } ?: JSONObject()
+        val config = entry.optJSONObject("verification_config")?.let { JSONObject(it.toString()) } ?: JSONObject()
+        listOf("lat", "lng", "radius_m").forEach(config::remove)
+        config.put("latitude", loc.latitude.toDoubleOrNull() ?: 0.0)
+        config.put("longitude", loc.longitude.toDoubleOrNull() ?: 0.0)
+        config.put("radius_meters", loc.radiusMeters)
+        config.put("mode", "enter")
+        config.put("min_duration_m", loc.minDurationM)
+        entry.put("verification_type", "gps")
+        entry.put("verification_config", config)
+        if (loc.label.isNotBlank()) entry.put("label", loc.label.trim()) else entry.remove("label")
+        if (index != null) entries.put(index, entry) else entries.put(entry)
+        return entries.toString()
+    }
+
     private fun buildVerificationConfig(s: TaskEditorState): String {
+        // Routines and workouts have no editable verification config, but keep
+        // what they have (an automatic routine's execution_mode, countdown).
+        if ((s.taskType == "routine" || s.taskType == "workout") && s.originalTaskType == s.taskType) {
+            return runCatching { JSONObject(s.originalVerificationConfig) }.getOrDefault(JSONObject()).toString()
+        }
         val config = JSONObject()
         when {
             s.taskType == "timed" -> config.put("duration_seconds", s.durationSeconds)

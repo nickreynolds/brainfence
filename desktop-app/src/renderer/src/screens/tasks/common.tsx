@@ -1,5 +1,5 @@
 import type { Task } from '@shared/models'
-import { computeTaskPhase } from '@shared/recurrence'
+import { computeTaskPhase, computeTaskStatus } from '@shared/recurrence'
 import { getCompletionHistory } from '@shared/repos/tasks'
 import { Icon } from '../../components/Icon'
 import { IconButton, TopBar } from '../../components/ui'
@@ -45,6 +45,11 @@ export function NotYetAvailable({ task }: { task: Task }) {
       </div>
     </div>
   )
+}
+
+/** Done for its current occurrence (a carried-over task done yesterday counts). */
+export function isTaskDone(task: Task, now = new Date()): boolean {
+  return computeTaskStatus(task, now).completed
 }
 
 export function isBeforeStart(task: Task, now = new Date()): boolean {

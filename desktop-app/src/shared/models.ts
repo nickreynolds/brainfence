@@ -25,6 +25,10 @@ export interface Task {
   homeOnlyBlocking: boolean
   /** JSON array of "mon"…"sun". Empty = block every day. */
   blockingDaysOfWeek: string
+  /** A missed occurrence stays due until done or the next one starts. */
+  carryOver: boolean
+  /** JSON array of other ways to complete the task (see verification.ts). */
+  completionAlternatives: string
   createdAt: string
   updatedAt: string
   // Derived from task_completions — not stored columns
@@ -74,6 +78,8 @@ export interface RoutineStep {
   supersetGroup: string | null
   createdAt: string
   description: string | null
+  /** Optional https PNG shown with the step. */
+  imageUrl: string | null
 }
 
 export interface StepCompletion {

@@ -23,10 +23,26 @@ export interface EditableStep {
   supersetGroup: string | null
   reportId: string | null
   description: string
+  /** The loaded step's type and config, so keys this editor doesn't manage survive a save. */
+  originalStepType: string | null
+  originalConfig: Record<string, any>
 }
 
 export function newEditableStep(): EditableStep {
-  return { id: uuid(), title: '', stepType: 'checkbox', defaultSets: 3, durationSeconds: 60, supersetGroup: null, reportId: null, description: '' }
+  return {
+    id: uuid(), title: '', stepType: 'checkbox', defaultSets: 3, durationSeconds: 60, supersetGroup: null, reportId: null, description: '',
+    originalStepType: null, originalConfig: {},
+  }
+}
+
+/** The editor's "or be at a location" option: the first GPS completion alternative. */
+export interface AlternativeLocation {
+  enabled: boolean
+  label: string
+  latitude: string
+  longitude: string
+  radiusMeters: number
+  minDurationM: number
 }
 
 export interface TaskEditorState {
@@ -57,6 +73,11 @@ export interface TaskEditorState {
   isBlockingCondition: boolean
   homeOnlyBlocking: boolean
   blockingDaysOfWeek: string[]
+  /** A missed occurrence stays due until done (shared/CONTRACTS.md). */
+  carryOver: boolean
+  alternativeLocation: AlternativeLocation
+  /** The loaded completion_alternatives, written back with only the managed entry changed. */
+  originalAlternatives: unknown[]
   availableFrom: string
   dueAt: string
   editingTaskId: string | null
@@ -74,8 +95,65 @@ export function emptyEditorState(): TaskEditorState {
     meditationSeconds: 300, shortSitSeconds: DEFAULT_SHORT_SIT_SECONDS, companionApps: [],
     reportId: null, routineSteps: [], recurrenceType: null, weeklyDays: [],
     isBlockingCondition: false, homeOnlyBlocking: false, blockingDaysOfWeek: [], availableFrom: '', dueAt: '',
+    carryOver: false, alternativeLocation: emptyAlternativeLocation(), originalAlternatives: [],
     editingTaskId: null, originalTaskType: null, originalVerificationType: null, originalVerificationConfig: {},
   }
+}
+
+export function emptyAlternativeLocation(): AlternativeLocation {
+  return { enabled: false, label: '', latitude: '', longitude: '', radiusMeters: 150, minDurationM: 30 }
+}
+
+/** Whether the task type can carry an "or be at a location" alternative. */
+export const supportsAlternativeLocation = (s: TaskEditorState) =>
+  s.taskType !== 'shopping' && !(s.taskType === 'simple' && s.verificationType === 'gps')
+
+/** Index of the entry the editor manages: the first GPS alternative, or -1. */
+function managedAlternativeIndex(entries: unknown[]): number {
+  return entries.findIndex((e) => !!e && typeof e === 'object' && (e as any).verification_type === 'gps')
+}
+
+function loadAlternativeLocation(entries: unknown[]): AlternativeLocation {
+  const index = managedAlternativeIndex(entries)
+  if (index < 0) return emptyAlternativeLocation()
+  const e = entries[index] as Record<string, any>
+  const c = e.verification_config && typeof e.verification_config === 'object' ? e.verification_config : {}
+  return {
+    enabled: true,
+    label: typeof e.label === 'string' ? e.label : '',
+    latitude: String(num(c.latitude ?? c.lat, 0)),
+    longitude: String(num(c.longitude ?? c.lng, 0)),
+    radiusMeters: num(c.radius_meters ?? c.radius_m, 150),
+    minDurationM: num(c.min_duration_m, 0),
+  }
+}
+
+/** completion_alternatives to save: other entries untouched, the managed one replaced or removed. */
+export function buildCompletionAlternatives(s: TaskEditorState): unknown[] {
+  const entries = [...s.originalAlternatives]
+  const index = managedAlternativeIndex(entries)
+  const loc = s.alternativeLocation
+  if (!loc.enabled || !supportsAlternativeLocation(s)) {
+    if (index >= 0) entries.splice(index, 1)
+    return entries
+  }
+  const previous = index >= 0 ? (entries[index] as Record<string, any>) : {}
+  const previousConfig = previous.verification_config && typeof previous.verification_config === 'object' ? previous.verification_config : {}
+  const { lat: _lat, lng: _lng, radius_m: _r, ...restConfig } = previousConfig
+  const entry: Record<string, unknown> = {
+    ...previous,
+    verification_type: 'gps',
+    verification_config: {
+      ...restConfig,
+      latitude: Number(loc.latitude) || 0, longitude: Number(loc.longitude) || 0, radius_meters: loc.radiusMeters,
+      mode: 'enter', min_duration_m: loc.minDurationM,
+    },
+  }
+  if (loc.label.trim()) entry.label = loc.label.trim()
+  else delete entry.label
+  if (index >= 0) entries[index] = entry
+  else entries.push(entry)
+  return entries
 }
 
 /** Verification type implied by a task type when switching types. */
@@ -132,6 +210,8 @@ export async function loadEditorState(db: Db, taskId: string): Promise<TaskEdito
           supersetGroup: s.supersetGroup,
           reportId: typeof c.report_id === 'string' && c.report_id ? c.report_id : null,
           description: s.description ?? '',
+          originalStepType: s.stepType,
+          originalConfig: c,
         }
       })
     : []
@@ -163,6 +243,9 @@ export async function loadEditorState(db: Db, taskId: string): Promise<TaskEdito
     isBlockingCondition: Number(row.is_blocking_condition ?? 0) !== 0,
     homeOnlyBlocking: Number(row.home_only_blocking ?? 0) !== 0,
     blockingDaysOfWeek: parseStringArray(row.blocking_days_of_week),
+    carryOver: Number(row.carry_over ?? 0) !== 0,
+    alternativeLocation: loadAlternativeLocation(parseJsonArray(row.completion_alternatives)),
+    originalAlternatives: parseJsonArray(row.completion_alternatives),
     availableFrom: row.available_from ?? '',
     dueAt: row.due_at ?? '',
     editingTaskId: taskId,
@@ -197,25 +280,36 @@ export function validateForSave(s: TaskEditorState, reports: Report[]): string |
   }
   const err = validateStep(s, 1)
   if (err) return err
+  if (s.alternativeLocation.enabled && supportsAlternativeLocation(s)
+    && (!isNum(s.alternativeLocation.latitude) || !isNum(s.alternativeLocation.longitude))) {
+    return 'Latitude and longitude are required for the "or be at" location'
+  }
   for (const [label, value] of [['Available from', s.availableFrom], ['Due at', s.dueAt]] as const) {
     if (value.trim() !== '' && !/^\d{1,2}:\d{2}$/.test(value.trim())) return `${label} must be HH:mm`
   }
   return null
 }
 
+/**
+ * A step's config: the keys this editor manages, over whatever else the step
+ * already had (rest periods, sets, weight logging…) when its type is unchanged.
+ */
 export function stepConfigJson(step: EditableStep): Record<string, unknown> {
+  const carried: Record<string, any> = step.originalStepType === step.stepType ? { ...step.originalConfig } : {}
   switch (step.stepType) {
     case 'weight_reps':
     case 'just_reps':
-      return { default_sets: step.defaultSets }
+      return { ...carried, default_sets: step.defaultSets }
     case 'timed':
-      return { duration_seconds: step.durationSeconds }
+      return { ...carried, duration_seconds: step.durationSeconds }
     case 'timed_sets':
-      return { reps: step.defaultSets, work_seconds: step.durationSeconds, rest_seconds: 20 }
-    case 'report':
-      return step.reportId ? { report_id: step.reportId } : {}
+      return { rest_seconds: 20, ...carried, reps: step.defaultSets, work_seconds: step.durationSeconds }
+    case 'report': {
+      const { report_id: _old, ...rest } = carried
+      return step.reportId ? { ...rest, report_id: step.reportId } : rest
+    }
     default:
-      return {}
+      return carried
   }
 }
 
@@ -288,6 +382,9 @@ export async function saveTask(db: Db, s: TaskEditorState): Promise<string> {
   const dueAt = taskType === 'shopping' ? null : s.dueAt.trim() || null
   const blockingDays = JSON.stringify(sortDays(s.blockingDaysOfWeek))
   const description = s.description.trim() ? s.description : null
+  // Carry-over only means something for calendar recurrences.
+  const carryOver = bool(s.carryOver && ['daily', 'weekly', 'monthly'].includes(effectiveRecurrence ?? ''))
+  const completionAlternatives = JSON.stringify(buildCompletionAlternatives(s))
 
   const statements: SqlStatement[] = []
   let taskId = s.editingTaskId
@@ -296,12 +393,12 @@ export async function saveTask(db: Db, s: TaskEditorState): Promise<string> {
       sql: `UPDATE tasks SET
               title = ?, description = ?, task_type = ?, recurrence_type = ?, recurrence_config = ?,
               verification_type = ?, verification_config = ?, is_blocking_condition = ?, available_from = ?, due_at = ?,
-              home_only_blocking = ?, blocking_days_of_week = ?, updated_at = ?
+              home_only_blocking = ?, blocking_days_of_week = ?, carry_over = ?, completion_alternatives = ?, updated_at = ?
             WHERE id = ?`,
       params: [
         s.title.trim(), description, taskType, effectiveRecurrence, recurrenceConfig,
         verificationType, verificationConfig, bool(isBlocking), availableFrom, dueAt,
-        bool(s.homeOnlyBlocking), blockingDays, now, taskId,
+        bool(s.homeOnlyBlocking), blockingDays, carryOver, completionAlternatives, now, taskId,
       ],
     })
     if (isRoutineType(taskType)) statements.push(...(await routineStepSyncStatements(db, userId, taskId, s.routineSteps)))
@@ -311,14 +408,15 @@ export async function saveTask(db: Db, s: TaskEditorState): Promise<string> {
       sql: `INSERT INTO tasks
               (id, user_id, title, description, task_type, status, recurrence_type, recurrence_config,
                verification_type, verification_config, tags, sort_order, is_blocking_condition, blocking_rule_ids,
-               available_from, due_at, home_only_blocking, blocking_days_of_week, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               available_from, due_at, home_only_blocking, blocking_days_of_week, carry_over, completion_alternatives,
+               created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       // tags / blocking_rule_ids are Postgres arrays: locally a JSON array, which
       // the connector uploads as a real array ("{}" would be rejected).
       params: [
         taskId, userId, s.title.trim(), description, taskType, 'active', effectiveRecurrence, recurrenceConfig,
         verificationType, verificationConfig, '[]', 0, bool(isBlocking), '[]',
-        availableFrom, dueAt, bool(s.homeOnlyBlocking), blockingDays, now, now,
+        availableFrom, dueAt, bool(s.homeOnlyBlocking), blockingDays, carryOver, completionAlternatives, now, now,
       ],
     })
     if (isRoutineType(taskType)) {

@@ -9,8 +9,10 @@ import { Chip, Dialog, Field, IconButton, Loading, NumberInput, ProgressBar, Tex
 import { formatClock } from '../../lib/format'
 import { db, useNow } from '../../lib/hooks'
 import { useRouter } from '../../lib/router'
-import { CompletedToday, NotYetAvailable, TaskTopBar, isBeforeStart } from './common'
+import { CompletedToday, NotYetAvailable, TaskTopBar, isBeforeStart, isTaskDone } from './common'
 import { AutoProgress, SetEntry, StepState, SupersetRound, useRoutineSession } from './routineSession'
+import { TimedSetsConfig, WeightKind, formatTimedWeight, parseTimedSetsConfig, timedSetsHangCount, timedSetsSetOf, timedSetsSideOf } from '@shared/timedSets'
+import { describeGpsAlternative, parseGpsAlternatives } from '@shared/verification'
 
 const formatWeight = (w: number) => (Number.isInteger(w) ? String(w) : String(w))
 
@@ -25,12 +27,12 @@ export function RoutineTaskScreen({ task }: { task: Task }) {
 
   // Routines finish themselves once every step is done; so does an auto routine.
   useEffect(() => {
-    if (task.completedToday || session.isCompleting) return
+    if (isTaskDone(task) || session.isCompleting) return
     if ((isRoutine && session.allStepsCompleted) || (session.isAutoRoutine && session.auto.phase === 'COMPLETED')) void session.finish(back)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.allStepsCompleted, session.auto.phase])
 
-  if (task.completedToday) {
+  if (isTaskDone(task)) {
     return (<><TaskTopBar task={task} /><CompletedToday /></>)
   }
   if (session.stepsLoading || (!session.initialized && session.steps.length > 0)) return (<><TaskTopBar task={task} /><Loading /></>)
@@ -55,7 +57,12 @@ export function RoutineTaskScreen({ task }: { task: Task }) {
     return (
       <>
         <TaskTopBar task={task} />
-        <AutoRoutine steps={session.steps} auto={session.auto} isCompleting={session.isCompleting} onStart={session.startAuto} onStop={session.stopAuto} />
+        <AlternativesNote task={task} />
+        <AutoRoutine
+          steps={session.steps} states={session.states} auto={session.auto} isCompleting={session.isCompleting}
+          onStart={session.startAuto} onStop={session.stopAuto} onSetWeight={session.actions.setTimedSetWeight}
+          onConfirmSetWeight={session.confirmSetWeight}
+        />
       </>
     )
   }
@@ -75,6 +82,7 @@ export function RoutineTaskScreen({ task }: { task: Task }) {
     <>
       <TaskTopBar task={task} />
       <div className="stack" style={{ marginTop: 4 }}>
+        <AlternativesNote task={task} />
         {items.map((item) =>
           item.kind === 'step' ? (
             session.states[item.step.id] && (
@@ -138,6 +146,7 @@ function StepCard({ state, actions, onRemove, report, submission, isSubmitting, 
           <IconButton icon="close" title="Remove step" small onClick={onRemove} />
         </div>
         {step.description && <StepNotes text={step.description} />}
+        {step.imageUrl && <StepImage url={step.imageUrl} />}
         {step.stepType === 'checkbox' && (
           <button className="btn tonal block" onClick={() => actions.toggleCheckbox(step.id)}>
             <Icon name={state.sets[0]?.completed ? 'check' : 'circle'} /> {state.sets[0]?.completed ? 'Done' : 'Mark Complete'}
@@ -150,7 +159,7 @@ function StepCard({ state, actions, onRemove, report, submission, isSubmitting, 
           <TimedContent entry={state.sets[0]} config={step.config} onStart={() => actions.startTimer(step.id, 0)} onStop={() => actions.stopTimer(step.id, 0)} />
         )}
         {step.stepType === 'timed_sets' && (
-          <div className="small muted">{state.sets.filter((e) => e.completed).length} / {state.sets.length} reps done</div>
+          <div className="small muted">{state.sets.filter((e) => e.completed).length} / {state.sets.length} hangs done</div>
         )}
         {step.stepType === 'report' && (
           submission ? <ReportSubmissionSummary submission={submission} />
@@ -160,6 +169,54 @@ function StepCard({ state, actions, onRemove, report, submission, isSubmitting, 
       </div>
     </div>
   )
+}
+
+/** "Or be at Climbing gym for 30 min": the task's other ways to complete (shared/CONTRACTS.md). */
+export function AlternativesNote({ task }: { task: Task }) {
+  const [checking, setChecking] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const alternatives = parseGpsAlternatives(task.completionAlternatives)
+  if (alternatives.length === 0) return null
+  const check = async () => {
+    setChecking(true)
+    const result = await window.api.gps.checkTask(task.id)
+    setMessage(result.message)
+    setChecking(false)
+  }
+  return (
+    <div className="card secondary">
+      <div className="row" style={{ gap: 12 }}>
+        <Icon name="place" />
+        <div className="grow stack sm">
+          <div className="small">
+            Or {alternatives.map(describeGpsAlternative).join(', or ')}: this completes automatically from your location.
+          </div>
+          {message && <div className="small muted">{message}</div>}
+        </div>
+        <button className="btn text" disabled={checking} onClick={() => void check()}>{checking ? 'Checking…' : 'Check now'}</button>
+      </div>
+    </div>
+  )
+}
+
+/** A step's picture (e.g. which holds to use), scaled to fit. */
+function StepImage({ url, maxHeight = 220 }: { url: string; maxHeight?: number }) {
+  const [failed, setFailed] = useState(false)
+  if (failed || !/^https:\/\//.test(url)) return null
+  return (
+    <img
+      src={url}
+      alt=""
+      onError={() => setFailed(true)}
+      style={{ display: 'block', width: '100%', maxHeight, objectFit: 'contain', borderRadius: 12, background: 'var(--surface-container)' }}
+    />
+  )
+}
+
+function describeTimedSets(c: TimedSetsConfig): string {
+  const hangs = `${c.reps}× ${c.workSeconds}s on / ${c.restSeconds}s off${c.sides === 2 ? ' per hand (left, then right)' : ''}`
+  if (c.sets <= 1) return hangs
+  return `${c.sets} sets of ${hangs} · ${formatClock(c.setRestSeconds)} between sets`
 }
 
 function StepNotes({ text }: { text: string }) {
@@ -295,41 +352,107 @@ function SupersetCard({ steps, states, round, actions, groupId }: { steps: Routi
   )
 }
 
-function AutoRoutine({ steps, auto, isCompleting, onStart, onStop }: { steps: RoutineStep[]; auto: AutoProgress; isCompleting: boolean; onStart: () => void; onStop: () => void }) {
-  const repsOf = (s: RoutineStep) => Number(parseJsonObject(s.config).reps ?? 1)
+function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSetWeight, onConfirmSetWeight }: {
+  steps: RoutineStep[]; states: Record<string, StepState>; auto: AutoProgress; isCompleting: boolean
+  onStart: () => void; onStop: () => void; onSetWeight: (stepId: string, setIndex: number, weight: number | null) => void
+  onConfirmSetWeight: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const hangsOf = (s: RoutineStep) => timedSetsHangCount(parseTimedSetsConfig(s.config))
   const current = steps[auto.exerciseIndex]
-  const totalWork = steps.reduce((a, s) => a + repsOf(s), 0)
-  const doneWork = steps.slice(0, auto.exerciseIndex).reduce((a, s) => a + repsOf(s), 0) + auto.rep
+  const currentConfig = current ? parseTimedSetsConfig(current.config) : null
+  const totalWork = steps.reduce((a, s) => a + hangsOf(s), 0)
+  const doneWork = steps.slice(0, auto.exerciseIndex).reduce((a, s) => a + hangsOf(s), 0) + auto.rep
   const color = auto.phase === 'COUNTDOWN' ? 'var(--tertiary)' : auto.phase === 'WORK' ? 'var(--primary)' : auto.phase === 'REST' ? 'var(--secondary)' : 'var(--on-surface)'
+  const weightOf = (step: RoutineStep, setIndex: number) => {
+    const cfg = parseTimedSetsConfig(step.config)
+    return states[step.id]?.sets[setIndex * cfg.reps * cfg.sides]?.weight ?? null
+  }
+  // Steps whose weight is confirmed once, before the routine starts.
+  const startWeighted = steps.filter((s) => {
+    const c = parseTimedSetsConfig(s.config)
+    return c.weight != null && c.weightPrompt === 'start'
+  })
+
+  if (auto.phase === 'IDLE' && confirming) {
+    return (
+      <div className="stack lg" style={{ marginTop: 8 }}>
+        <div className="title-md">Confirm weights</div>
+        <div className="small muted">Added weight for each hang (negative = assisted). Pre-filled from last time.</div>
+        <div className="list">
+          {startWeighted.map((s) => {
+            const c = parseTimedSetsConfig(s.config)
+            return (
+              <div key={s.id} className="list-item" style={{ alignItems: 'center' }}>
+                <div className="grow headline">{s.title}</div>
+                <div style={{ width: 220 }}><WeightField kind={c.weight!} value={weightOf(s, 0)} onChange={(w) => onSetWeight(s.id, 0, w)} /></div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="row">
+          <button className="btn text" onClick={() => setConfirming(false)}>Back</button>
+          <button className="btn grow" onClick={() => { setConfirming(false); onStart() }}><Icon name="play" /> Confirm and start</button>
+        </div>
+      </div>
+    )
+  }
 
   if (auto.phase === 'IDLE') {
     return (
       <div className="stack lg" style={{ marginTop: 8 }}>
         <div className="list">
           {steps.map((s, i) => {
-            const c = parseJsonObject(s.config)
+            const c = parseTimedSetsConfig(s.config)
             return (
-              <div key={s.id} className="list-item" style={{ minHeight: 48 }}>
-                <div className="grow">
+              <div key={s.id} className="list-item" style={{ minHeight: 48, alignItems: 'flex-start' }}>
+                <div className="grow stack sm">
                   <div className="headline">{i + 1}. {s.title}</div>
-                  <div className="supporting">{Number(c.reps ?? 1)}x {Number(c.work_seconds ?? 10)}s on / {Number(c.rest_seconds ?? 20)}s off</div>
+                  <div className="supporting">{describeTimedSets(c)}</div>
+                  {s.description && <div className="supporting" style={{ whiteSpace: 'pre-wrap' }}>{s.description}</div>}
+                  {s.imageUrl && <StepImage url={s.imageUrl} maxHeight={140} />}
+                  {c.weight && <div className="supporting">{c.weightPrompt === 'each_set' ? 'Weight asked before each set' : `Last time: ${formatTimedWeight(c.weight, weightOf(s, 0))}`}</div>}
                 </div>
               </div>
             )
           })}
         </div>
-        <button className="btn block" onClick={onStart}><Icon name="play" /> Start Routine</button>
+        <button className="btn block" onClick={() => (startWeighted.length > 0 ? setConfirming(true) : onStart())}><Icon name="play" /> Start Routine</button>
       </div>
     )
   }
   if (auto.phase === 'COMPLETED') return <div className="center-screen"><div className="spinner" />{isCompleting && <div className="muted">Saving…</div>}</div>
   const paused = auto.phase === 'PAUSED'
+  const setIndex = currentConfig ? timedSetsSetOf(currentConfig, auto.rep) : 0
+  const hangInSide = currentConfig ? (auto.rep % currentConfig.reps) + 1 : auto.rep + 1
+  const side = currentConfig && currentConfig.sides === 2 ? (timedSetsSideOf(currentConfig, auto.rep) === 0 ? 'Left hand' : 'Right hand') : null
+
+  if (auto.phase === 'WEIGHT' && current && currentConfig?.weight) {
+    return (
+      <div className="center-screen">
+        <div className="muted">Exercise {auto.exerciseIndex + 1} of {steps.length}</div>
+        <div className="title-lg">{current.title}</div>
+        <div className="muted">Set {setIndex + 1} of {currentConfig.sets}{currentConfig.sides === 2 ? ' · left, then right, same weight' : ''}</div>
+        {current.imageUrl && <div style={{ width: 'min(420px, 100%)' }}><StepImage url={current.imageUrl} /></div>}
+        <div style={{ width: 240 }}><WeightField kind={currentConfig.weight} value={weightOf(current, setIndex)} onChange={(w) => onSetWeight(current.id, setIndex, w)} /></div>
+        <button className="btn" onClick={onConfirmSetWeight}><Icon name="play" /> Start set</button>
+        <button className="btn text" onClick={onStop}>Pause</button>
+      </div>
+    )
+  }
+
   return (
     <div className="center-screen">
       <div className="muted">Exercise {auto.exerciseIndex + 1} of {steps.length}</div>
       {(auto.phase === 'REST' || auto.phase === 'COUNTDOWN') && !paused && <div className="small" style={{ color, fontWeight: 700, letterSpacing: 1 }}>UP NEXT</div>}
       <div className="title-lg">{current?.title}</div>
-      <div className="muted">Rep {auto.rep + 1} of {current ? repsOf(current) : 1}</div>
+      {current?.imageUrl && <div style={{ width: 'min(420px, 100%)' }}><StepImage url={current.imageUrl} /></div>}
+      <div className="muted">
+        {currentConfig && currentConfig.sets > 1 && `Set ${setIndex + 1} of ${currentConfig.sets} · `}
+        {side && `${side} · `}
+        Rep {hangInSide} of {currentConfig?.reps ?? 1}
+      </div>
+      {current && currentConfig?.weight && <div className="muted">{formatTimedWeight(currentConfig.weight, weightOf(current, setIndex))}</div>}
       {paused ? (
         <div className="title-md" style={{ letterSpacing: 2 }}>PAUSED</div>
       ) : (
@@ -343,6 +466,33 @@ function AutoRoutine({ steps, auto, isCompleting, onStart, onStop }: { steps: Ro
         ? <button className="btn" onClick={onStart}><Icon name="play" /> Resume Routine</button>
         : <button className="btn tonal" onClick={onStop}><Icon name="pause" /> Pause</button>}
     </div>
+  )
+}
+
+/** Added weight (negative = assisted) or the load lifted, in lb. Blank = bodyweight / none. */
+function WeightField({ kind, value, onChange }: { kind: WeightKind; value: number | null; onChange: (w: number | null) => void }) {
+  const [text, setText] = useState(value == null ? '' : String(value))
+  useEffect(() => {
+    if ((text === '' ? null : Number(text)) !== value) setText(value == null ? '' : String(value))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+  return (
+    <Field label={kind === 'added' ? 'Added weight (lb, − = assisted)' : 'Weight (lb)'}>
+      <input
+        className="input"
+        type="number"
+        step={0.5}
+        min={kind === 'load' ? 0 : undefined}
+        value={text}
+        placeholder={kind === 'added' ? 'Bodyweight' : '0'}
+        onChange={(e) => {
+          setText(e.target.value)
+          const n = Number(e.target.value)
+          if (e.target.value === '') onChange(null)
+          else if (Number.isFinite(n) && (kind === 'added' || n >= 0)) onChange(n)
+        }}
+      />
+    </Field>
   )
 }
 

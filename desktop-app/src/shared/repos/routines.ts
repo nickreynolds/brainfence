@@ -16,7 +16,7 @@ export interface NewRoutineStep {
 
 export async function getRoutineSteps(db: Db, taskId: string): Promise<RoutineStep[]> {
   const rows = await db.getAll(
-    `SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at, description
+    `SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at, description, image_url
      FROM routine_steps WHERE task_id = ? ORDER BY step_order`,
     [taskId],
   )
@@ -30,6 +30,7 @@ export async function getRoutineSteps(db: Db, taskId: string): Promise<RoutineSt
     supersetGroup: r.superset_group ?? null,
     createdAt: r.created_at ?? '',
     description: r.description ?? null,
+    imageUrl: r.image_url ?? null,
   }))
 }
 

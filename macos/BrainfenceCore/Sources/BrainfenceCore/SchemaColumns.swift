@@ -8,7 +8,7 @@ public enum SchemaColumns {
     /// column is rejected (and the local write reverted), so they are parsed first.
     public static let json: [String: Set<String>] = [
         "groups": ["visibility_schedule"],
-        "tasks": ["recurrence_config", "verification_config", "tags", "blocking_rule_ids", "blocking_days_of_week"],
+        "tasks": ["recurrence_config", "verification_config", "tags", "blocking_rule_ids", "blocking_days_of_week", "completion_alternatives"],
         "routine_steps": ["config"],
         "task_completions": ["verification_data"],
         "step_completions": ["data"],
@@ -19,7 +19,7 @@ public enum SchemaColumns {
 
     /// BOOLEAN columns, stored locally as 0 / 1.
     public static let boolean: [String: Set<String>] = [
-        "tasks": ["is_blocking_condition", "home_only_blocking"],
+        "tasks": ["is_blocking_condition", "home_only_blocking", "carry_over"],
         "blocking_rules": ["is_active"],
         "contemplation_decks": ["is_enabled"],
         "reports": ["include_note"],

@@ -3,7 +3,7 @@ package dev.brainfence.domain.blocking
 import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
-import dev.brainfence.domain.recurrence.computeTaskPhase
+import dev.brainfence.domain.recurrence.status
 import org.json.JSONArray
 import java.time.DayOfWeek
 import java.time.Instant
@@ -133,16 +133,28 @@ private fun conditionUnmetTaskIds(
         // as unmet so blocking never silently lifts. Strict-by-default, matching
         // the home-presence handling above.
         val task = taskById[taskId] ?: return@filter true
-        if (task.completedToday) return@filter false
-        if (task.homeOnlyBlocking && homePresence == HomePresence.AWAY) return@filter false
-        val allowedDays = parseBlockingDays(task.blockingDaysOfWeek)
-        if (allowedDays.isNotEmpty()) {
-            val dow = currentTime.atZone(timeZone).dayOfWeek
-            if (dow !in allowedDays) return@filter false
-        }
-        val phase = computeTaskPhase(task.availableFrom, task.dueAt, currentTime, timeZone)
-        phase == null || phase == TimeGatePhase.PAST_DUE
+        isConditionUnmet(task, currentTime, timeZone, homePresence)
     }.toSet()
+}
+
+/**
+ * Whether one condition task is causing its rule to block right now: an
+ * occurrence is open (due today or carried over), it isn't done, it's past due
+ * (or has no window), today is a blocking day, and the user isn't known to be
+ * away for a home-only task. See shared/CONTRACTS.md (Task occurrences and blocking).
+ */
+fun isConditionUnmet(
+    task: Task,
+    currentTime: Instant,
+    timeZone: ZoneId,
+    homePresence: HomePresence,
+): Boolean {
+    val status = task.status(currentTime, timeZone)
+    if (!status.scheduled || status.completed) return false
+    if (task.homeOnlyBlocking && homePresence == HomePresence.AWAY) return false
+    val allowedDays = parseBlockingDays(task.blockingDaysOfWeek)
+    if (allowedDays.isNotEmpty() && currentTime.atZone(timeZone).dayOfWeek !in allowedDays) return false
+    return status.phase == null || status.phase == TimeGatePhase.PAST_DUE
 }
 
 private val DAY_ABBREVIATIONS = mapOf(

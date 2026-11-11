@@ -1,5 +1,7 @@
 package dev.brainfence.ui.blocking
 
+import dev.brainfence.domain.verification.CompletionAlternatives
+import dev.brainfence.domain.recurrence.status
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -126,7 +128,7 @@ class BlockingActivity : ComponentActivity() {
 
 /** Whether this task can be completed with a single button press on the overlay. */
 private fun isInlineCompletable(task: Task): Boolean =
-    !task.completedToday &&
+    !task.status().completed &&
     task.taskType != "routine" && task.taskType != "workout" &&
     (task.verificationType == null || task.verificationType == "manual")
 
@@ -195,7 +197,14 @@ private fun BlockingOverlayScreen(
     }
 }
 
-private fun verificationHint(task: Task): String = when {
+private fun verificationHint(task: Task): String {
+    val alternatives = CompletionAlternatives.parseGps(task.completionAlternatives)
+    val primary = primaryVerificationHint(task)
+    if (alternatives.isEmpty()) return primary
+    return "$primary, or ${alternatives.joinToString(", or ") { it.describe() }}"
+}
+
+private fun primaryVerificationHint(task: Task): String = when {
     task.taskType == "routine" -> "Complete all steps in the app"
     task.taskType == "workout" -> "Log your workout in the app"
     task.verificationType == "gps" -> "Requires GPS verification \u2014 open the app to start"
@@ -211,7 +220,8 @@ private fun RequiredTaskCard(
     onComplete: () -> Unit,
     onOpenApp: () -> Unit,
 ) {
-    val needsApp = !task.completedToday && !inlineCompletable
+    val done = task.status().completed
+    val needsApp = !done && !inlineCompletable
 
     Card(
         modifier = Modifier
@@ -227,7 +237,7 @@ private fun RequiredTaskCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (task.completedToday) {
+            if (done) {
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Completed",
@@ -251,7 +261,7 @@ private fun RequiredTaskCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                 )
-                if (!task.completedToday) {
+                if (!done) {
                     Text(
                         text = verificationHint(task),
                         style = MaterialTheme.typography.bodySmall,

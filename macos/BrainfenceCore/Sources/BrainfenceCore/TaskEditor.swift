@@ -16,11 +16,15 @@ public struct EditableStep: Sendable, Equatable, Identifiable {
     public var supersetGroup: String?
     public var reportId: String?
     public var description: String
+    /// The loaded step's type and config, so keys this editor doesn't manage survive a save.
+    public var originalStepType: String?
+    public var originalConfig: [String: JSONValue]
 
     public init(
         id: String = UUID().uuidString.lowercased(), title: String = "", stepType: String = "checkbox",
         defaultSets: Int = 3, durationSeconds: Int = 60, supersetGroup: String? = nil,
-        reportId: String? = nil, description: String = ""
+        reportId: String? = nil, description: String = "",
+        originalStepType: String? = nil, originalConfig: [String: JSONValue] = [:]
     ) {
         self.id = id
         self.title = title
@@ -30,18 +34,43 @@ public struct EditableStep: Sendable, Equatable, Identifiable {
         self.supersetGroup = supersetGroup
         self.reportId = reportId
         self.description = description
+        self.originalStepType = originalStepType
+        self.originalConfig = originalConfig
     }
 
-    /// routine_steps.config for this step.
+    /// routine_steps.config for this step: the keys this editor manages, over
+    /// whatever else the step already had (rest periods, sets, weight logging…)
+    /// when its type is unchanged.
     public var configJSON: JSONValue {
+        var c = originalStepType == stepType ? originalConfig : [:]
         switch stepType {
-        case "weight_reps", "just_reps": .object(["default_sets": .int(defaultSets)])
-        case "timed": .object(["duration_seconds": .int(durationSeconds)])
-        case "timed_sets": .object(["reps": .int(defaultSets), "work_seconds": .int(durationSeconds), "rest_seconds": .int(20)])
-        case "report": reportId.map { JSONValue.object(["report_id": .string($0)]) } ?? .object([:])
-        default: .object([:])
+        case "weight_reps", "just_reps":
+            c["default_sets"] = .int(defaultSets)
+        case "timed":
+            c["duration_seconds"] = .int(durationSeconds)
+        case "timed_sets":
+            c["reps"] = .int(defaultSets)
+            c["work_seconds"] = .int(durationSeconds)
+            if c["rest_seconds"] == nil { c["rest_seconds"] = .int(20) }
+        case "report":
+            c["report_id"] = reportId.map(JSONValue.string)
+        default:
+            break
         }
+        return .object(c)
     }
+}
+
+/// The editor's "or be at a location" option: the first GPS completion alternative.
+public struct AlternativeLocation: Sendable, Equatable {
+    public var enabled = false
+    public var label = ""
+    public var latitude = ""
+    public var longitude = ""
+    public var radiusMeters = 150
+    public var minDurationMinutes = 30
+
+    public init() {}
 }
 
 /// The `tasks` columns the editor reads.
@@ -58,12 +87,14 @@ public struct TaskRow: Sendable, Equatable {
     public var blockingDaysOfWeek: String?
     public var availableFrom: String?
     public var dueAt: String?
+    public var carryOver: Bool
+    public var completionAlternatives: String?
 
     public init(
         title: String, description: String? = nil, taskType: String = "simple", recurrenceType: String? = nil,
         recurrenceConfig: String? = nil, verificationType: String? = nil, verificationConfig: String? = nil,
         isBlockingCondition: Bool = false, homeOnlyBlocking: Bool = false, blockingDaysOfWeek: String? = nil,
-        availableFrom: String? = nil, dueAt: String? = nil
+        availableFrom: String? = nil, dueAt: String? = nil, carryOver: Bool = false, completionAlternatives: String? = nil
     ) {
         self.title = title
         self.description = description
@@ -77,6 +108,8 @@ public struct TaskRow: Sendable, Equatable {
         self.blockingDaysOfWeek = blockingDaysOfWeek
         self.availableFrom = availableFrom
         self.dueAt = dueAt
+        self.carryOver = carryOver
+        self.completionAlternatives = completionAlternatives
     }
 }
 
@@ -103,6 +136,8 @@ public struct TaskWrite: Sendable, Equatable {
     public let dueAt: String?
     public let homeOnlyBlocking: Bool
     public let blockingDaysOfWeek: String
+    public let carryOver: Bool
+    public let completionAlternatives: String
     /// Nil when the task isn't a routine (its steps are left alone).
     public let routineSteps: [Step]?
 }
@@ -155,6 +190,11 @@ public struct TaskEditorState: Sendable, Equatable {
     public var isBlockingCondition = false
     public var homeOnlyBlocking = false
     public var blockingDaysOfWeek: [String] = []
+    /// A missed occurrence stays due until done (shared/CONTRACTS.md).
+    public var carryOver = false
+    public var alternativeLocation = AlternativeLocation()
+    /// The loaded completion_alternatives, written back with only the managed entry changed.
+    public var originalAlternatives: [JSONValue] = []
     public var availableFrom = ""
     public var dueAt = ""
     public var editingTaskId: String?
@@ -222,7 +262,9 @@ public struct TaskEditorState: Sendable, Equatable {
                     durationSeconds: Int(c.first("duration_seconds", "work_seconds")?.doubleValue ?? 60),
                     supersetGroup: s.supersetGroup,
                     reportId: BrainfenceCore.reportId(fromConfig: s.config),
-                    description: s.description ?? ""
+                    description: s.description ?? "",
+                    originalStepType: s.stepType,
+                    originalConfig: c.objectValue ?? [:]
                 )
             }
         }
@@ -230,6 +272,18 @@ public struct TaskEditorState: Sendable, Equatable {
         isBlockingCondition = row.isBlockingCondition
         homeOnlyBlocking = row.homeOnlyBlocking
         blockingDaysOfWeek = JSONValue.stringArray(row.blockingDaysOfWeek)
+        carryOver = row.carryOver
+        originalAlternatives = JSONValue.parse(row.completionAlternatives)?.arrayValue ?? []
+        if let index = Self.managedAlternativeIndex(originalAlternatives) {
+            let entry = originalAlternatives[index]
+            let c = entry["verification_config"] ?? .object([:])
+            alternativeLocation.enabled = true
+            alternativeLocation.label = entry["label"]?.stringValue ?? ""
+            alternativeLocation.latitude = Self.format(c.first("latitude", "lat")?.doubleValue ?? 0)
+            alternativeLocation.longitude = Self.format(c.first("longitude", "lng")?.doubleValue ?? 0)
+            alternativeLocation.radiusMeters = Int(c.first("radius_meters", "radius_m")?.doubleValue ?? 150)
+            alternativeLocation.minDurationMinutes = Int(c.first("min_duration_m")?.doubleValue ?? 0)
+        }
         availableFrom = row.availableFrom ?? ""
         dueAt = row.dueAt ?? ""
         editingTaskId = taskId
@@ -237,6 +291,41 @@ public struct TaskEditorState: Sendable, Equatable {
         originalVerificationType = effectiveVerification
         originalVerificationConfig = v
         originalRecurrenceConfig = r
+    }
+
+    /// Index of the entry the editor manages: the first GPS alternative.
+    private static func managedAlternativeIndex(_ entries: [JSONValue]) -> Int? {
+        entries.firstIndex { $0["verification_type"]?.stringValue == "gps" }
+    }
+
+    /// Whether the task type can carry an "or be at a location" alternative.
+    public var supportsAlternativeLocation: Bool {
+        taskType != "shopping" && !(taskType == "simple" && verificationType == "gps")
+    }
+
+    /// completion_alternatives to save: other entries untouched, the managed one replaced or removed.
+    public var completionAlternatives: JSONValue {
+        var entries = originalAlternatives
+        let index = Self.managedAlternativeIndex(entries)
+        let loc = alternativeLocation
+        guard loc.enabled && supportsAlternativeLocation else {
+            if let index { entries.remove(at: index) }
+            return .array(entries)
+        }
+        var entry = index.flatMap { entries[$0].objectValue } ?? [:]
+        var config = entry["verification_config"]?.objectValue ?? [:]
+        for key in ["lat", "lng", "radius_m"] { config[key] = nil }
+        config["latitude"] = .double(Double(loc.latitude.trimmingCharacters(in: .whitespaces)) ?? 0)
+        config["longitude"] = .double(Double(loc.longitude.trimmingCharacters(in: .whitespaces)) ?? 0)
+        config["radius_meters"] = .int(loc.radiusMeters)
+        config["mode"] = .string("enter")
+        config["min_duration_m"] = .int(loc.minDurationMinutes)
+        entry["verification_type"] = .string("gps")
+        entry["verification_config"] = .object(config)
+        let label = loc.label.trimmingCharacters(in: .whitespaces)
+        entry["label"] = label.isEmpty ? nil : .string(label)
+        if let index { entries[index] = .object(entry) } else { entries.append(.object(entry)) }
+        return .array(entries)
     }
 
     private static func format(_ d: Double) -> String {
@@ -289,6 +378,11 @@ public struct TaskEditorState: Sendable, Equatable {
         }
         if isRoutineType(taskType) && routineSteps.contains(where: { $0.stepType == "report" && $0.reportId == nil }) {
             return "Choose a report for each report step"
+        }
+        if alternativeLocation.enabled && supportsAlternativeLocation
+            && (Double(alternativeLocation.latitude.trimmingCharacters(in: .whitespaces)) == nil
+                || Double(alternativeLocation.longitude.trimmingCharacters(in: .whitespaces)) == nil) {
+            return "Latitude and longitude are required for the \"or be at\" location"
         }
         if let error = validateStep(1) { return error }
         for (label, value) in [("Available from", availableFrom), ("Due at", dueAt)] {
@@ -392,6 +486,9 @@ public struct TaskEditorState: Sendable, Equatable {
             dueAt: isShopping ? nil : trimmedOrNil(dueAt),
             homeOnlyBlocking: homeOnlyBlocking,
             blockingDaysOfWeek: JSONValue.array(of: sortDays(blockingDaysOfWeek)).jsonString,
+            // Carry-over only means something for calendar recurrences.
+            carryOver: carryOver && ["daily", "weekly", "monthly"].contains(storedRecurrence ?? ""),
+            completionAlternatives: completionAlternatives.jsonString,
             routineSteps: isRoutineType(taskType)
                 ? routineSteps.map { step in
                     TaskWrite.Step(

@@ -185,4 +185,81 @@ final class ContractFixtureTests: XCTestCase {
             }
         }
     }
+
+    func testTaskStatus() throws {
+        let fixture = try fixture("task-status.json")
+        let zone = try XCTUnwrap(TimeZone(identifier: try XCTUnwrap(fixture["time_zone"]?.stringValue)))
+        let base = try XCTUnwrap(fixture["base_task"]?.objectValue)
+        let cases = try XCTUnwrap(fixture["cases"]?.arrayValue)
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let row = base.merging(c["task"]?.objectValue ?? [:]) { _, override in override }
+            let name = c["name"]?.stringValue ?? ""
+            let task = BrainTask(
+                id: "t", title: "T",
+                recurrenceType: row["recurrence_type"]?.stringValue,
+                recurrenceConfig: row["recurrence_config"]?.jsonString ?? "{}",
+                availableFrom: row["available_from"]?.stringValue,
+                dueAt: row["due_at"]?.stringValue,
+                homeOnlyBlocking: row["home_only_blocking"]?.intValue == 1,
+                blockingDaysOfWeek: row["blocking_days_of_week"]?.jsonString ?? "[]",
+                carryOver: row["carry_over"]?.intValue == 1,
+                createdAt: row["created_at"]?.stringValue ?? "",
+                lastCompletionAt: c["last_completion_at"]?.stringValue
+            )
+            let now = try XCTUnwrap(Timestamp.parse(c["now"]?.stringValue), name)
+            let status = task.status(now: now, timeZone: zone)
+            let home: HomePresence = switch c["home"]?.stringValue {
+            case "AT_HOME": .atHome
+            case "AWAY": .away
+            case "UNKNOWN": .unknown
+            default: .unconfigured
+            }
+            let expect = try XCTUnwrap(c["expect"])
+            XCTAssertEqual(status.scheduled, expect["scheduled"]?.boolValue, name)
+            XCTAssertEqual(status.completed, expect["completed"]?.boolValue, name)
+            XCTAssertEqual(status.carriedOver, expect["carried_over"]?.boolValue, name)
+            let phase: String? = switch status.phase {
+            case .beforeStart: "BEFORE_START"
+            case .active: "ACTIVE"
+            case .pastDue: "PAST_DUE"
+            case nil: nil
+            }
+            XCTAssertEqual(phase, expect["phase"]?.stringValue, name)
+            XCTAssertEqual(isConditionUnmet(task, now: now, timeZone: zone, homePresence: home), expect["unmet"]?.boolValue, name)
+        }
+    }
+
+    func testCompletionAlternatives() throws {
+        for c in try XCTUnwrap(fixture("completion-alternatives.json")["cases"]?.arrayValue) {
+            let name = c["name"]?.stringValue ?? ""
+            let actual = parseGpsAlternatives(c["input"]?.jsonString)
+            let expected = c["gps"]?.arrayValue ?? []
+            XCTAssertEqual(actual.count, expected.count, name)
+            for (a, e) in zip(actual, expected) {
+                XCTAssertEqual(a.index, e["index"]?.intValue, name)
+                XCTAssertEqual(a.label, e["label"]?.stringValue, name)
+                XCTAssertEqual(a.config.latitude, e["lat"]?.doubleValue, name)
+                XCTAssertEqual(a.config.longitude, e["lng"]?.doubleValue, name)
+                XCTAssertEqual(a.config.radiusMeters, e["radius_m"]?.doubleValue, name)
+                XCTAssertEqual(a.config.mode, e["mode"]?.stringValue, name)
+                XCTAssertEqual(a.config.minDurationMinutes, e["min_duration_m"]?.intValue, name)
+            }
+        }
+    }
+
+    func testTimedSets() throws {
+        for c in try XCTUnwrap(fixture("timed-sets.json")["cases"]?.arrayValue) {
+            let name = c["name"]?.stringValue ?? ""
+            let config = TimedSetsConfig(json: c["config"]?.jsonString)
+            XCTAssertEqual(config.hangCount, c["hangs"]?.intValue, name)
+            XCTAssertEqual(config.weight?.rawValue, c["weight"]?.stringValue, name)
+            XCTAssertEqual(config.weightPrompt, c["weight_prompt"]?.stringValue, name)
+            XCTAssertEqual((0..<config.hangCount).map(config.setOf), (c["set_of"]?.arrayValue ?? []).compactMap(\.intValue), name)
+            XCTAssertEqual((0..<config.hangCount).map(config.sideOf), (c["side_of"]?.arrayValue ?? []).compactMap(\.intValue), name)
+            let lastStep = c["last_step"]?.boolValue == true
+            XCTAssertEqual((0..<config.hangCount).map { config.restAfter($0, isLastStep: lastStep) },
+                           (c["rest_after"]?.arrayValue ?? []).compactMap(\.intValue), name)
+        }
+    }
 }

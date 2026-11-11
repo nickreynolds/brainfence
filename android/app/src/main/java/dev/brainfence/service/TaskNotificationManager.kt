@@ -1,5 +1,6 @@
 package dev.brainfence.service
 
+import dev.brainfence.domain.recurrence.status
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -71,7 +72,7 @@ class TaskNotificationManager @Inject constructor(
     private fun checkTasksReady(tasks: List<Task>, now: LocalTime, today: LocalDate) {
         // Group incomplete tasks by their available_from time
         val byAvailableFrom = tasks
-            .filter { !it.completedToday && it.availableFrom != null }
+            .filter { it.isDueToday() && it.availableFrom != null }
             .groupBy { it.availableFrom!! }
 
         for ((availableFrom, groupedTasks) in byAvailableFrom) {
@@ -102,7 +103,7 @@ class TaskNotificationManager @Inject constructor(
         val tasksToWarn = mutableListOf<Task>()
 
         for (task in tasks) {
-            if (task.completedToday) continue
+            if (!task.isDueToday()) continue
             if (task.dueAt == null) continue
             // Only warn for tasks that actually block apps (wired into an active
             // rule). A task with is_blocking_condition set but no rule never
@@ -249,4 +250,10 @@ class TaskNotificationManager @Inject constructor(
 
     private fun notificationManager(): NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+}
+
+/** Today's own occurrence is open and not done (a carried-over one is already overdue). */
+private fun Task.isDueToday(): Boolean {
+    val status = status()
+    return status.scheduled && !status.completed && !status.carriedOver
 }

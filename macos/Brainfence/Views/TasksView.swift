@@ -106,7 +106,7 @@ private struct TaskListView: View {
             model.navigation.editor = .init(taskId: task.id)
         } else if task.opensTaskScreen {
             model.navigation.taskPath.append(task.id)
-        } else if !task.completedToday && !isBeforeStart(task) {
+        } else if !task.isDone && !isBeforeStart(task) {
             confirming = task
         }
     }
@@ -152,16 +152,18 @@ private struct TaskListRow: View {
         }
     }
 
-    private var phase: TimeGatePhase? { computeTaskPhase(availableFrom: task.availableFrom, dueAt: task.dueAt, now: now) }
+    private var status: TaskStatus { task.status(now: now) }
+    private var phase: TimeGatePhase? { status.phase }
     private var isEnforced: Bool { !model.engine.enforcingRules(for: task.id).isEmpty }
     private var isBlocking: Bool { model.engine.state.unmetTaskIds.contains(task.id) }
 
     @ViewBuilder
     private var row: some View {
         let showAsDone = tab == .done
-        let completedRecurring = tab == .upcoming && task.completedToday && task.recurrenceType != nil
-        let locked = (tab == .upcoming && !completedRecurring) || (phase == .beforeStart && !task.completedToday)
-        let overdue = phase == .pastDue && !task.completedToday
+        let status = status
+        let completedRecurring = tab == .upcoming && status.completed && task.recurrenceType != nil
+        let locked = (tab == .upcoming && !completedRecurring) || (phase == .beforeStart && !status.completed)
+        let overdue = phase == .pastDue && !status.completed
         let canTap = tab == .upcoming || (!showAsDone && !locked && !completedRecurring)
 
         Button(action: onTap) {
@@ -206,7 +208,9 @@ private struct TaskListRow: View {
     }
 
     private func supportingLine(showAsDone: Bool, completedRecurring: Bool, overdue: Bool) -> String? {
-        if completedRecurring {
+        let status = status
+        let notDueToday = tab == .upcoming && !status.scheduled && !status.completed
+        if completedRecurring || notDueToday {
             let next = computeNextOccurrence(
                 recurrenceType: task.recurrenceType, recurrenceConfig: task.recurrenceConfig,
                 lastCompletionAt: Timestamp.parse(task.lastCompletionAt), now: now
@@ -214,9 +218,10 @@ private struct TaskListRow: View {
             return next.map { "Next: \($0.formatted(.relative(presentation: .named)))" } ?? "Completed"
         }
         if tab == .upcoming, let from = task.availableFrom { return "Available at \(from)" }
-        if overdue && isBlocking { return "Overdue — blocking until completed" }
-        if overdue { return "Overdue" }
-        if phase == .active, let due = task.dueAt, !task.completedToday { return "Complete before \(due)" }
+        let overdueText = status.carriedOver ? "Overdue since \(carriedOverSince(status.occurrenceDate))" : "Overdue"
+        if overdue && isBlocking { return "\(overdueText) — blocking until completed" }
+        if overdue { return overdueText }
+        if phase == .active, let due = task.dueAt, !status.completed { return "Complete before \(due)" }
         var parts: [String] = []
         if let r = task.recurrenceType {
             var line = r.prefix(1).uppercased() + r.dropFirst()
@@ -224,7 +229,20 @@ private struct TaskListRow: View {
             parts.append(line)
         }
         if !showAsDone, task.isLocationTask { parts.append("Complete on your phone") }
+        let alternatives = parseGpsAlternatives(task.completionAlternatives)
+        if !showAsDone, !alternatives.isEmpty { parts.append("Or " + alternatives.map(\.phrase).joined(separator: ", or ")) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// "Monday" (or "yesterday") for a carried-over occurrence's date.
+    private func carriedOverSince(_ date: CivilDate?) -> String {
+        guard let date else { return "earlier" }
+        let clock = ZonedClock(timeZone: .current)
+        let days = clock.date(of: now).epochDay - date.epochDay
+        let start = clock.startOfDay(date)
+        if days == 1 { return "yesterday" }
+        if days < 7 { return start.formatted(.dateTime.weekday(.wide)) }
+        return start.formatted(.dateTime.month(.abbreviated).day())
     }
 }
 

@@ -12,7 +12,7 @@ struct SimpleTaskScreen: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             Form {
-                if task.completedToday {
+                if task.isDone {
                     CompletedToday()
                 } else {
                     if let description = task.description { Text(description) }
@@ -53,7 +53,7 @@ struct DurationTaskScreen: View {
         // The timer manager's clock only advances while a timer runs.
         let now = session != nil ? model.timers.now : Date()
         VStack(spacing: 16) {
-            if task.completedToday {
+            if task.isDone {
                 CompletedToday()
             } else if let config {
                 if let session {
@@ -455,7 +455,7 @@ struct LocationTaskScreen: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            if task.completedToday {
+            if task.isDone {
                 CompletedToday()
             } else {
                 Image(systemName: "location.circle").font(.system(size: 44)).foregroundStyle(Palette.primary)

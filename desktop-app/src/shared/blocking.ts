@@ -2,7 +2,7 @@
 
 import { parseStringArray } from './json'
 import type { BlockingRule, Task } from './models'
-import { computeTaskPhase } from './recurrence'
+import { computeTaskStatus } from './recurrence'
 import { dayOfWeek, localDateOf, parseDay } from './time'
 
 export interface BlockingState {
@@ -37,8 +37,9 @@ export type HomePresence = 'AT_HOME' | 'AWAY' | 'UNKNOWN' | 'UNCONFIGURED'
 
 /**
  * A rule blocks when it is active and its condition tasks are not met. A task
- * only triggers blocking once it is past its due_at (or immediately, when it
- * has no due_at) and still incomplete.
+ * only triggers blocking while an occurrence is open (due today or carried
+ * over), incomplete, and past its due_at (or immediately, with no window).
+ * See shared/CONTRACTS.md (Task occurrences and blocking).
  */
 export function evaluateBlocking(
   rules: BlockingRule[],
@@ -101,14 +102,19 @@ function conditionUnmetTaskIds(
       out.add(taskId)
       continue
     }
-    if (task.completedToday) continue
-    if (task.homeOnlyBlocking && homePresence === 'AWAY') continue
-    const days = parseBlockingDays(task.blockingDaysOfWeek)
-    if (days.size > 0 && !days.has(dayOfWeek(localDateOf(currentTime)))) continue
-    const phase = computeTaskPhase(task.availableFrom, task.dueAt, currentTime)
-    if (phase == null || phase === 'PAST_DUE') out.add(taskId)
+    if (isConditionUnmet(task, currentTime, homePresence)) out.add(taskId)
   }
   return out
+}
+
+/** Whether one condition task is causing its rule to block right now. */
+export function isConditionUnmet(task: Task, currentTime: Date, homePresence: HomePresence): boolean {
+  const status = computeTaskStatus(task, currentTime)
+  if (!status.scheduled || status.completed) return false
+  if (task.homeOnlyBlocking && homePresence === 'AWAY') return false
+  const days = parseBlockingDays(task.blockingDaysOfWeek)
+  if (days.size > 0 && !days.has(dayOfWeek(localDateOf(currentTime)))) return false
+  return status.phase == null || status.phase === 'PAST_DUE'
 }
 
 function parseBlockingDays(json: string): Set<number> {

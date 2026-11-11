@@ -38,7 +38,7 @@ class RoutineRepository @Inject constructor(
                     emit(
                         database.getAll(
                             sql = """
-                                SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at, description
+                                SELECT id, task_id, title, step_order, step_type, config, superset_group, created_at, description, image_url
                                 FROM routine_steps
                                 WHERE task_id = ?
                                 ORDER BY step_order
@@ -192,6 +192,7 @@ class RoutineRepository @Inject constructor(
         supersetGroup  = cursor.getString(6),
         createdAt      = cursor.getString(7)!!,
         description    = cursor.getString(8),
+        imageUrl       = cursor.getString(9),
     )
 
     private fun mapStepCompletion(cursor: SqlCursor): StepCompletion = StepCompletion(

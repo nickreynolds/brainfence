@@ -12,7 +12,7 @@ const ACTIVE_TASKS_SQL = `
     t.recurrence_type, t.recurrence_config, t.verification_type, t.verification_config,
     t.tags, t.group_id, t.sort_order, t.is_blocking_condition, t.blocking_rule_ids,
     t.available_from, t.due_at, t.home_only_blocking, t.blocking_days_of_week,
-    t.created_at, t.updated_at,
+    t.carry_over, t.completion_alternatives, t.created_at, t.updated_at,
     CASE WHEN COUNT(tc.id) > 0 THEN 1 ELSE 0 END AS completed_today,
     (SELECT MAX(tc2.completed_at) FROM task_completions tc2 WHERE tc2.task_id = t.id) AS last_completion_at
   FROM tasks t
@@ -58,6 +58,8 @@ function mapTask(r: Record<string, any>): Task {
     dueAt: r.due_at ?? null,
     homeOnlyBlocking: Number(r.home_only_blocking ?? 0) !== 0,
     blockingDaysOfWeek: r.blocking_days_of_week ?? '[]',
+    carryOver: Number(r.carry_over ?? 0) !== 0,
+    completionAlternatives: r.completion_alternatives ?? '[]',
     createdAt: r.created_at ?? '',
     updatedAt: r.updated_at ?? '',
     completedToday,

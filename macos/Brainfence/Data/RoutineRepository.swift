@@ -12,7 +12,7 @@ struct RoutineRepository: Sendable {
     func steps(taskId: String) async throws -> [RoutineStep] {
         try await db.getAll(
             sql: """
-                SELECT id, task_id, title, step_order, step_type, config, superset_group, description
+                SELECT id, task_id, title, step_order, step_type, config, superset_group, description, image_url
                 FROM routine_steps WHERE task_id = ? ORDER BY step_order
                 """,
             parameters: [taskId]
@@ -25,7 +25,8 @@ struct RoutineRepository: Sendable {
                 stepType: c.getStringOptional(index: 4) ?? "checkbox",
                 config: c.getStringOptional(index: 5) ?? "{}",
                 supersetGroup: c.getStringOptional(index: 6),
-                description: c.getStringOptional(index: 7)
+                description: c.getStringOptional(index: 7),
+                imageUrl: c.getStringOptional(index: 8)
             )
         }
     }

@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { parseInstant } from '@shared/json'
 import type { BlockingRule, Task } from '@shared/models'
 import type { MeditationTimerState } from '@shared/ipc'
-import { computeNextOccurrence, computeTaskPhase, TimeGatePhase } from '@shared/recurrence'
+import { TaskStatus, TimeGatePhase, computeNextOccurrence, computeTaskStatus } from '@shared/recurrence'
+import { localDateOf, startOfDay } from '@shared/time'
+import { describeGpsAlternative, parseGpsAlternatives } from '@shared/verification'
 import { RULE_TABLES, getActiveRules } from '@shared/repos/blocking'
 import { SHOPPING_TABLES, getOpenItemCounts } from '@shared/repos/shopping'
 import { TASK_TABLES, completeTask, getActiveTasks } from '@shared/repos/tasks'
@@ -23,9 +25,13 @@ export function useActiveRules() {
   return useQuery(() => getActiveRules(db), RULE_TABLES, [], [] as BlockingRule[])
 }
 
-/** Same ordering and filtering as Android's TaskListViewModel. */
+/**
+ * Same ordering and filtering as Android's TaskListViewModel; sections per
+ * shared/CONTRACTS.md (Task occurrences and blocking).
+ */
 export function partitionTasks(tasks: Task[], now: Date) {
-  const phaseOf = (t: Task) => computeTaskPhase(t.availableFrom, t.dueAt, now)
+  const statusById = new Map(tasks.map((t) => [t.id, computeTaskStatus(t, now)]))
+  const statusOf = (t: Task) => statusById.get(t.id)!
   const urgency = (t: Task, phase: TimeGatePhase | null) => {
     if (t.isBlockingCondition && (phase === 'PAST_DUE' || t.dueAt == null)) return 0
     if (t.isBlockingCondition) return 1
@@ -33,8 +39,8 @@ export function partitionTasks(tasks: Task[], now: Date) {
     return 3
   }
   const active = tasks
-    .map((t) => ({ t, phase: phaseOf(t) }))
-    .filter(({ t, phase }) => !t.completedToday && phase !== 'BEFORE_START')
+    .map((t) => ({ t, status: statusOf(t), phase: statusOf(t).phase }))
+    .filter(({ status, phase }) => status.scheduled && !status.completed && phase !== 'BEFORE_START')
     .sort((a, b) =>
       urgency(a.t, a.phase) - urgency(b.t, b.phase)
       || (a.t.dueAt ?? '￿').localeCompare(b.t.dueAt ?? '￿')
@@ -42,9 +48,10 @@ export function partitionTasks(tasks: Task[], now: Date) {
     .map(({ t }) => t)
   const done = tasks.filter((t) => t.completedToday)
   const upcoming = tasks.filter((t) => {
-    if (t.completedToday && t.recurrenceType != null) return true
-    if (t.completedToday) return false
-    return phaseOf(t) === 'BEFORE_START'
+    const status = statusOf(t)
+    if (status.completed) return t.recurrenceType != null
+    if (!status.scheduled) return t.recurrenceType != null
+    return status.phase === 'BEFORE_START'
   })
   return { active, done, upcoming }
 }
@@ -57,6 +64,13 @@ export function opensScreen(task: Task): boolean {
 }
 
 export function verificationHint(task: Task): string | null {
+  const primary = primaryVerificationHint(task)
+  const alternatives = parseGpsAlternatives(task.completionAlternatives).map(describeGpsAlternative)
+  if (alternatives.length === 0) return primary
+  return [primary ?? 'Complete it', ...alternatives].join(', or ')
+}
+
+function primaryVerificationHint(task: Task): string | null {
   if (task.taskType === 'routine' || task.taskType === 'workout') return 'Requires routine completion'
   if (task.taskType === 'journal') return 'Requires journal entry'
   if (task.taskType === 'report') return 'Requires report'
@@ -92,7 +106,7 @@ export function TaskListScreen() {
 
   const onTap = (task: Task) => {
     if (opensScreen(task)) navigate(`task/${task.id}`)
-    else if (!task.completedToday) setPending(task)
+    else if (!computeTaskStatus(task, new Date()).completed) setPending(task)
   }
 
   return (
@@ -201,24 +215,27 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
 
   const showAsCompleted = tab === 'done'
   const showAsUpcoming = tab === 'upcoming'
-  const phase = computeTaskPhase(task.availableFrom, task.dueAt, now)
-  const isCompletedRecurring = showAsUpcoming && task.completedToday && task.recurrenceType != null
-  const isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase === 'BEFORE_START' && !task.completedToday)
-  const isOverdue = phase === 'PAST_DUE' && !task.completedToday
+  const status = computeTaskStatus(task, now)
+  const phase = status.phase
+  const isCompletedRecurring = showAsUpcoming && status.completed && task.recurrenceType != null
+  const isNotDueToday = showAsUpcoming && !status.scheduled && !status.completed
+  const isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase === 'BEFORE_START' && !status.completed)
+  const isOverdue = phase === 'PAST_DUE' && !status.completed
+  const overdueText = status.carriedOver ? `Overdue since ${carriedOverSince(status, now)}` : 'Overdue'
   const showMeditation = meditation && meditation.targetSeconds > 0 && !showAsCompleted && !isCompletedRecurring
   const canClick = showAsUpcoming || (!showAsCompleted && !isLocked && !isCompletedRecurring)
 
   let supporting: React.ReactNode = null
-  if (isCompletedRecurring) {
+  if (isCompletedRecurring || isNotDueToday) {
     const next = computeNextOccurrence(task.recurrenceType, task.recurrenceConfig, parseInstant(task.lastCompletionAt), now)
     supporting = next ? `Next: ${formatNextDue(next, now)}` : 'Completed'
   } else if (showAsUpcoming && task.availableFrom) {
     supporting = `Available at ${task.availableFrom}`
   } else if (isOverdue && isActivelyBlocking) {
-    supporting = <span className="blocked-text">Overdue — blocking until completed</span>
+    supporting = <span className="blocked-text">{overdueText} — blocking until completed</span>
   } else if (isOverdue) {
-    supporting = 'Overdue'
-  } else if (phase === 'ACTIVE' && task.dueAt && !task.completedToday) {
+    supporting = overdueText
+  } else if (phase === 'ACTIVE' && task.dueAt && !status.completed) {
     supporting = `Complete before ${task.dueAt}`
   } else if (task.recurrenceType) {
     const due = !showAsCompleted && isEnforcedBlocker ? (task.dueAt ? ` · Due by ${task.dueAt}` : ' · Due today') : ''
@@ -249,6 +266,16 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   )
 }
 
+/** "Monday" (or "yesterday") for a carried-over occurrence's day. */
+function carriedOverSince(status: TaskStatus, now: Date): string {
+  if (!status.occurrenceDate) return 'earlier'
+  const day = startOfDay(status.occurrenceDate)
+  const days = Math.round((startOfDay(localDateOf(now)).getTime() - day.getTime()) / 86_400_000)
+  if (days === 1) return 'yesterday'
+  if (days < 7) return day.toLocaleDateString(undefined, { weekday: 'long' })
+  return day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 function MeditationProgress({ state }: { state: MeditationTimerState }) {
   const target = Math.max(1, state.targetSeconds)
   const elapsed = Math.min(state.elapsedSeconds, target)
@@ -269,7 +296,7 @@ function BlockingStatusCard({ tasks, rules, onTap }: { tasks: Task[]; rules: Blo
   if (!state) return null
   const blockingRules = rules.filter((r) => state.blockingRuleIds.includes(r.id))
   const required = new Set(blockingRules.flatMap((r) => r.conditionTaskIds))
-  const incomplete = tasks.filter((t) => required.has(t.id) && !t.completedToday)
+  const incomplete = tasks.filter((t) => required.has(t.id) && !computeTaskStatus(t, new Date()).completed)
   const total = state.blockedApps.length + state.blockedDomains.length
 
   if (total === 0) {

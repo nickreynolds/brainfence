@@ -75,3 +75,41 @@ export function reportIdFromConfig(json: string | null | undefined): string | nu
   const id = parseJsonObject(json).report_id
   return typeof id === 'string' && id ? id : null
 }
+
+// ── Completion alternatives (shared/CONTRACTS.md) ────────────────────
+
+/** A GPS way to complete a task, from tasks.completion_alternatives. */
+export interface GpsAlternative {
+  /** Position in the completion_alternatives array. */
+  index: number
+  label: string | null
+  config: GpsConfig
+}
+
+/**
+ * The supported GPS entries of a task's completion_alternatives: mode enter
+ * (default) or leave, with a valid location. Everything else is skipped.
+ */
+export function parseGpsAlternatives(json: string | null | undefined): GpsAlternative[] {
+  const out: GpsAlternative[] = []
+  parseJsonArray(json).forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
+    if (entry.verification_type !== 'gps') return
+    const config = parseGpsConfig(JSON.stringify(entry.verification_config ?? {}))
+    if (!config || (config.mode !== 'enter' && config.mode !== 'leave')) return
+    out.push({ index, label: typeof entry.label === 'string' && entry.label ? entry.label : null, config })
+  })
+  return out
+}
+
+/** "Climbing gym" / "the location", for "or be at …" hints. */
+export function alternativePlace(alt: GpsAlternative): string {
+  return alt.label ?? 'the location'
+}
+
+/** A short "or …" phrase for a GPS alternative, e.g. "be at Climbing gym for 30 min". */
+export function describeGpsAlternative(alt: GpsAlternative): string {
+  const place = alternativePlace(alt)
+  if (alt.config.mode === 'leave') return `leave ${place}`
+  return alt.config.minDurationM > 0 ? `be at ${place} for ${alt.config.minDurationM} min` : `arrive at ${place}`
+}

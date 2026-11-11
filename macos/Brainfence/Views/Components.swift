@@ -139,6 +139,11 @@ struct NotYetAvailable: View {
     }
 }
 
+extension BrainTask {
+    /// Done for its current occurrence (a carried-over task done yesterday counts).
+    var isDone: Bool { status().completed }
+}
+
 func isBeforeStart(_ task: BrainTask, now: Date = Date()) -> Bool {
     computeTaskPhase(availableFrom: task.availableFrom, dueAt: task.dueAt, now: now) == .beforeStart
 }

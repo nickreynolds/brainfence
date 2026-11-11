@@ -20,6 +20,10 @@ data class Task(
     val dueAt: String?,              // HH:MM — when task becomes overdue / triggers blocking
     val homeOnlyBlocking: Boolean,   // true → task only blocks when user is at configured home location
     val blockingDaysOfWeek: String,  // JSON array of "mon"…"sun". Empty = block every day.
+    /** A missed occurrence stays due until done or the next one starts. */
+    val carryOver: Boolean = false,
+    /** JSON array of other ways to complete the task (see CompletionAlternatives). */
+    val completionAlternatives: String = "[]",
     val createdAt: String,
     val updatedAt: String,
     // Derived from join with task_completions — not a stored column

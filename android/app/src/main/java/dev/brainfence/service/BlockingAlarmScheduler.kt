@@ -1,5 +1,6 @@
 package dev.brainfence.service
 
+import dev.brainfence.domain.recurrence.status
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -63,7 +64,7 @@ class BlockingAlarmScheduler @Inject constructor(
             val date = today.plusDays(dayOffset)
             for (task in tasks) {
                 if (task.id !in enforcedTaskIds) continue
-                if (dayOffset == 0L && task.completedToday) continue
+                if (dayOffset == 0L && task.status(now, timeZone).completed) continue
                 val due = parseTaskTime(task.dueAt) ?: continue
                 val dueInstant = date.atTime(due).atZone(timeZone).toInstant()
                 val warnInstant = dueInstant.minusSeconds(WARN_LEAD_SECONDS)

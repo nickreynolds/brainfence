@@ -31,6 +31,8 @@ export const TABLES = {
     due_at: 'text',                      // HH:MM — when task becomes overdue / triggers blocking
     home_only_blocking: 'integer',       // boolean — 1 = only block when user is at configured home location
     blocking_days_of_week: 'text',       // json — JSON array of "mon"…"sun". Empty = block every day.
+    carry_over: 'integer',               // boolean — 1 = a missed occurrence stays due until done or the next one starts
+    completion_alternatives: 'text',     // json — other ways to complete the task, e.g. [{"verification_type": "gps", ...}]
     created_at: 'text',
     updated_at: 'text',
   },
@@ -43,6 +45,7 @@ export const TABLES = {
     config: 'text',                      // json
     superset_group: 'text',
     description: 'text',                 // optional notes shown with the step
+    image_url: 'text',                   // optional https PNG shown with the step
     created_at: 'text',
   },
   shopping_items: {
@@ -218,7 +221,7 @@ export const INSERT_ONLY_TABLES: readonly string[] = ['feedback']
  */
 export const JSON_COLUMNS: Record<string, readonly string[]> = {
   groups: ['visibility_schedule'],
-  tasks: ['recurrence_config', 'verification_config', 'tags', 'blocking_rule_ids', 'blocking_days_of_week'],
+  tasks: ['recurrence_config', 'verification_config', 'tags', 'blocking_rule_ids', 'blocking_days_of_week', 'completion_alternatives'],
   routine_steps: ['config'],
   task_completions: ['verification_data'],
   step_completions: ['data'],

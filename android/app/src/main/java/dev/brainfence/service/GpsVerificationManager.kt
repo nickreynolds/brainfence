@@ -23,6 +23,8 @@ import dev.brainfence.data.shopping.ShoppingRepository
 import dev.brainfence.data.task.TaskRepository
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.parseTaskTime
+import dev.brainfence.domain.recurrence.status
+import dev.brainfence.domain.verification.CompletionAlternatives
 import dev.brainfence.domain.shopping.NotifyWindow
 import dev.brainfence.domain.shopping.shouldNotifyShopping
 import kotlinx.coroutines.CancellationException
@@ -37,7 +39,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -62,7 +66,8 @@ data class GpsConfig(
 )
 
 /**
- * Tracks the state of an active GPS geofence for a task.
+ * Tracks the state of an active geofence: a GPS task's own location, or one of
+ * a task's GPS completion alternatives (shared/CONTRACTS.md).
  */
 data class GeofenceTrackingState(
     val taskId: String,
@@ -70,6 +75,20 @@ data class GeofenceTrackingState(
     val config: GpsConfig,
     val enteredAt: Instant? = null,
     val durationJob: Job? = null,
+    /** Geofence request id: the task id, or "<task id>#alt<index>" for an alternative. */
+    val geofenceId: String = taskId,
+    /** Index in completion_alternatives; null for the task's own GPS check. */
+    val alternative: Int? = null,
+    /** The task's available_from, so an early arrival waits for the window. */
+    val availableFrom: String? = null,
+)
+
+/** A geofence to register for a task. */
+data class GpsTarget(
+    val geofenceId: String,
+    val task: Task,
+    val config: GpsConfig,
+    val alternative: Int?,
 )
 
 /**
@@ -121,6 +140,32 @@ class GpsVerificationManager @Inject constructor(
             null
         }
 
+        /**
+         * Geofences to watch for [tasks]: GPS tasks' own locations and GPS
+         * completion alternatives. Notify mode (shopping) always; enter/leave
+         * while an occurrence is open and not done.
+         */
+        fun gpsTargets(tasks: List<Task>, now: Instant = Instant.now()): List<GpsTarget> = buildList {
+            for (task in tasks) {
+                val needed by lazy { task.status(now).let { it.scheduled && !it.completed } }
+                if (task.verificationType == "gps") {
+                    val config = parseGpsConfig(task.verificationConfig)
+                    when (config?.mode) {
+                        "notify" -> add(GpsTarget(task.id, task, config, null))
+                        "enter", "leave" -> if (needed) add(GpsTarget(task.id, task, config, null))
+                    }
+                }
+                for (alt in CompletionAlternatives.parseGps(task.completionAlternatives)) {
+                    if (!needed) break
+                    val config = GpsConfig(alt.lat, alt.lng, alt.radiusM.toFloat(), alt.mode, alt.minDurationM)
+                    add(GpsTarget("${task.id}#alt${alt.index}", task, config, alt.index))
+                }
+            }
+        }
+
+        /** Re-sync geofences this often even without task changes: a new day can open an occurrence. */
+        private const val RESYNC_INTERVAL_MS = 15 * 60_000L
+
         private fun parseNotifyWindow(obj: JSONObject?): NotifyWindow? {
             if (obj == null) return null
             val daysArr = obj.optJSONArray("days")
@@ -140,7 +185,7 @@ class GpsVerificationManager @Inject constructor(
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    /** Active geofence tracking states keyed by task ID. */
+    /** Active geofence tracking states keyed by geofence id. */
     private val trackingStates = mutableMapOf<String, GeofenceTrackingState>()
 
     /** Publicly observable set of task IDs currently being tracked for GPS. */
@@ -191,18 +236,16 @@ class GpsVerificationManager @Inject constructor(
             watchJobs += scope.launch {
                 debugLog.log("service", "GpsVerificationManager started watching")
                 collectResilient("active tasks") {
-                    taskRepository.watchActiveTasks().collect { tasks ->
-                        val gpsTasks = tasks.filter { task ->
-                            if (task.verificationType != "gps") return@filter false
-                            when (parseGpsConfig(task.verificationConfig)?.mode) {
-                                // Notify-mode tasks (shopping lists) are never completed,
-                                // so their geofences stay registered permanently.
-                                "notify" -> true
-                                "enter", "leave" -> !task.completedToday
-                                else -> false
-                            }
+                    // The ticker re-syncs across midnight, when an occurrence can
+                    // open without any row changing.
+                    val ticker = flow {
+                        while (true) {
+                            emit(Unit)
+                            delay(RESYNC_INTERVAL_MS)
                         }
-                        syncGeofences(gpsTasks)
+                    }
+                    combine(taskRepository.watchActiveTasks(), ticker) { tasks, _ -> tasks }.collect { tasks ->
+                        syncGeofences(gpsTargets(tasks))
                     }
                 }
             }
@@ -275,7 +318,7 @@ class GpsVerificationManager @Inject constructor(
             Geofence.GEOFENCE_TRANSITION_ENTER -> {
                 for (geofence in triggeringGeofences) {
                     handleEnter(
-                        taskId = geofence.requestId,
+                        geofenceId = geofence.requestId,
                         lat = triggeringLocation?.latitude,
                         lng = triggeringLocation?.longitude,
                         accuracyM = triggeringLocation?.accuracy,
@@ -285,7 +328,7 @@ class GpsVerificationManager @Inject constructor(
             Geofence.GEOFENCE_TRANSITION_EXIT -> {
                 for (geofence in triggeringGeofences) {
                     handleExit(
-                        taskId = geofence.requestId,
+                        geofenceId = geofence.requestId,
                         lat = triggeringLocation?.latitude,
                         lng = triggeringLocation?.longitude,
                         accuracyM = triggeringLocation?.accuracy,
@@ -300,7 +343,7 @@ class GpsVerificationManager @Inject constructor(
      * Enter-mode and leave-mode tasks are registered separately with
      * different initial triggers.
      */
-    private fun syncGeofences(gpsTasks: List<Task>) {
+    private fun syncGeofences(targets: List<GpsTarget>) {
         if (!hasLocationPermission()) {
             Log.w(TAG, "Location permission not granted, skipping geofence sync")
             scope.launch {
@@ -309,11 +352,11 @@ class GpsVerificationManager @Inject constructor(
             return
         }
 
-        val desiredTaskIds = gpsTasks.map { it.id }.toSet()
-        val currentTaskIds = trackingStates.keys.toSet()
+        val desiredIds = targets.map { it.geofenceId }.toSet()
+        val currentIds = trackingStates.keys.toSet()
 
-        // Remove geofences for tasks no longer active
-        val toRemove = currentTaskIds - desiredTaskIds
+        // Remove geofences no longer needed
+        val toRemove = currentIds - desiredIds
         if (toRemove.isNotEmpty()) {
             removeGeofences(toRemove)
         }
@@ -321,33 +364,31 @@ class GpsVerificationManager @Inject constructor(
         // Add geofences for new GPS tasks, split by mode.
         // Notify-mode geofences register like enter-mode: INITIAL_TRIGGER_ENTER
         // is harmless because the notify window/debounce suppresses spurious fires.
-        val toAdd = gpsTasks.filter { it.id !in currentTaskIds }
+        val toAdd = targets.filter { it.geofenceId !in currentIds }
         if (toAdd.isNotEmpty()) {
-            val enterTasks = toAdd.filter {
-                parseGpsConfig(it.verificationConfig)?.mode in setOf("enter", "notify")
-            }
-            val leaveTasks = toAdd.filter {
-                parseGpsConfig(it.verificationConfig)?.mode == "leave"
-            }
-            if (enterTasks.isNotEmpty()) addGeofences(enterTasks, isLeaveMode = false)
-            if (leaveTasks.isNotEmpty()) addGeofences(leaveTasks, isLeaveMode = true)
+            val enterTargets = toAdd.filter { it.config.mode in setOf("enter", "notify") }
+            val leaveTargets = toAdd.filter { it.config.mode == "leave" }
+            if (enterTargets.isNotEmpty()) addGeofences(enterTargets, isLeaveMode = false)
+            if (leaveTargets.isNotEmpty()) addGeofences(leaveTargets, isLeaveMode = true)
         }
 
         _trackedTaskIds.value = trackingStates.keys.toSet()
     }
 
     @SuppressLint("MissingPermission")
-    private fun addGeofences(tasks: List<Task>, isLeaveMode: Boolean) {
+    private fun addGeofences(targets: List<GpsTarget>, isLeaveMode: Boolean) {
         if (!hasLocationPermission()) return
 
-        val geofences = tasks.mapNotNull { task ->
-            val config = parseGpsConfig(task.verificationConfig) ?: return@mapNotNull null
-            trackingStates[task.id] = GeofenceTrackingState(
-                taskId = task.id,
-                taskTitle = task.title,
-                config = config,
+        val geofences = targets.map { target ->
+            trackingStates[target.geofenceId] = GeofenceTrackingState(
+                taskId = target.task.id,
+                taskTitle = target.task.title,
+                config = target.config,
+                geofenceId = target.geofenceId,
+                alternative = target.alternative,
+                availableFrom = target.task.availableFrom,
             )
-            buildGeofence(task.id, config)
+            buildGeofence(target.geofenceId, target.config)
         }
 
         if (geofences.isEmpty()) return
@@ -372,10 +413,11 @@ class GpsVerificationManager @Inject constructor(
                 .addOnSuccessListener {
                     Log.i(TAG, "Added ${geofences.size} $modeLabel-mode geofence(s)")
                     scope.launch {
-                        for (task in tasks) {
+                        for (target in targets) {
+                            val what = if (target.alternative != null) "alternative " else ""
                             debugLog.log(
                                 "geofence",
-                                "Registered $modeLabel-mode geofence for '${task.title}'",
+                                "Registered $modeLabel-mode ${what}geofence for '${target.task.title}'",
                             )
                         }
                     }
@@ -385,7 +427,7 @@ class GpsVerificationManager @Inject constructor(
                     scope.launch {
                         debugLog.log("error", "Failed to register $modeLabel-mode geofences: ${e.message}")
                     }
-                    tasks.forEach { trackingStates.remove(it.id) }
+                    targets.forEach { trackingStates.remove(it.geofenceId) }
                     _trackedTaskIds.value = trackingStates.keys.toSet()
                 }
         } catch (e: SecurityException) {
@@ -412,12 +454,8 @@ class GpsVerificationManager @Inject constructor(
      * outside the geofence generates no EXIT transition, so those windows would
      * otherwise have no path to completion at all.
      */
-    private suspend fun activeLeaveTasks(): List<Pair<Task, GpsConfig>> = try {
-        taskRepository.watchActiveTasks().first().mapNotNull { task ->
-            if (task.verificationType != "gps" || task.completedToday) return@mapNotNull null
-            val config = parseGpsConfig(task.verificationConfig) ?: return@mapNotNull null
-            if (config.mode == "leave") task to config else null
-        }
+    private suspend fun activeLeaveTasks(): List<GpsTarget> = try {
+        gpsTargets(taskRepository.watchActiveTasks().first()).filter { it.config.mode == "leave" }
     } catch (e: Exception) {
         Log.w(TAG, "Failed to read active leave-mode tasks", e)
         emptyList()
@@ -445,7 +483,7 @@ class GpsVerificationManager @Inject constructor(
             debugLog.log("geofence", "Leave check ($reason): no fresh location available")
             return
         }
-        for ((task, config) in leaveTasks) {
+        for ((_, task, config, alternative) in leaveTasks) {
             val distance = FloatArray(1)
             android.location.Location.distanceBetween(
                 location.latitude, location.longitude,
@@ -468,6 +506,7 @@ class GpsVerificationManager @Inject constructor(
                     lat = location.latitude,
                     lng = location.longitude,
                     accuracyM = location.accuracy,
+                    alternative = alternative,
                 )
             }
         }
@@ -492,13 +531,13 @@ class GpsVerificationManager @Inject constructor(
         }
     }
 
-    private fun removeGeofences(taskIds: Set<String>) {
-        taskIds.forEach { taskId ->
-            trackingStates[taskId]?.durationJob?.cancel()
-            trackingStates.remove(taskId)
+    private fun removeGeofences(geofenceIds: Set<String>) {
+        geofenceIds.forEach { id ->
+            trackingStates[id]?.durationJob?.cancel()
+            trackingStates.remove(id)
         }
-        geofencingClient.removeGeofences(taskIds.toList())
-            .addOnSuccessListener { Log.d(TAG, "Removed ${taskIds.size} geofence(s)") }
+        geofencingClient.removeGeofences(geofenceIds.toList())
+            .addOnSuccessListener { Log.d(TAG, "Removed ${geofenceIds.size} geofence(s)") }
             .addOnFailureListener { e -> Log.e(TAG, "Failed to remove geofences", e) }
 
         _trackedTaskIds.value = trackingStates.keys.toSet()
@@ -512,14 +551,14 @@ class GpsVerificationManager @Inject constructor(
     }
 
     private fun handleEnter(
-        taskId: String,
+        geofenceId: String,
         lat: Double?,
         lng: Double?,
         accuracyM: Float?,
     ) {
-        val state = trackingStates[taskId] ?: return
+        val state = trackingStates[geofenceId] ?: return
         val now = Instant.now()
-        Log.i(TAG, "Geofence ENTER for task '${state.taskTitle}' (id=$taskId)")
+        Log.i(TAG, "Geofence ENTER for task '${state.taskTitle}' (id=$geofenceId)")
 
         scope.launch {
             debugLog.log(
@@ -541,34 +580,45 @@ class GpsVerificationManager @Inject constructor(
             return
         }
 
-        // Enter mode
+        // Enter mode. Arriving before the task's window opens waits for it
+        // (the user must still be there then); otherwise the dwell time.
         val updatedState = state.copy(enteredAt = now)
 
         val minDurationMinutes = state.config.minDurationM
-        if (minDurationMinutes > 0) {
+        val untilWindowMs = millisUntilAvailable(state.availableFrom, now)
+        val waitMs = maxOf(minDurationMinutes * 60_000L, untilWindowMs)
+        if (waitMs > 0) {
             val job = scope.launch {
-                Log.d(TAG, "Starting ${minDurationMinutes}m timer for '${state.taskTitle}'")
-                debugLog.log("geofence", "Starting ${minDurationMinutes}m dwell timer for '${state.taskTitle}'")
-                delay(minDurationMinutes * 60_000L)
-                completeGpsTask(taskId, lat, lng, accuracyM)
+                Log.d(TAG, "Waiting ${waitMs / 1000}s before completing '${state.taskTitle}'")
+                debugLog.log("geofence", "Starting ${waitMs / 60_000}m dwell timer for '${state.taskTitle}'")
+                delay(waitMs)
+                completeGpsTask(geofenceId, lat, lng, accuracyM)
             }
-            trackingStates[taskId] = updatedState.copy(durationJob = job)
+            trackingStates[geofenceId] = updatedState.copy(durationJob = job)
         } else {
-            trackingStates[taskId] = updatedState
+            trackingStates[geofenceId] = updatedState
             scope.launch {
-                completeGpsTask(taskId, lat, lng, accuracyM)
+                completeGpsTask(geofenceId, lat, lng, accuracyM)
             }
         }
     }
 
+    /** Time until today's available_from, or 0 when there's none or it has passed. */
+    private fun millisUntilAvailable(availableFrom: String?, now: Instant): Long {
+        val start = parseTaskTime(availableFrom) ?: return 0
+        val zone = java.time.ZoneId.systemDefault()
+        val startInstant = now.atZone(zone).toLocalDate().atTime(start).atZone(zone).toInstant()
+        return (startInstant.toEpochMilli() - now.toEpochMilli()).coerceAtLeast(0)
+    }
+
     private fun handleExit(
-        taskId: String,
+        geofenceId: String,
         lat: Double? = null,
         lng: Double? = null,
         accuracyM: Float? = null,
     ) {
-        val state = trackingStates[taskId] ?: return
-        Log.i(TAG, "Geofence EXIT for task '${state.taskTitle}' (id=$taskId)")
+        val state = trackingStates[geofenceId] ?: return
+        Log.i(TAG, "Geofence EXIT for task '${state.taskTitle}' (id=$geofenceId)")
 
         scope.launch {
             debugLog.log(
@@ -584,7 +634,7 @@ class GpsVerificationManager @Inject constructor(
             // Leave mode: complete immediately on exit — no requirement
             // to have been inside first.
             scope.launch {
-                completeGpsLeaveTask(taskId, state.taskTitle, state.config, lat, lng, accuracyM)
+                completeGpsLeaveTask(state.taskId, state.taskTitle, state.config, lat, lng, accuracyM, state.alternative)
             }
             return
         }
@@ -596,7 +646,7 @@ class GpsVerificationManager @Inject constructor(
 
         // Enter mode: cancel the duration timer — user left before required time elapsed
         state.durationJob?.cancel()
-        trackingStates[taskId] = state.copy(enteredAt = null, durationJob = null)
+        trackingStates[geofenceId] = state.copy(enteredAt = null, durationJob = null)
     }
 
     /** Last-notified timestamps per shopping task, surviving service restarts. */
@@ -682,7 +732,7 @@ class GpsVerificationManager @Inject constructor(
                     verificationData = item.verificationData,
                 )
                 debugLog.log("geofence", "Successfully completed queued task '${item.taskTitle}'")
-                trackingStates[item.taskId]?.durationJob?.cancel()
+                trackingStates.values.filter { it.taskId == item.taskId }.forEach { it.durationJob?.cancel() }
             } catch (e: Exception) {
                 debugLog.log("error", "Failed to complete queued task '${item.taskTitle}': ${e.message}")
                 synchronized(pendingCompletions) {
@@ -693,12 +743,13 @@ class GpsVerificationManager @Inject constructor(
     }
 
     private suspend fun completeGpsTask(
-        taskId: String,
+        geofenceId: String,
         lat: Double?,
         lng: Double?,
         accuracyM: Float?,
     ) {
-        val state = trackingStates[taskId] ?: return
+        val state = trackingStates[geofenceId] ?: return
+        val taskId = state.taskId
         val arrivedAt = state.enteredAt ?: Instant.now()
 
         val verificationData = JSONObject().apply {
@@ -707,6 +758,7 @@ class GpsVerificationManager @Inject constructor(
             if (accuracyM != null) put("accuracy_m", accuracyM.toDouble())
             put("arrived_at", arrivedAt.toString())
             put("duration_m", state.config.minDurationM)
+            putAlternative(state.alternative)
         }.toString()
 
         Log.i(TAG, "Completing GPS task '${state.taskTitle}' with proof: $verificationData")
@@ -732,10 +784,17 @@ class GpsVerificationManager @Inject constructor(
             verificationData = verificationData,
         )
 
-        // Clean up — the task watcher will remove the geofence on next sync
-        // since completedToday will be true
+        // Clean up — the task watcher removes the geofence on its next sync,
+        // since the task is now completed
         state.durationJob?.cancel()
-        trackingStates[taskId] = state.copy(durationJob = null)
+        trackingStates[geofenceId] = state.copy(durationJob = null)
+    }
+
+    /** Marks a completion made through a completion alternative. */
+    private fun JSONObject.putAlternative(alternative: Int?) {
+        if (alternative == null) return
+        put("method", "completion_alternative")
+        put("alternative", alternative)
     }
 
     /**
@@ -750,12 +809,14 @@ class GpsVerificationManager @Inject constructor(
         lat: Double?,
         lng: Double?,
         accuracyM: Float?,
+        alternative: Int? = null,
     ) {
         val verificationData = JSONObject().apply {
             put("departed_at", Instant.now().toString())
             put("lat", lat ?: config.lat)
             put("lng", lng ?: config.lng)
             if (accuracyM != null) put("accuracy_m", accuracyM.toDouble())
+            putAlternative(alternative)
         }.toString()
 
         Log.i(TAG, "Completing GPS leave task '$taskTitle' with proof: $verificationData")
@@ -782,9 +843,9 @@ class GpsVerificationManager @Inject constructor(
         )
     }
 
-    private fun buildGeofence(taskId: String, config: GpsConfig): Geofence =
+    private fun buildGeofence(geofenceId: String, config: GpsConfig): Geofence =
         Geofence.Builder()
-            .setRequestId(taskId)
+            .setRequestId(geofenceId)
             .setCircularRegion(config.lat, config.lng, config.radiusM)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .setTransitionTypes(

@@ -3,7 +3,7 @@ import type { Task } from '@shared/models'
 import { completeTask } from '@shared/repos/tasks'
 import { ConfirmDialog } from '../../components/ui'
 import { db, useNow } from '../../lib/hooks'
-import { CompletedToday, CompletionHistory, NotYetAvailable, TaskTopBar, isBeforeStart, scheduleSummary } from './common'
+import { CompletedToday, CompletionHistory, NotYetAvailable, TaskTopBar, isBeforeStart, scheduleSummary, isTaskDone } from './common'
 
 /** A manual task opened directly (e.g. from the overlay or a notification). */
 export function SimpleTaskScreen({ task }: { task: Task }) {
@@ -12,7 +12,7 @@ export function SimpleTaskScreen({ task }: { task: Task }) {
   return (
     <>
       <TaskTopBar task={task} />
-      {task.completedToday ? (
+      {isTaskDone(task) ? (
         <CompletedToday />
       ) : (
         <div className="stack lg" style={{ marginTop: 8 }}>

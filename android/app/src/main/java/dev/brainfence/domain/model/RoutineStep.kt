@@ -11,4 +11,6 @@ data class RoutineStep(
     val createdAt: String,
     /** Optional notes (form cues, weights…) shown with the step. */
     val description: String? = null,
+    /** Optional https PNG shown with the step (e.g. which holds to use). */
+    val imageUrl: String? = null,
 )

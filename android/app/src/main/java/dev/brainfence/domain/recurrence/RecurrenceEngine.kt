@@ -323,3 +323,107 @@ private fun parseDayOfWeek(abbrev: String): DayOfWeek = when (abbrev.lowercase()
     "sun" -> DayOfWeek.SUNDAY
     else -> error("Unknown day abbreviation: $abbrev")
 }
+
+// ---------------------------------------------------------------------------
+// Task status (shared/CONTRACTS.md: Task occurrences and blocking)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a task is due, done or overdue right now. Every surface (task list,
+ * blocking, notifications, GPS, task screens) reads this, so all clients agree
+ * (`shared/fixtures/task-status.json`).
+ */
+data class TaskStatus(
+    /** An occurrence is open now: due today, or carried over from an earlier day. */
+    val scheduled: Boolean,
+    /** The open occurrence is done (with none open: completed today). */
+    val completed: Boolean,
+    /** The open occurrence started on an earlier day. */
+    val carriedOver: Boolean,
+    /** Window phase; PAST_DUE when carried over; null with no window or no open occurrence. */
+    val phase: TimeGatePhase?,
+    /** The open occurrence's date, for recurring tasks. */
+    val occurrenceDate: LocalDate?,
+)
+
+/** How far back carry-over looks for the previous occurrence. */
+private const val CARRY_OVER_LOOKBACK_DAYS = 400L
+
+fun computeTaskStatus(
+    recurrenceType: String?,
+    recurrenceConfig: String,
+    carryOver: Boolean,
+    availableFrom: String?,
+    dueAt: String?,
+    createdAt: Instant?,
+    lastCompletionAt: Instant?,
+    currentTime: Instant,
+    timeZone: ZoneId = ZoneId.systemDefault(),
+): TaskStatus {
+    val today = currentTime.atZone(timeZone).toLocalDate()
+    val phase = computeTaskPhase(availableFrom, dueAt, currentTime, timeZone)
+    val lastDate = lastCompletionAt?.atZone(timeZone)?.toLocalDate()
+    val completedToday = lastDate == today
+
+    if (recurrenceType == null) {
+        return TaskStatus(true, lastCompletionAt != null, false, phase, null)
+    }
+    // interval: open all the time, done for today once completed today.
+    val scheduledOn = schedulePredicate(recurrenceType, recurrenceConfig)
+        ?: return TaskStatus(true, completedToday, false, phase, null)
+
+    val open: LocalDate? = when {
+        scheduledOn(today) -> today
+        carryOver -> {
+            val earliest = createdAt?.atZone(timeZone)?.toLocalDate()
+            (1..CARRY_OVER_LOOKBACK_DAYS).asSequence()
+                .map { today.minusDays(it) }
+                .takeWhile { earliest == null || it >= earliest }
+                .firstOrNull(scheduledOn)
+        }
+        else -> null
+    }
+    if (open == null) return TaskStatus(false, completedToday, false, null, null)
+
+    val carriedOver = open != today
+    return TaskStatus(
+        scheduled = true,
+        completed = lastDate != null && lastDate >= open,
+        carriedOver = carriedOver,
+        phase = if (carriedOver) TimeGatePhase.PAST_DUE else phase,
+        occurrenceDate = open,
+    )
+}
+
+/**
+ * Whether a recurrence lands on a date. Null for types with no calendar dates
+ * (interval). A config that can't be parsed lands on every day (fail closed).
+ */
+private fun schedulePredicate(type: String, configJson: String): ((LocalDate) -> Boolean)? {
+    val everyDay: (LocalDate) -> Boolean = { true }
+    return try {
+        val config = JSONObject(configJson)
+        when (type) {
+            "daily" -> {
+                if (!config.has("days")) return everyDay
+                val days = config.getJSONArray("days")
+                val allowed = (0 until days.length()).map { parseDayOfWeek(days.getString(it)) }.toSet()
+                return { it.dayOfWeek in allowed }
+            }
+            "weekly" -> {
+                val targetDay = parseDayOfWeek(config.getString("day"))
+                val interval = if (config.has("interval")) config.getInt("interval") else 1
+                return { it.dayOfWeek == targetDay && findWeeklyDueDate(it, targetDay, interval) == it }
+            }
+            "monthly" -> {
+                val week = config.getInt("week")
+                val targetDay = parseDayOfWeek(config.getString("day"))
+                return { nthDayOfWeekInMonth(it.year, it.monthValue, week, targetDay) == it }
+            }
+            "interval" -> null
+            else -> everyDay
+        }
+    } catch (_: Exception) {
+        everyDay
+    }
+}

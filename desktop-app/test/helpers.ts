@@ -17,7 +17,7 @@ export function task(overrides: Partial<Task> = {}): Task {
     id: 'task-1', userId: 'user-1', title: 'Morning routine', description: null, taskType: 'habit', status: 'active',
     recurrenceType: 'daily', recurrenceConfig: '{}', verificationType: 'manual', verificationConfig: '{}', tags: '[]',
     groupId: null, sortOrder: 0, isBlockingCondition: true, blockingRuleIds: '[]', availableFrom: '07:00', dueAt: '10:00',
-    homeOnlyBlocking: false, blockingDaysOfWeek: '[]', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-01T00:00:00Z',
+    homeOnlyBlocking: false, blockingDaysOfWeek: '[]', carryOver: false, completionAlternatives: '[]', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-01T00:00:00Z',
     completedToday: false, lastCompletionAt: null, ...overrides,
   }
 }
@@ -34,8 +34,8 @@ export function rule(overrides: Partial<BlockingRule> = {}): BlockingRule {
 const TABLES: Record<string, string[]> = {
   tasks: ['user_id', 'title', 'description', 'task_type', 'status', 'recurrence_type', 'recurrence_config', 'verification_type',
     'verification_config', 'tags', 'group_id', 'sort_order', 'is_blocking_condition', 'blocking_rule_ids', 'available_from',
-    'due_at', 'home_only_blocking', 'blocking_days_of_week', 'created_at', 'updated_at'],
-  routine_steps: ['user_id', 'task_id', 'title', 'step_order', 'step_type', 'config', 'superset_group', 'description', 'created_at'],
+    'due_at', 'home_only_blocking', 'blocking_days_of_week', 'carry_over', 'completion_alternatives', 'created_at', 'updated_at'],
+  routine_steps: ['user_id', 'task_id', 'title', 'step_order', 'step_type', 'config', 'superset_group', 'description', 'image_url', 'created_at'],
   task_completions: ['task_id', 'user_id', 'completed_at', 'occurrence_date', 'verification_data', 'created_at'],
   step_completions: ['user_id', 'task_completion_id', 'routine_step_id', 'set_number', 'data', 'completed_at'],
   blocking_rules: ['user_id', 'name', 'blocked_apps', 'blocked_domains', 'condition_task_ids', 'condition_logic',

@@ -15,7 +15,7 @@ Update it in the same change as any feature work.
 | ⚠️ | Implemented, but differs from the parity policy (see the note) |
 | ➕ | Allowed exception to the parity policy (see the note) |
 
-Last reviewed: 2026-11-01.
+Last reviewed: 2026-11-09.
 
 ## Account and sync
 
@@ -43,13 +43,17 @@ Last reviewed: 2026-11-01.
 | --- | :-: | :-: | :-: | --- |
 | Task list (Active / Done / Upcoming) | ✅ | ✅ | ✅ | |
 | Create and edit tasks (wizard with every task type) | ✅ | ✅ | ✅ | Desktops enter a location as latitude / longitude. |
-| Recurrence (daily, selected days, weekly) | ✅ | ✅ | ✅ | |
+| Recurrence (daily, selected days, weekly) | ✅ | ✅ | ✅ | A recurring task is only due (and only blocks) on the days its recurrence lands on. `shared/CONTRACTS.md` (Task occurrences and blocking). |
+| Carry over until done (a missed occurrence stays due, and blocking, until done or the next one starts) | ✅ | ✅ | ✅ | `shared/fixtures/task-status.json`. Editor toggle on recurring tasks. Rows say "Overdue since Monday". |
+| Completion alternatives: "or be at a location" on any task (e.g. a workout that also completes at the climbing gym) | ✅ | ➕ | ➖ | `shared/CONTRACTS.md` (Completion alternatives). Every client edits and shows them. Android completes them with geofences; Windows from the PC's location (allowed exception, with "Check now"); the Mac shows "your phone completes this". |
 | Time-of-day gates (`available_from` / `due_at`) | ✅ | ✅ | ✅ | |
 | Manual completion | ✅ | ✅ | ✅ | |
 | Duration timer tasks | ✅ | ✅ | ✅ | |
 | Meditation timer (in-app session, short sit, bells) | ✅ | ✅ | ✅ | |
 | Meditation via companion apps | ✅ | ✅ | ✅ | Each platform has its own `companion_apps` entries. |
 | Routine / workout runner (weight × reps, checkboxes, timed steps, rest, supersets, pre-fill from last time, report steps, automatic interval routines) | ✅ | ✅ | ✅ | |
+| Interval sets (`timed_sets`: sets, one arm at a time, rests between hangs/sides/sets, weights: added/assisted confirmed before starting, or a load asked before each set; pre-filled from last time) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Timed sets), `fixtures/timed-sets.json`. These options aren't editable in the step editors yet (set in the database, e.g. `dev/climbing-program.ts`); editors keep them. |
+| Step images (`routine_steps.image_url`, e.g. hangboard holds) | ✅ | ✅ | ✅ | Shown on step cards and the automatic runner. Android caches with Coil, Windows with the browser cache, the Mac with URLSession's cache. Images live in the `routine-images` Storage bucket. |
 | Journal tasks and journal history | ✅ | ✅ | ✅ | |
 | Report tasks (metric questionnaires) | ✅ | ✅ | ✅ | |
 | Shopping list tasks | ✅ | ✅ | ✅ | Arrival reminders are a location feature (below). |

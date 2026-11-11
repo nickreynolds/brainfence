@@ -6,7 +6,7 @@ import { ConfirmDialog, Ring } from '../../components/ui'
 import { formatClock } from '../../lib/format'
 import { useNow, useTimers } from '../../lib/hooks'
 import { useRouter } from '../../lib/router'
-import { CompletedToday, NotYetAvailable, TaskTopBar, isBeforeStart } from './common'
+import { CompletedToday, NotYetAvailable, TaskTopBar, isBeforeStart, isTaskDone } from './common'
 
 /** Port of DurationTaskScreen: the timer runs in the main process and survives closing the window. */
 export function DurationTaskScreen({ task }: { task: Task }) {
@@ -21,7 +21,7 @@ export function DurationTaskScreen({ task }: { task: Task }) {
   return (
     <>
       <TaskTopBar task={task} />
-      {task.completedToday ? (
+      {isTaskDone(task) ? (
         <CompletedToday />
       ) : !config ? (
         <div className="empty">This task has no duration configured. Edit it to set one.</div>

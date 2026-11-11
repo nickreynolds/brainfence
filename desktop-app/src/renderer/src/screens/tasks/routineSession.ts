@@ -8,6 +8,7 @@ import type { Report, ReportSubmission, RoutineStep, StepCompletion, Task } from
 import { REPORT_DEFINITION_TABLES, REPORT_SUBMISSION_TABLES, getReports, getTodaysRoutineSubmissions } from '@shared/repos/reports'
 import { ROUTINE_TABLES, completeRoutine, getLastStepCompletions, getRoutineSteps } from '@shared/repos/routines'
 import { reportIdFromConfig } from '@shared/verification'
+import { parseTimedSetsConfig, timedSetsHangCount, timedSetsRestAfter, timedSetsSetOf, timedSetsSideOf, timedSetsStartsSet } from '@shared/timedSets'
 import { db, useQuery } from '../../lib/hooks'
 
 export interface SetEntry {
@@ -31,7 +32,8 @@ export interface SupersetRound {
   currentRound: number
 }
 
-export type AutoPhase = 'IDLE' | 'COUNTDOWN' | 'WORK' | 'REST' | 'PAUSED' | 'COMPLETED'
+/** WEIGHT: waiting for the weight of the set about to start (weight_prompt each_set). */
+export type AutoPhase = 'IDLE' | 'COUNTDOWN' | 'WORK' | 'REST' | 'WEIGHT' | 'PAUSED' | 'COMPLETED'
 
 export interface AutoProgress {
   phase: AutoPhase
@@ -45,7 +47,8 @@ const blankSet = (): SetEntry => ({ weight: null, reps: null, completed: false, 
 export function defaultSetCount(step: RoutineStep): number {
   const c = parseJsonObject(step.config)
   if (step.stepType === 'weight_reps' || step.stepType === 'just_reps') return Number(c.default_sets ?? 3) || 3
-  if (step.stepType === 'timed_sets') return Number(c.reps ?? 1) || 1
+  // One entry per hang: sets × reps (shared/CONTRACTS.md, Timed sets).
+  if (step.stepType === 'timed_sets') return timedSetsHangCount(parseTimedSetsConfig(step.config))
   return 1
 }
 
@@ -56,8 +59,9 @@ function prefill(steps: RoutineStep[], last: StepCompletion[]): { states: Record
   for (const step of steps) {
     const count = defaultSetCount(step)
     const previous = byStep.get(step.id)
-    // In a superset, sets are rounds: the count comes from default_sets.
-    const n = step.supersetGroup ? count : Math.max(previous?.length ?? 0, count)
+    // In a superset, sets are rounds: the count comes from default_sets. A
+    // timed_sets step always has exactly one entry per hang.
+    const n = step.supersetGroup || step.stepType === 'timed_sets' ? count : Math.max(previous?.length ?? 0, count)
     states[step.id] = {
       step,
       activeSetIndex: 0,
@@ -101,6 +105,10 @@ function restore(steps: RoutineStep[], saved: Saved | null): { states: Record<st
         }
       : { step, activeSetIndex: 0, sets: Array.from({ length: defaultSetCount(step) }, blankSet) }
     if (states[step.id].sets.length === 0) states[step.id].sets = Array.from({ length: defaultSetCount(step) }, blankSet)
+    // A timed_sets step whose sets or reps changed since the save starts over.
+    if (step.stepType === 'timed_sets' && states[step.id].sets.length !== defaultSetCount(step)) {
+      states[step.id] = { step, activeSetIndex: 0, sets: Array.from({ length: defaultSetCount(step) }, blankSet) }
+    }
   }
   const rounds = saved.supersetRounds
     ? Object.fromEntries(Object.entries(saved.supersetRounds).map(([g, r]) => [g, { groupId: g, stepIds: r.stepIds ?? [], totalRounds: r.totalRounds ?? 1, currentRound: r.currentRound ?? 1 }]))
@@ -158,6 +166,13 @@ export function useRoutineSession(task: Task) {
   const [isCompleting, setIsCompleting] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const cancelAuto = useRef<{ cancelled: boolean } | null>(null)
+  /** Resolves the runner's wait for a set's weight: true = go, false = stopped. */
+  const weightWaiter = useRef<((go: boolean) => void) | null>(null)
+  const releaseWeightWaiter = (go: boolean) => {
+    const w = weightWaiter.current
+    weightWaiter.current = null
+    w?.(go)
+  }
   const latest = useRef({ states, rounds, auto })
   latest.current = { states, rounds, auto }
 
@@ -253,6 +268,7 @@ export function useRoutineSession(task: Task) {
   // Stop a running auto routine when leaving the screen; it resumes from where it was.
   useEffect(() => () => {
     if (cancelAuto.current) cancelAuto.current.cancelled = true
+    releaseWeightWaiter(false)
   }, [])
 
   const updateStep = useCallback((stepId: string, fn: (s: StepState) => StepState) => {
@@ -294,6 +310,15 @@ export function useRoutineSession(task: Task) {
       }
       setRounds((prev) => ({ ...prev, [groupId]: { ...r, currentRound: r.currentRound + 1 } }))
     },
+    /**
+     * Sets the weight of a timed_sets step's set [setIndex] (0-based) and every
+     * later set, on each of their hangs.
+     */
+    setTimedSetWeight: (stepId: string, setIndex: number, weight: number | null) =>
+      updateStep(stepId, (s) => {
+        const cfg = parseTimedSetsConfig(s.step.config)
+        return { ...s, sets: s.sets.map((e, i) => (timedSetsSetOf(cfg, i) >= setIndex ? { ...e, weight } : e)) }
+      }),
     goToRound: (groupId: string, round: number) =>
       setRounds((prev) => (prev[groupId] && round >= 1 && round <= prev[groupId].totalRounds ? { ...prev, [groupId]: { ...prev[groupId], currentRound: round } } : prev)),
   }
@@ -306,8 +331,7 @@ export function useRoutineSession(task: Task) {
     if (cancelAuto.current) cancelAuto.current.cancelled = true
     const stepData: Record<string, string[]> = {}
     for (const [stepId, s] of Object.entries(latest.current.states)) {
-      const cfg = parseJsonObject(s.step.config)
-      stepData[stepId] = s.sets.map((e) => {
+      stepData[stepId] = s.sets.map((e, i) => {
         const json: Record<string, unknown> = {}
         switch (s.step.stepType) {
           case 'checkbox': json.completed = e.completed; break
@@ -317,7 +341,14 @@ export function useRoutineSession(task: Task) {
             break
           case 'just_reps': if (e.reps != null) json.reps = e.reps; break
           case 'timed': json.completed = e.completed; json.actual_seconds = e.timerElapsed; break
-          case 'timed_sets': json.completed = e.completed; json.work_seconds = Number(cfg.work_seconds ?? 0); break
+          case 'timed_sets': {
+            const timed = parseTimedSetsConfig(s.step.config)
+            json.completed = e.completed
+            json.work_seconds = timed.workSeconds
+            if (timed.weight && e.weight != null) json.weight = e.weight
+            if (timed.sides === 2) json.side = timedSetsSideOf(timed, i) === 0 ? 'left' : 'right'
+            break
+          }
           case 'report':
             json.completed = e.completed
             if (submissions[stepId]) json.submission_id = submissions[stepId].id
@@ -362,13 +393,24 @@ export function useRoutineSession(task: Task) {
     const countdown = Number(parseJsonObject(task.verificationConfig).countdown_seconds ?? 3)
     void (async () => {
       let first = true
+      // A set whose weight is asked right before it (weight_prompt each_set).
+      const promptsBefore = (exIndex: number, hang: number) => {
+        const c = exIndex < steps.length ? parseTimedSetsConfig(steps[exIndex].config) : null
+        return !!c && c.weight != null && c.weightPrompt === 'each_set' && timedSetsStartsSet(c, hang)
+      }
       for (let ex = startExercise; ex < steps.length; ex++) {
         const step = steps[ex]
-        const cfg = parseJsonObject(step.config)
-        const reps = Number(cfg.reps ?? 1)
-        const work = Number(cfg.work_seconds ?? 10)
-        const rest = Number(cfg.rest_seconds ?? 20)
+        const cfg = parseTimedSetsConfig(step.config)
+        const reps = timedSetsHangCount(cfg)
+        const work = cfg.workSeconds
         for (let rep = ex === startExercise ? startRep : 0; rep < reps; rep++) {
+          if (promptsBefore(ex, rep)) {
+            setAuto({ phase: 'WEIGHT', exerciseIndex: ex, rep, secondsRemaining: 0 })
+            playTick()
+            const go = await new Promise<boolean>((resolve) => { weightWaiter.current = resolve })
+            if (!go || token.cancelled) return
+            first = true
+          }
           if (first) {
             first = false
             for (let s = countdown; s >= 1; s--) {
@@ -392,17 +434,21 @@ export function useRoutineSession(task: Task) {
           }))
           const lastRep = rep === reps - 1
           const lastExercise = ex === steps.length - 1
+          const rest = timedSetsRestAfter(cfg, rep, lastExercise)
           if (!(lastRep && lastExercise)) {
             const nextEx = lastRep ? ex + 1 : ex
             const nextRep = lastRep ? 0 : rep + 1
+            // Before a set that asks for its weight, rest without the countdown:
+            // the countdown runs once the weight is confirmed.
+            const promptNext = promptsBefore(nextEx, nextRep)
             for (let s = rest; s >= 1; s--) {
               if (token.cancelled) return
-              const inCountdown = s <= countdown
+              const inCountdown = !promptNext && s <= countdown
               setAuto({ phase: inCountdown ? 'COUNTDOWN' : 'REST', exerciseIndex: nextEx, rep: nextRep, secondsRemaining: s })
               if (inCountdown && s <= 2) playTick()
               await sleep(1000)
             }
-            playBeep()
+            if (!promptNext) playBeep()
           }
         }
       }
@@ -413,8 +459,12 @@ export function useRoutineSession(task: Task) {
     })()
   }
 
+  /** Confirms the weight of the set the runner is waiting on and starts it. */
+  const confirmSetWeight = () => releaseWeightWaiter(true)
+
   const stopAuto = () => {
     if (cancelAuto.current) cancelAuto.current.cancelled = true
+    releaseWeightWaiter(false)
     setAuto((a) => ({ ...a, phase: 'PAUSED' }))
   }
 
@@ -425,6 +475,6 @@ export function useRoutineSession(task: Task) {
 
   return {
     steps, stepsLoading, states, rounds, auto, isAutoRoutine, isCompleting, allStepsCompleted, initialized,
-    reportSteps, submissions, actions, finish, startAuto, stopAuto,
+    reportSteps, submissions, actions, finish, startAuto, stopAuto, confirmSetWeight,
   }
 }

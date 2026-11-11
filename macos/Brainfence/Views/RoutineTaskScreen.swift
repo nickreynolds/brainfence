@@ -40,10 +40,10 @@ struct RoutineTaskScreen: View {
             .onChange(of: session) { _, value in
                 guard let value, !isCompleting else { return }
                 saveProgress(value)
-                if isRoutine && value.allStepsCompleted && !task.completedToday { finish() }
+                if isRoutine && value.allStepsCompleted && !task.isDone { finish() }
             }
             .onChange(of: auto.phase) { _, phase in
-                if isAutoRoutine && phase == .completed && !task.completedToday { finish() }
+                if isAutoRoutine && phase == .completed && !task.isDone { finish() }
             }
             .onDisappear {
                 // Stop a running automatic routine; it resumes from where it was.
@@ -57,17 +57,21 @@ struct RoutineTaskScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if task.completedToday {
+        if task.isDone {
             CompletedToday()
         } else if session == nil {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if isBeforeStart(task) {
             NotYetAvailable(task: task, now: Date()).padding(20)
         } else if isAutoRoutine {
-            AutoRoutineView(steps: session?.steps ?? [], auto: auto, isCompleting: isCompleting, onStart: startAuto, onStop: stopAuto)
+            AutoRoutineView(
+                task: task, session: sessionBinding, auto: auto, isCompleting: isCompleting,
+                onStart: startAuto, onStop: stopAuto, onConfirmSetWeight: { auto.phase = .countdown }
+            )
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    AlternativesNote(task: task)
                     ForEach(items, id: \.id) { item in
                         switch item {
                         case .step(let step):
@@ -234,10 +238,25 @@ struct RoutineTaskScreen: View {
         let countdown = Int(JSONValue.parse(task.verificationConfig)?.first("countdown_seconds")?.doubleValue ?? 3)
         autoRunner = Task { @MainActor in
             var first = true
+            // A set whose weight is asked right before it (weight_prompt each_set).
+            func promptsBefore(_ exIndex: Int, _ hang: Int) -> Bool {
+                exIndex < steps.count && steps[exIndex].timedSets.promptsBefore(hang)
+            }
             for ex in start.exercise..<steps.count {
                 let step = steps[ex]
                 let firstRep = ex == start.exercise ? start.rep : 0
-                for rep in firstRep..<max(firstRep, step.reps) {
+                let timed = step.timedSets
+                let hangs = timed.hangCount
+                for rep in firstRep..<max(firstRep, hangs) {
+                    if promptsBefore(ex, rep) {
+                        // Wait until the weight is confirmed (Start set moves the phase on).
+                        auto = AutoProgress(phase: .weight, exerciseIndex: ex, rep: rep)
+                        Self.tick()
+                        while auto.phase == .weight {
+                            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+                        }
+                        first = true
+                    }
                     if first {
                         first = false
                         for s in stride(from: countdown, through: 1, by: -1) {
@@ -247,23 +266,27 @@ struct RoutineTaskScreen: View {
                         }
                         Self.beep()
                     }
-                    for s in stride(from: step.workSeconds, through: 1, by: -1) {
+                    for s in stride(from: timed.workSeconds, through: 1, by: -1) {
                         auto = AutoProgress(phase: .work, exerciseIndex: ex, rep: rep, secondsRemaining: s)
                         guard await Self.sleepSecond() else { return }
                     }
-                    self.session?.completeAutoRep(step.id, rep: rep, workSeconds: step.workSeconds)
-                    let lastRep = rep == step.reps - 1
+                    self.session?.completeAutoRep(step.id, rep: rep, workSeconds: timed.workSeconds)
+                    let lastRep = rep == hangs - 1
                     let lastExercise = ex == steps.count - 1
                     if !(lastRep && lastExercise) {
                         let nextEx = lastRep ? ex + 1 : ex
                         let nextRep = lastRep ? 0 : rep + 1
-                        for s in stride(from: step.restSeconds, through: 1, by: -1) {
-                            let inCountdown = s <= countdown
+                        let rest = timed.restAfter(rep, isLastStep: lastExercise)
+                        // Before a set that asks for its weight, rest without the
+                        // countdown: it runs once the weight is confirmed.
+                        let promptNext = promptsBefore(nextEx, nextRep)
+                        for s in stride(from: rest, through: 1, by: -1) {
+                            let inCountdown = !promptNext && s <= countdown
                             auto = AutoProgress(phase: inCountdown ? .countdown : .rest, exerciseIndex: nextEx, rep: nextRep, secondsRemaining: s)
                             if inCountdown && s <= 2 { Self.tick() }
                             guard await Self.sleepSecond() else { return }
                         }
-                        Self.beep()
+                        if !promptNext { Self.beep() }
                     }
                 }
             }
@@ -318,6 +341,7 @@ private struct StepCard: View {
             if let notes = step.description, !notes.isEmpty {
                 Text(notes).font(.caption).foregroundStyle(.secondary).lineLimit(3)
             }
+            if let url = step.imageUrl { StepImage(url: url) }
             switch step.stepType {
             case "checkbox":
                 Button(state.sets.first?.completed == true ? "Done" : "Mark Complete") { session.toggleCheckbox(step.id) }
@@ -536,37 +560,102 @@ extension Array {
 }
 
 private struct AutoRoutineView: View {
-    let steps: [RoutineStep]
+    let task: BrainTask
+    @Binding var session: RoutineSession
     let auto: AutoProgress
     let isCompleting: Bool
     let onStart: () -> Void
     let onStop: () -> Void
+    let onConfirmSetWeight: () -> Void
+    @State private var confirming = false
+
+    private var steps: [RoutineStep] { session.steps }
+    /// Steps whose weight is confirmed once, before the routine starts.
+    private var startWeighted: [RoutineStep] {
+        steps.filter { $0.timedSets.weight != nil && $0.timedSets.weightPrompt == "start" }
+    }
 
     var body: some View {
         let current = steps[safe: auto.exerciseIndex]
-        let totalWork = steps.reduce(0) { $0 + $1.reps }
-        let doneWork = steps.prefix(auto.exerciseIndex).reduce(0) { $0 + $1.reps } + auto.rep
+        let config = current?.timedSets
+        let totalWork = steps.reduce(0) { $0 + $1.timedSets.hangCount }
+        let doneWork = steps.prefix(auto.exerciseIndex).reduce(0) { $0 + $1.timedSets.hangCount } + auto.rep
+        let setIndex = config?.setOf(auto.rep) ?? 0
+        let hangInSide = config.map { auto.rep % $0.reps + 1 } ?? auto.rep + 1
+        let side: String? = config.flatMap { $0.sides == 2 ? ($0.sideOf(auto.rep) == 0 ? "Left hand" : "Right hand") : nil }
         let color = phaseColor
         VStack(spacing: 12) {
             switch auto.phase {
-            case .idle:
-                List(Array(steps.enumerated()), id: \.element.id) { i, s in
-                    VStack(alignment: .leading) {
-                        Text("\(i + 1). \(s.title)")
-                        Text("\(s.reps)× \(s.workSeconds)s on / \(s.restSeconds)s off").font(.caption).foregroundStyle(.secondary)
+            case .idle where confirming:
+                Text("Confirm weights").font(.title2.weight(.semibold))
+                Text("Added weight for each hang (negative = assisted). Pre-filled from last time.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Form {
+                    ForEach(startWeighted) { s in
+                        LabeledContent(s.title) {
+                            WeightField(kind: s.timedSets.weight ?? .added, weight: weightBinding(s.id, setIndex: 0)).frame(width: 180)
+                        }
                     }
                 }
-                Button("Start Routine", action: onStart).keyboardShortcut(.defaultAction)
+                HStack {
+                    Button("Back") { confirming = false }
+                    Button("Confirm and start") { confirming = false; onStart() }.keyboardShortcut(.defaultAction)
+                }
+            case .idle:
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        AlternativesNote(task: task)
+                        ForEach(Array(steps.enumerated()), id: \.element.id) { i, s in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("\(i + 1). \(s.title)").font(.headline)
+                                Text(describe(s.timedSets)).font(.caption).foregroundStyle(.secondary)
+                                if let notes = s.description, !notes.isEmpty {
+                                    Text(notes).font(.caption).foregroundStyle(.secondary)
+                                }
+                                if let url = s.imageUrl { StepImage(url: url, maxHeight: 140) }
+                                if let kind = s.timedSets.weight {
+                                    Text(s.timedSets.weightPrompt == "each_set"
+                                         ? "Weight asked before each set"
+                                         : "Last time: \(TimedSetsConfig.format(kind, session.timedSetWeight(s.id, setIndex: 0)))")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+                Button("Start Routine") { if startWeighted.isEmpty { onStart() } else { confirming = true } }
+                    .keyboardShortcut(.defaultAction)
             case .completed:
                 ProgressView()
                 if isCompleting { Text("Saving…").foregroundStyle(.secondary) }
+            case .weight:
+                Text("Exercise \(auto.exerciseIndex + 1) of \(steps.count)").foregroundStyle(.secondary)
+                Text(current?.title ?? "").font(.title.weight(.semibold))
+                Text("Set \(setIndex + 1) of \(config?.sets ?? 1)" + (config?.sides == 2 ? " · left, then right, same weight" : ""))
+                    .foregroundStyle(.secondary)
+                if let url = current?.imageUrl { StepImage(url: url, maxHeight: 200).frame(maxWidth: 420) }
+                if let current, let kind = config?.weight {
+                    WeightField(kind: kind, weight: weightBinding(current.id, setIndex: setIndex)).frame(maxWidth: 240)
+                }
+                Button("Start set", action: onConfirmSetWeight).keyboardShortcut(.defaultAction)
+                Button("Pause", action: onStop)
             default:
                 Text("Exercise \(auto.exerciseIndex + 1) of \(steps.count)").foregroundStyle(.secondary)
-                if auto.phase == .rest || auto.phase == .countdown {
+                if (auto.phase == .rest || auto.phase == .countdown) && config?.startsSet(auto.rep) == true {
                     Text("UP NEXT").font(.caption.weight(.bold)).foregroundStyle(color)
                 }
                 Text(current?.title ?? "").font(.title.weight(.semibold))
-                Text("Rep \(auto.rep + 1) of \(current?.reps ?? 1)").foregroundStyle(.secondary)
+                Text(((config?.sets ?? 1) > 1 ? "Set \(setIndex + 1) of \(config?.sets ?? 1) · " : "")
+                     + (side.map { "\($0) · " } ?? "")
+                     + "Rep \(hangInSide) of \(config?.reps ?? 1)")
+                    .foregroundStyle(.secondary)
+                if let current, let kind = config?.weight {
+                    Text(TimedSetsConfig.format(kind, session.timedSetWeight(current.id, setIndex: setIndex))).foregroundStyle(.secondary)
+                }
+                if let url = current?.imageUrl { StepImage(url: url, maxHeight: 200).frame(maxWidth: 420) }
                 if auto.phase == .paused {
                     Text("PAUSED").font(.title2).tracking(2)
                 } else {
@@ -585,12 +674,82 @@ private struct AutoRoutineView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func weightBinding(_ stepId: String, setIndex: Int) -> Binding<Double?> {
+        Binding(
+            get: { session.timedSetWeight(stepId, setIndex: setIndex) },
+            set: { session.setTimedSetWeight(stepId, setIndex: setIndex, weight: $0) }
+        )
+    }
+
+    private func describe(_ c: TimedSetsConfig) -> String {
+        let hangs = "\(c.reps)× \(c.workSeconds)s on / \(c.restSeconds)s off" + (c.sides == 2 ? " per hand (left, then right)" : "")
+        guard c.sets > 1 else { return hangs }
+        return "\(c.sets) sets of \(hangs) · \(c.setRestSeconds / 60):\(String(format: "%02d", c.setRestSeconds % 60)) between sets"
+    }
+
     private var phaseColor: Color {
         switch auto.phase {
         case .countdown: Palette.tertiary
         case .work: Palette.primary
         case .rest: Palette.secondary
         default: .primary
+        }
+    }
+}
+
+/// Added weight (negative = assisted) or the load lifted, in lb. Empty = bodyweight / none.
+private struct WeightField: View {
+    let kind: TimedSetsConfig.WeightKind
+    @Binding var weight: Double?
+
+    var body: some View {
+        TextField(
+            kind == .added ? "Added weight (lb, − = assisted)" : "Weight (lb)",
+            value: Binding(get: { weight }, set: { v in weight = kind == .load ? v.map { max(0, $0) } : v }),
+            format: .number,
+            prompt: Text(kind == .added ? "Bodyweight" : "0")
+        )
+        .textFieldStyle(.roundedBorder)
+    }
+}
+
+/// A step's picture (e.g. which holds to use), scaled to fit. URLSession's
+/// shared cache keeps it for offline use after the first load.
+struct StepImage: View {
+    let url: String
+    var maxHeight: CGFloat = 220
+
+    var body: some View {
+        if url.hasPrefix("https://"), let u = URL(string: url) {
+            AsyncImage(url: u) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFit()
+                } else if phase.error == nil {
+                    ProgressView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: maxHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+/// "Or be at Climbing gym for 30 min": the task's other ways to complete
+/// (shared/CONTRACTS.md). The Mac doesn't use location, so the phone completes it.
+struct AlternativesNote: View {
+    let task: BrainTask
+
+    var body: some View {
+        let alternatives = parseGpsAlternatives(task.completionAlternatives)
+        if !alternatives.isEmpty {
+            Label(
+                "Or \(alternatives.map(\.phrase).joined(separator: ", or ")) (your phone completes this).",
+                systemImage: "mappin.and.ellipse"
+            )
+            .font(.callout)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 }

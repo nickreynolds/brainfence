@@ -1,5 +1,6 @@
 package dev.brainfence.ui.tasks
 
+import dev.brainfence.domain.recurrence.status
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -140,7 +141,7 @@ private fun GeofenceInfoCard(
             // Status row
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val (icon, tint, label) = when {
-                    task.completedToday -> Triple(
+                    task.status().completed -> Triple(
                         Icons.Default.CheckCircle,
                         MaterialTheme.colorScheme.primary,
                         "Completed today",

@@ -1,5 +1,14 @@
 package dev.brainfence.ui.tasks
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Place
+import dev.brainfence.domain.recurrence.status
+import dev.brainfence.domain.verification.CompletionAlternatives
+import dev.brainfence.domain.verification.TimedSetsConfig
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -17,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -104,6 +114,8 @@ fun RoutineTaskScreen(
     onRemoveStep: (stepId: String) -> Unit,
     onStartAutoRoutine: () -> Unit = {},
     onStopAutoRoutine: () -> Unit = {},
+    onSetTimedWeight: (stepId: String, setIndex: Int, weight: Double?) -> Unit = { _, _, _ -> },
+    onConfirmSetWeight: () -> Unit = {},
     reportSteps: Map<String, Report?> = emptyMap(),
     reportSubmissions: Map<String, ReportSubmission> = emptyMap(),
     submittingReportSteps: Set<String> = emptySet(),
@@ -112,9 +124,10 @@ fun RoutineTaskScreen(
     onBack: () -> Unit,
 ) {
     val isRoutine = task.taskType == "routine"
+    val isDone = task.status().completed
 
     // Keep screen on while routine is in progress
-    if (!task.completedToday) {
+    if (!isDone) {
         val view = LocalView.current
         DisposableEffect(Unit) {
             view.keepScreenOn = true
@@ -164,7 +177,7 @@ fun RoutineTaskScreen(
             )
         },
     ) { padding ->
-        if (task.completedToday) {
+        if (isDone) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -188,11 +201,15 @@ fun RoutineTaskScreen(
             }
         } else if (isAutoRoutine) {
             AutoRoutineContent(
+                task = task,
                 steps = steps,
+                stepStates = stepStates,
                 autoProgress = autoProgress,
                 isCompleting = isCompleting,
                 onStart = onStartAutoRoutine,
                 onStop = onStopAutoRoutine,
+                onSetWeight = onSetTimedWeight,
+                onConfirmSetWeight = onConfirmSetWeight,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
@@ -206,6 +223,7 @@ fun RoutineTaskScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item { Spacer(Modifier.height(4.dp)) }
+                item { AlternativesNote(task) }
 
                 // Build display items: individual steps + superset groups
                 val renderedSupersets = mutableSetOf<String>()
@@ -301,22 +319,36 @@ fun RoutineTaskScreen(
 
 @Composable
 private fun AutoRoutineContent(
+    task: Task,
     steps: List<RoutineStep>,
+    stepStates: Map<String, StepUiState>,
     autoProgress: AutoRoutineProgress,
     isCompleting: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onSetWeight: (stepId: String, setIndex: Int, weight: Double?) -> Unit,
+    onConfirmSetWeight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val phase = autoProgress.phase
     val currentStep = steps.getOrNull(autoProgress.exerciseIndex)
-    val currentConfig = currentStep?.let { JSONObject(it.config) }
-    val totalReps = currentConfig?.optInt("reps", 1) ?: 1
+    val currentConfig = currentStep?.let { TimedSetsConfig.parse(it.config) }
+    val setIndex = currentConfig?.setOf(autoProgress.rep) ?: 0
+    val hangInSide = currentConfig?.let { autoProgress.rep % it.reps + 1 } ?: (autoProgress.rep + 1)
+    val side = currentConfig?.takeIf { it.sides == 2 }?.let { if (it.sideOf(autoProgress.rep) == 0) "Left hand" else "Right hand" }
+    var confirming by remember { mutableStateOf(false) }
 
     // Compute overall progress
-    val totalWork = steps.sumOf { JSONObject(it.config).optInt("reps", 1) }
-    val completedWork = steps.take(autoProgress.exerciseIndex).sumOf { JSONObject(it.config).optInt("reps", 1) } + autoProgress.rep
+    val totalWork = steps.sumOf { TimedSetsConfig.parse(it.config).hangCount }
+    val completedWork = steps.take(autoProgress.exerciseIndex).sumOf { TimedSetsConfig.parse(it.config).hangCount } + autoProgress.rep
     val overallProgress = if (totalWork > 0) completedWork.toFloat() / totalWork else 0f
+
+    fun weightOf(step: RoutineStep, set: Int): Double? {
+        val config = TimedSetsConfig.parse(step.config)
+        return stepStates[step.id]?.sets?.getOrNull(set * config.hangsPerSet)?.weight
+    }
+    // Steps whose weight is confirmed once, before the routine starts.
+    val startWeighted = steps.filter { TimedSetsConfig.parse(it.config).let { c -> c.weight != null && c.weightPrompt == "start" } }
 
     val phaseColor by animateColorAsState(
         targetValue = when (phase) {
@@ -329,61 +361,142 @@ private fun AutoRoutineContent(
         label = "phaseColor",
     )
 
-    Column(
-        modifier = modifier.padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        when (phase) {
-            AutoPhase.IDLE -> {
-                Spacer(Modifier.weight(1f))
+    if (phase == AutoPhase.IDLE && confirming) {
+        LazyColumn(
+            modifier = modifier.padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Spacer(Modifier.height(4.dp))
+                Text("Confirm weights", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Added weight for each hang (negative = assisted). Pre-filled from last time.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(startWeighted, key = { it.id }) { step ->
+                val config = TimedSetsConfig.parse(step.config)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(step.title, style = MaterialTheme.typography.titleSmall)
+                    WeightField(config.weight!!, weightOf(step, 0)) { onSetWeight(step.id, 0, it) }
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = { confirming = false }) { Text("Back") }
+                    Button(onClick = { confirming = false; onStart() }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Confirm and start")
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+        return
+    }
 
-                // Exercise overview
-                steps.forEachIndexed { index, step ->
-                    val config = JSONObject(step.config)
-                    val reps = config.optInt("reps", 1)
-                    val work = config.optInt("work_seconds", 10)
-                    val rest = config.optInt("rest_seconds", 20)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
+    if (phase == AutoPhase.IDLE) {
+        LazyColumn(
+            modifier = modifier.padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { Spacer(Modifier.height(4.dp)) }
+            item { AlternativesNote(task) }
+            itemsIndexed(steps, key = { _, step -> step.id }) { index, step ->
+                val config = TimedSetsConfig.parse(step.config)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${index + 1}. ${step.title}", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = "${index + 1}. ${step.title}",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Text(
-                            text = "${reps}x ${work}s on / ${rest}s off",
+                            describeTimedSets(config),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        step.description?.takeIf { it.isNotBlank() }?.let { StepNotes(it) }
+                        step.imageUrl?.let { StepImage(it, maxHeight = 160.dp) }
+                        if (config.weight != null) {
+                            Text(
+                                if (config.weightPrompt == "each_set") "Weight asked before each set"
+                                else "Last time: ${TimedSetsConfig.formatWeight(config.weight, weightOf(step, 0))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
-
-                Spacer(Modifier.weight(1f))
-
+            }
+            item {
                 Button(
-                    onClick = onStart,
+                    onClick = { if (startWeighted.isNotEmpty()) confirming = true else onStart() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Start Routine", style = MaterialTheme.typography.titleMedium)
                 }
-            }
-
-            AutoPhase.COUNTDOWN, AutoPhase.WORK, AutoPhase.REST -> {
-                // Exercise label
                 Spacer(Modifier.height(24.dp))
+            }
+        }
+        return
+    }
+
+    Column(
+        modifier = modifier.padding(24.dp).verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        when (phase) {
+            AutoPhase.WEIGHT -> {
                 Text(
                     text = "Exercise ${autoProgress.exerciseIndex + 1} of ${steps.size}",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(4.dp))
-                // Show "UP NEXT" label during rest when transitioning between exercises
-                if (phase == AutoPhase.REST && autoProgress.rep == 0) {
+                Text(
+                    text = currentStep?.title ?: "",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "Set ${setIndex + 1} of ${currentConfig?.sets ?: 1}" +
+                        if (currentConfig?.sides == 2) " \u00b7 left, then right, same weight" else "",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                currentStep?.imageUrl?.let {
+                    Spacer(Modifier.height(8.dp))
+                    StepImage(it, maxHeight = 180.dp)
+                }
+                Spacer(Modifier.height(16.dp))
+                if (currentStep != null && currentConfig?.weight != null) {
+                    WeightField(currentConfig.weight, weightOf(currentStep, setIndex)) {
+                        onSetWeight(currentStep.id, setIndex, it)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = onConfirmSetWeight, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Start set", style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Pause") }
+            }
+
+            AutoPhase.COUNTDOWN, AutoPhase.WORK, AutoPhase.REST, AutoPhase.PAUSED -> {
+                val paused = phase == AutoPhase.PAUSED
+                Text(
+                    text = "Exercise ${autoProgress.exerciseIndex + 1} of ${steps.size}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                // "UP NEXT" while resting before a new set or exercise
+                if ((phase == AutoPhase.REST || phase == AutoPhase.COUNTDOWN) && currentConfig?.startsSet(autoProgress.rep) == true) {
                     Text(
                         text = "UP NEXT",
                         style = MaterialTheme.typography.labelMedium,
@@ -401,109 +514,80 @@ private fun AutoRoutineContent(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Rep ${autoProgress.rep + 1} of $totalReps",
+                    text = buildString {
+                        if (currentConfig != null && currentConfig.sets > 1) append("Set ${setIndex + 1} of ${currentConfig.sets} \u00b7 ")
+                        if (side != null) append("$side \u00b7 ")
+                        append("Rep $hangInSide of ${currentConfig?.reps ?: 1}")
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (currentStep != null && currentConfig?.weight != null) {
+                    Text(
+                        TimedSetsConfig.formatWeight(currentConfig.weight, weightOf(currentStep, setIndex)),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                currentStep?.imageUrl?.let {
+                    Spacer(Modifier.height(8.dp))
+                    StepImage(it, maxHeight = 180.dp)
+                }
 
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(24.dp))
 
-                // Phase label
                 Text(
                     text = when (phase) {
                         AutoPhase.COUNTDOWN -> "GET READY"
                         AutoPhase.WORK -> "GO"
                         AutoPhase.REST -> "REST"
-                        else -> ""
+                        else -> "PAUSED"
                     },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = phaseColor,
+                    color = if (paused) MaterialTheme.colorScheme.onSurfaceVariant else phaseColor,
                     letterSpacing = 2.sp,
                 )
-
-                Spacer(Modifier.height(16.dp))
-
-                // Big timer
-                Text(
-                    text = autoProgress.secondsRemaining.toString(),
-                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 96.sp),
-                    fontWeight = FontWeight.Light,
-                    color = phaseColor,
-                )
-
-                Spacer(Modifier.weight(1f))
-
-                // Overall progress
-                LinearProgressIndicator(
-                    progress = { overallProgress },
-                    modifier = Modifier.fillMaxWidth().height(6.dp),
-                )
-                Spacer(Modifier.height(16.dp))
-
-                // Pause button
-                OutlinedButton(
-                    onClick = onStop,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Pause")
+                if (!paused) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = autoProgress.secondsRemaining.toString(),
+                        style = MaterialTheme.typography.displayLarge.copy(fontSize = 96.sp),
+                        fontWeight = FontWeight.Light,
+                        color = phaseColor,
+                    )
                 }
-            }
 
-            AutoPhase.PAUSED -> {
                 Spacer(Modifier.height(24.dp))
-                Text(
-                    text = "Exercise ${autoProgress.exerciseIndex + 1} of ${steps.size}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = currentStep?.title ?: "",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Rep ${autoProgress.rep + 1} of $totalReps",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
 
-                Spacer(Modifier.weight(1f))
-
-                Text(
-                    text = "PAUSED",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 2.sp,
-                )
-
-                Spacer(Modifier.weight(1f))
-
-                // Overall progress
                 LinearProgressIndicator(
                     progress = { overallProgress },
                     modifier = Modifier.fillMaxWidth().height(6.dp),
                 )
                 Spacer(Modifier.height(16.dp))
 
-                Button(
-                    onClick = onStart,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Resume Routine", style = MaterialTheme.typography.titleMedium)
+                if (paused) {
+                    Button(
+                        onClick = onStart,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Resume Routine", style = MaterialTheme.typography.titleMedium)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onStop,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Pause")
+                    }
                 }
             }
 
             AutoPhase.COMPLETED -> {
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(120.dp))
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = null,
@@ -516,8 +600,88 @@ private fun AutoRoutineContent(
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Spacer(Modifier.weight(1f))
             }
+
+            AutoPhase.IDLE -> Unit
+        }
+    }
+}
+
+private fun describeTimedSets(c: TimedSetsConfig): String {
+    val hangs = "${c.reps}\u00d7 ${c.workSeconds}s on / ${c.restSeconds}s off" +
+        if (c.sides == 2) " per hand (left, then right)" else ""
+    if (c.sets <= 1) return hangs
+    return "${c.sets} sets of $hangs \u00b7 ${formatTimerTime(c.setRestSeconds)} between sets"
+}
+
+/** Added weight (negative = assisted) or the load lifted, in lb. Blank = bodyweight / none. */
+@Composable
+private fun WeightField(kind: String, value: Double?, onChange: (Double?) -> Unit) {
+    var text by remember { mutableStateOf(value?.let(::formatWeight) ?: "") }
+    LaunchedEffect(value) {
+        if (text.toDoubleOrNull() != value) text = value?.let(::formatWeight) ?: ""
+    }
+    val allowNegative = kind == "added"
+    OutlinedTextField(
+        value = text,
+        onValueChange = { input ->
+            val ok = input.isEmpty() || (allowNegative && input == "-") ||
+                input.toDoubleOrNull()?.let { allowNegative || it >= 0 } == true
+            if (ok) {
+                text = input
+                when {
+                    input.isEmpty() -> onChange(null)
+                    input.toDoubleOrNull() != null -> onChange(input.toDouble())
+                }
+            }
+        },
+        label = { Text(if (allowNegative) "Added weight (lb, \u2212 = assisted)" else "Weight (lb)") },
+        placeholder = { Text(if (allowNegative) "Bodyweight" else "0") },
+        singleLine = true,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+            keyboardType = if (allowNegative) androidx.compose.ui.text.input.KeyboardType.Text
+            else androidx.compose.ui.text.input.KeyboardType.Decimal,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** A step's picture (e.g. which holds to use), scaled to fit and cached by Coil. */
+@Composable
+internal fun StepImage(url: String, maxHeight: androidx.compose.ui.unit.Dp = 220.dp) {
+    if (!url.startsWith("https://")) return
+    coil.compose.AsyncImage(
+        model = url,
+        contentDescription = null,
+        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = maxHeight)
+            .clip(RoundedCornerShape(12.dp)),
+    )
+}
+
+/** "Or be at Climbing gym for 30 min": the task's other ways to complete (shared/CONTRACTS.md). */
+@Composable
+internal fun AlternativesNote(task: Task) {
+    val alternatives = remember(task.completionAlternatives) { CompletionAlternatives.parseGps(task.completionAlternatives) }
+    if (alternatives.isEmpty()) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.Place,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Or ${alternatives.joinToString(", or ") { it.describe() }}: this completes automatically from your location.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
         }
     }
 }
@@ -583,6 +747,10 @@ private fun StepCard(
 
             if (!step.description.isNullOrBlank()) {
                 StepNotes(step.description)
+            }
+            step.imageUrl?.let {
+                Spacer(Modifier.height(8.dp))
+                StepImage(it)
             }
 
             Spacer(Modifier.height(12.dp))

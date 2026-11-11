@@ -7,7 +7,7 @@ import { Icon } from '../../components/Icon'
 import { Banner } from '../../components/ui'
 import { formatDateTime } from '../../lib/format'
 import { useLocationStatus } from '../../lib/hooks'
-import { CompletedToday, CompletionHistory, NotYetAvailable, TaskTopBar, scheduleSummary } from './common'
+import { CompletedToday, CompletionHistory, NotYetAvailable, TaskTopBar, scheduleSummary, isTaskDone } from './common'
 
 /**
  * Port of GpsTaskScreen. GPS tasks complete automatically from Windows
@@ -31,7 +31,7 @@ export function GpsTaskScreen({ task }: { task: Task }) {
   return (
     <>
       <TaskTopBar task={task} />
-      {task.completedToday ? (
+      {isTaskDone(task) ? (
         <CompletedToday />
       ) : !config ? (
         <div className="empty">This task has no location configured. Edit it to set one.</div>

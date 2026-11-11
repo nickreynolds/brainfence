@@ -15,10 +15,12 @@ public struct RoutineStep: Sendable, Hashable, Identifiable {
     public var config: String
     public var supersetGroup: String?
     public var description: String?
+    /// Optional https PNG shown with the step (e.g. which holds to use).
+    public var imageUrl: String?
 
     public init(
         id: String, taskId: String, title: String, stepOrder: Int, stepType: String,
-        config: String = "{}", supersetGroup: String? = nil, description: String? = nil
+        config: String = "{}", supersetGroup: String? = nil, description: String? = nil, imageUrl: String? = nil
     ) {
         self.id = id
         self.taskId = taskId
@@ -28,6 +30,7 @@ public struct RoutineStep: Sendable, Hashable, Identifiable {
         self.config = config
         self.supersetGroup = supersetGroup
         self.description = description
+        self.imageUrl = imageUrl
     }
 
     var configJSON: JSONValue { JSONValue.parse(config) ?? .object([:]) }
@@ -39,6 +42,7 @@ public struct RoutineStep: Sendable, Hashable, Identifiable {
     public var reps: Int { Int(configJSON.first("reps")?.doubleValue ?? 1) }
     public var workSeconds: Int { Int(configJSON.first("work_seconds")?.doubleValue ?? 10) }
     public var restSeconds: Int { Int(configJSON.first("rest_seconds")?.doubleValue ?? 20) }
+    public var timedSets: TimedSetsConfig { TimedSetsConfig(json: config) }
 
     /// Number of sets a fresh session starts with.
     public var defaultSetCount: Int {
@@ -47,7 +51,8 @@ public struct RoutineStep: Sendable, Hashable, Identifiable {
             let n = Int(configJSON.first("default_sets")?.doubleValue ?? 3)
             return n > 0 ? n : 3
         case "timed_sets":
-            return reps > 0 ? reps : 1
+            // One entry per hang: sets × reps (shared/CONTRACTS.md, Timed sets).
+            return timedSets.hangCount
         default:
             return 1
         }
@@ -103,7 +108,8 @@ public struct SupersetRound: Sendable, Equatable {
 
 /// Progress of an automatic (interval) routine.
 public struct AutoProgress: Sendable, Equatable {
-    public enum Phase: Sendable, Equatable { case idle, countdown, work, rest, paused, completed }
+    /// weight: waiting for the weight of the set about to start (weight_prompt each_set).
+    public enum Phase: Sendable, Equatable { case idle, countdown, work, rest, weight, paused, completed }
 
     public var phase: Phase
     public var exerciseIndex: Int
@@ -132,8 +138,9 @@ public struct RoutineSession: Sendable, Equatable {
         for step in steps {
             let count = step.defaultSetCount
             let previous = byStep[step.id] ?? []
-            // In a superset, sets are rounds: the count comes from default_sets.
-            let n = step.supersetGroup != nil ? count : max(previous.count, count)
+            // In a superset, sets are rounds: the count comes from default_sets. A
+            // timed_sets step always has exactly one entry per hang.
+            let n = step.supersetGroup != nil || step.stepType == "timed_sets" ? count : max(previous.count, count)
             let sets = (0..<n).map { i -> SetEntry in
                 let data = JSONValue.parse(previous.first { $0.setNumber == i + 1 }?.data) ?? .object([:])
                 let reps = data["reps"]?.doubleValue.map { Int($0) }
@@ -167,6 +174,11 @@ public struct RoutineSession: Sendable, Equatable {
                 )
             }
             if sets.isEmpty { sets = StepState.fresh(step).sets }
+            // A timed_sets step whose sets or reps changed since the save starts over.
+            if step.stepType == "timed_sets" && sets.count != step.defaultSetCount {
+                states[step.id] = .fresh(step)
+                continue
+            }
             let active = s["activeSetIndex"]?.intValue ?? 0
             states[step.id] = StepState(step: step, sets: sets, activeSetIndex: min(max(0, active), sets.count - 1))
         }
@@ -254,7 +266,7 @@ public struct RoutineSession: Sendable, Equatable {
         var out: [String: [String]] = [:]
         for (stepId, s) in states {
             let step = s.step
-            out[stepId] = s.sets.map { e in
+            out[stepId] = s.sets.enumerated().map { index, e in
                 var json: [String: JSONValue] = [:]
                 switch step.stepType {
                 case "checkbox":
@@ -268,8 +280,11 @@ public struct RoutineSession: Sendable, Equatable {
                     json["completed"] = .bool(e.completed)
                     json["actual_seconds"] = .int(e.timerElapsed)
                 case "timed_sets":
+                    let timed = step.timedSets
                     json["completed"] = .bool(e.completed)
-                    json["work_seconds"] = .int(Int(step.configJSON.first("work_seconds")?.doubleValue ?? 0))
+                    json["work_seconds"] = .int(timed.workSeconds)
+                    if timed.weight != nil, let w = e.weight { json["weight"] = .double(w) }
+                    if timed.sides == 2 { json["side"] = .string(timed.sideOf(index) == 0 ? "left" : "right") }
                 case "report":
                     json["completed"] = .bool(e.completed)
                     if let id = submissionIds[stepId] { json["submission_id"] = .string(id) }
@@ -405,6 +420,22 @@ public struct RoutineSession: Sendable, Equatable {
         guard var r = rounds[groupId], (1...r.totalRounds).contains(round) else { return }
         r.currentRound = round
         rounds[groupId] = r
+    }
+
+    /// Sets the weight of a timed_sets step's set [setIndex] (0-based) and
+    /// every later set, on each of their hangs.
+    public mutating func setTimedSetWeight(_ stepId: String, setIndex: Int, weight: Double?) {
+        update(stepId) { s in
+            let config = s.step.timedSets
+            for i in s.sets.indices where config.setOf(i) >= setIndex { s.sets[i].weight = weight }
+        }
+    }
+
+    /// The weight of a timed_sets step's set [setIndex] (0-based).
+    public func timedSetWeight(_ stepId: String, setIndex: Int) -> Double? {
+        guard let s = states[stepId] else { return nil }
+        let i = setIndex * s.step.timedSets.hangsPerSet
+        return s.sets.indices.contains(i) ? s.sets[i].weight : nil
     }
 
     /// Marks a set done by the automatic runner.

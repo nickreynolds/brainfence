@@ -107,6 +107,127 @@ before comparing; never compare the strings (`' ' < 'T'`, so a string comparison
 can apply a time-locked change up to a day early). Text without an offset is UTC
 (`fixtures/timestamps.json`).
 
+## Task occurrences and blocking
+
+Every surface that asks "is this task due, done or blocking?" (the task list,
+the blocking evaluator, notifications, GPS monitoring, task screens) uses one
+pure function of the task, its latest completion and the current local time
+(`fixtures/task-status.json`). It returns:
+
+| Field | Meaning |
+| --- | --- |
+| `scheduled` | An occurrence is open now: due today, or carried over from an earlier day |
+| `completed` | The open occurrence is done (with no open occurrence: completed today) |
+| `carried_over` | The open occurrence started on an earlier day |
+| `phase` | `BEFORE_START`, `ACTIVE`, `PAST_DUE` from the `available_from` / `due_at` window, or null with no window. A carried-over occurrence is always `PAST_DUE`. With no open occurrence it's null. |
+
+**Which occurrence is open**, for today's local date T:
+
+- **One-off** (`recurrence_type` null): always open; completed once any completion exists.
+- **`interval`**: always open; completed if completed today (unchanged).
+- **`daily`, `weekly`, `monthly`**: a date is *scheduled* when the recurrence
+  lands on it (`daily` with `days` only on those weekdays; `weekly` on its
+  `day`, in the weeks its `interval` picks; `monthly` on its `week`'s `day`).
+  If T is scheduled, T's occurrence is open. Otherwise, if the task has
+  `carry_over = 1`, the latest scheduled date before T is open, unless it falls
+  before the local date of the task's `created_at`. Otherwise nothing is open,
+  and the task isn't due today. A config that can't be parsed counts as
+  scheduled every day (fail closed).
+- The open occurrence on date D is **completed** when the latest completion's
+  local date is on or after D. So a carried-over task is done by completing it
+  on any day from D on, and the next scheduled date opens a fresh occurrence,
+  dropping one that was never done.
+
+**A rule condition is unmet** (the task is causing a block) exactly when the
+task is `scheduled`, not `completed`, its `phase` is null or `PAST_DUE`, today
+is one of its `blocking_days_of_week` (if any are set), and it isn't
+`home_only_blocking` with the user known to be away. A condition task that
+can't be found is unmet (fail closed).
+
+So a carried-over task blocks all day, every blocking day, until it's done or
+its next occurrence starts. A recurring task that isn't scheduled today never
+blocks.
+
+**Task list.** *Active*: scheduled, not completed, not `BEFORE_START`.
+*Done*: completed today. *Upcoming*: completed recurring tasks (showing the
+next occurrence), scheduled tasks before their window opens, and recurring
+tasks with no open occurrence (showing the next one). A carried-over row says
+when it was due ("Overdue since Monday").
+
+## Completion alternatives
+
+`tasks.completion_alternatives` is a JSON array of other ways to complete a
+task, on top of its own `task_type` / `verification_type`. Completing any one
+of them completes the task. Each entry:
+
+```json
+{"verification_type": "gps", "label": "Climbing gym",
+ "verification_config": {"latitude": 40.7069, "longitude": -73.924,
+                         "radius_meters": 150, "mode": "enter", "min_duration_m": 30}}
+```
+
+- `verification_config` has the same shape as a task's config of that type
+  (`lat`/`latitude`, `lng`/`longitude`, `radius_m`/`radius_meters` are all
+  accepted). `label` is optional, for display.
+- Supported types: **`gps`** with `mode` `enter` (the default) or `leave`.
+  Clients ignore entries they don't support, and editors write them back
+  unchanged (`fixtures/completion-alternatives.json`).
+- A device that does GPS (Android, and Windows as its allowed exception)
+  monitors a task's GPS alternatives exactly like a GPS task: while the task is
+  `scheduled`, not `completed` and not `BEFORE_START`. Completing through one
+  writes a normal `task_completions` row whose `verification_data` is the GPS
+  proof plus `"method": "completion_alternative"` and `"alternative": 0` (its
+  index).
+- The Mac doesn't complete them (location is mobile-only) but shows them:
+  "Or be at Climbing gym for 30 min (your phone completes this)".
+- Task rows and the task's own screen say "or" with the place: e.g. a workout
+  shows "Do the workout, or be at Climbing gym".
+
+## Timed sets (`timed_sets` steps)
+
+An automatic interval step. `config`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `reps` | 1 | Hangs (work periods) per side per set |
+| `work_seconds` | 10 | Length of each hang |
+| `rest_seconds` | 20 | Rest between hangs |
+| `sets` | 1 | Sets |
+| `sides` | 1 | 2 = one arm at a time: each set is done left, then right, at the same weight |
+| `side_rest_seconds` | `rest_seconds` | Rest between the left and right halves of a set |
+| `set_rest_seconds` | `rest_seconds` | Rest after each set, including before the next step |
+| `weight` | none | `"added"`: weight added to bodyweight, negative means assisted (hangs). `"load"`: the weight lifted, never negative (pinch block, lifts). |
+| `weight_prompt` | `"start"` | When the runner asks for the weight: `"start"` = once, before the routine starts; `"each_set"` = right before each set |
+
+The step has `sets × sides × reps` entries, one per hang, ordered by set, then
+side, then hang. Entry *i* is in set ⌊*i* / (reps × sides)⌋ and on side
+⌊*i* / reps⌋ mod sides (0 = left). After hang *i* the runner rests (`fixtures/timed-sets.json`):
+
+- nothing after the routine's last hang;
+- `set_rest_seconds` when *i* + 1 is a multiple of reps × sides (end of a set);
+- `side_rest_seconds` when *i* + 1 is a multiple of reps (switching sides);
+- `rest_seconds` otherwise.
+
+**Weights.** With `weight_prompt: "start"`, pressing Start shows every such step
+with its weight (pre-filled) to confirm before anything runs. Resuming a paused
+routine doesn't ask again. With `"each_set"`, the runner stops before the first
+hang of each set (after the rest, with no countdown in that rest) and asks for
+that set's weight, then counts down. A set's weight applies to every later set
+of the step too, until changed. Pre-filled weights come from the last
+completion's row with the same `set_number`.
+
+Each hang is saved as one `step_completions` row with `set_number` = its
+1-based position and `data` `{"completed": true, "work_seconds": 7}`, plus
+`"weight"` (the set's weight) for weighted steps and `"side": "left" | "right"`
+for two-sided steps.
+
+## Step images
+
+`routine_steps.image_url` is an optional `https` URL to a PNG (for example the
+holds to use on a hangboard), shown with the step and on the automatic
+runner's current step. Brainfence's own images live in the public Supabase
+Storage bucket `routine-images` (`dev/routine-images/`).
+
 ## Onboarding
 
 The setup guide (first-time user experience) teaches how Brainfence works and
