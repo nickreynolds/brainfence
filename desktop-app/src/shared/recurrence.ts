@@ -224,7 +224,7 @@ export interface TaskStatusInput {
 export interface TaskStatus {
   /** An occurrence is open now: due today, or carried over from an earlier day. */
   scheduled: boolean
-  /** The open occurrence is done (with none open: completed today). */
+  /** The open occurrence is done; with none open, the current period is done. */
   completed: boolean
   /** The open occurrence started on an earlier day. */
   carriedOver: boolean
@@ -252,24 +252,25 @@ export function computeTaskStatus(task: TaskStatusInput, now: Date): TaskStatus 
     return { scheduled: true, completed: completedToday, carriedOver: false, phase, occurrenceDate: null }
   }
 
-  let open: LocalDate | null = null
-  if (scheduledOn(today)) {
-    open = today
-  } else if (task.carryOver) {
-    const created = parseInstant(task.createdAt)
-    const earliest = created ? localDateOf(created) : null
-    for (let back = 1; back <= CARRY_OVER_LOOKBACK_DAYS; back++) {
-      const candidate = plusDays(today, -back)
-      if (earliest && compareDates(candidate, earliest) < 0) break
-      if (scheduledOn(candidate)) {
-        open = candidate
-        break
-      }
+  // The latest scheduled date on or before today, not before the task existed.
+  const created = parseInstant(task.createdAt)
+  const earliest = created ? localDateOf(created) : null
+  let latest: LocalDate | null = null
+  for (let back = 0; back <= CARRY_OVER_LOOKBACK_DAYS; back++) {
+    const candidate = plusDays(today, -back)
+    if (earliest && compareDates(candidate, earliest) < 0) break
+    if (scheduledOn(candidate)) {
+      latest = candidate
+      break
     }
   }
 
+  const open = latest != null && (sameDate(latest, today) || task.carryOver) ? latest : null
   if (open == null) {
-    return { scheduled: false, completed: completedToday, carriedOver: false, phase: null, occurrenceDate: null }
+    // Off day: the current period runs from the latest occurrence (or creation).
+    const periodStart = latest ?? earliest ?? today
+    const completed = last != null && compareDates(localDateOf(last), periodStart) >= 0
+    return { scheduled: false, completed, carriedOver: false, phase: null, occurrenceDate: null }
   }
   const carriedOver = !sameDate(open, today)
   return {

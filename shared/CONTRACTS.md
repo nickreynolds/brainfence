@@ -117,7 +117,7 @@ pure function of the task, its latest completion and the current local time
 | Field | Meaning |
 | --- | --- |
 | `scheduled` | An occurrence is open now: due today, or carried over from an earlier day |
-| `completed` | The open occurrence is done (with no open occurrence: completed today) |
+| `completed` | The open occurrence is done; with none open, the current period is done (below) |
 | `carried_over` | The open occurrence started on an earlier day |
 | `phase` | `BEFORE_START`, `ACTIVE`, `PAST_DUE` from the `available_from` / `due_at` window, or null with no window. A carried-over occurrence is always `PAST_DUE`. With no open occurrence it's null. |
 
@@ -133,6 +133,14 @@ pure function of the task, its latest completion and the current local time
   before the local date of the task's `created_at`. Otherwise nothing is open,
   and the task isn't due today. A config that can't be parsed counts as
   scheduled every day (fail closed).
+- **Periods.** A recurring task can still be done on a day it isn't due: each
+  occurrence's *period* runs from its scheduled date up to the next one. With
+  nothing open, `completed` is whether the latest completion's local date is on
+  or after the start of the current period: the latest scheduled date on or
+  before T, or the local date of `created_at` if that's later or none is found.
+  So a Monday PUSH done on Tuesday is done for the week, and Thursday's
+  occurrence of a Mon–Thu task can be done until Sunday. Off-day periods are
+  never due, overdue or blocking.
 - The open occurrence on date D is **completed** when the latest completion's
   local date is on or after D. So a carried-over task is done by completing it
   on any day from D on, and the next scheduled date opens a fresh occurrence,
@@ -151,7 +159,9 @@ blocks.
 **Task list.** *Active*: scheduled, not completed, not `BEFORE_START`.
 *Done*: completed today. *Upcoming*: completed recurring tasks (showing the
 next occurrence), scheduled tasks before their window opens, and recurring
-tasks with no open occurrence (showing the next one). A carried-over row says
+tasks with no open occurrence (showing the next one). Those last ones, when
+their period isn't done, can be opened and completed from Upcoming; the others
+are locked. A carried-over row says
 when it was due ("Overdue since Monday").
 
 ## Completion alternatives

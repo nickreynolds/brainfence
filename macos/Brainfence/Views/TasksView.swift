@@ -102,7 +102,7 @@ private struct TaskListView: View {
     }
 
     private func tap(_ task: BrainTask) {
-        if tab == .upcoming {
+        if tab == .upcoming && !task.isOptionalToday() {
             model.navigation.editor = .init(taskId: task.id)
         } else if task.opensTaskScreen {
             model.navigation.taskPath.append(task.id)
@@ -162,7 +162,12 @@ private struct TaskListRow: View {
         let showAsDone = tab == .done
         let status = status
         let completedRecurring = tab == .upcoming && status.completed && task.recurrenceType != nil
-        let locked = (tab == .upcoming && !completedRecurring) || (phase == .beforeStart && !status.completed)
+        // An off day with this period not done yet: doable now, just not due.
+        let optional = tab == .upcoming && task.isOptionalToday(now: now)
+        let windowPhase = status.scheduled
+            ? phase
+            : computeTaskPhase(availableFrom: task.availableFrom, dueAt: task.dueAt, now: now)
+        let locked = (tab == .upcoming && !completedRecurring && !optional) || (windowPhase == .beforeStart && !status.completed)
         let overdue = phase == .pastDue && !status.completed
         let canTap = tab == .upcoming || (!showAsDone && !locked && !completedRecurring)
 
@@ -215,7 +220,11 @@ private struct TaskListRow: View {
                 recurrenceType: task.recurrenceType, recurrenceConfig: task.recurrenceConfig,
                 lastCompletionAt: Timestamp.parse(task.lastCompletionAt), now: now
             )
-            return next.map { "Next: \($0.formatted(.relative(presentation: .named)))" } ?? "Completed"
+            let nextText = next.map { "Next: \($0.formatted(.relative(presentation: .named)))" }
+            if notDueToday && task.recurrenceType != nil {
+                return ["Optional today", nextText].compactMap { $0 }.joined(separator: " · ")
+            }
+            return nextText ?? "Completed"
         }
         if tab == .upcoming, let from = task.availableFrom { return "Available at \(from)" }
         let overdueText = status.carriedOver ? "Overdue since \(carriedOverSince(status.occurrenceDate))" : "Overdue"

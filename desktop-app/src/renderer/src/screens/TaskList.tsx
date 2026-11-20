@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { parseInstant } from '@shared/json'
 import type { BlockingRule, Task } from '@shared/models'
 import type { MeditationTimerState } from '@shared/ipc'
-import { TaskStatus, TimeGatePhase, computeNextOccurrence, computeTaskStatus } from '@shared/recurrence'
+import { TaskStatus, TimeGatePhase, computeNextOccurrence, computeTaskPhase, computeTaskStatus } from '@shared/recurrence'
 import { localDateOf, startOfDay } from '@shared/time'
 import { describeGpsAlternative, parseGpsAlternatives } from '@shared/verification'
 import { RULE_TABLES, getActiveRules } from '@shared/repos/blocking'
@@ -167,7 +167,7 @@ export function TaskListScreen() {
               isActivelyBlocking={activelyBlocking.has(task.id)}
               meditation={timers.meditation[task.id]}
               shoppingCount={task.taskType === 'shopping' ? shoppingCounts[task.id] ?? 0 : null}
-              onClick={() => (tab === 'upcoming' ? navigate(`editor/${task.id}`) : onTap(task))}
+              onClick={() => (tab === 'upcoming' && !isOptionalToday(task, now) ? navigate(`editor/${task.id}`) : onTap(task))}
             />
           ))}
         </div>
@@ -188,6 +188,13 @@ export function TaskListScreen() {
       )}
     </>
   )
+}
+
+/** A recurring task on an off day whose period isn't done: it can be done now (CONTRACTS: Periods). */
+function isOptionalToday(task: Task, now: Date): boolean {
+  if (task.recurrenceType == null) return false
+  const status = computeTaskStatus(task, now)
+  return !status.scheduled && !status.completed
 }
 
 function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, meditation, shoppingCount, onClick }: {
@@ -219,7 +226,10 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   const phase = status.phase
   const isCompletedRecurring = showAsUpcoming && status.completed && task.recurrenceType != null
   const isNotDueToday = showAsUpcoming && !status.scheduled && !status.completed
-  const isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase === 'BEFORE_START' && !status.completed)
+  // An off day with this period not done yet: doable now, just not due.
+  const isOptional = isNotDueToday && task.recurrenceType != null
+  const isLocked = (showAsUpcoming && !isCompletedRecurring && !isOptional) ||
+    (!status.completed && (status.scheduled ? phase : computeTaskPhase(task.availableFrom, task.dueAt, now)) === 'BEFORE_START')
   const isOverdue = phase === 'PAST_DUE' && !status.completed
   const overdueText = status.carriedOver ? `Overdue since ${carriedOverSince(status, now)}` : 'Overdue'
   const showMeditation = meditation && meditation.targetSeconds > 0 && !showAsCompleted && !isCompletedRecurring
@@ -228,7 +238,8 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   let supporting: React.ReactNode = null
   if (isCompletedRecurring || isNotDueToday) {
     const next = computeNextOccurrence(task.recurrenceType, task.recurrenceConfig, parseInstant(task.lastCompletionAt), now)
-    supporting = next ? `Next: ${formatNextDue(next, now)}` : 'Completed'
+    if (isOptional) supporting = next ? `Optional today · Next: ${formatNextDue(next, now)}` : 'Optional today'
+    else supporting = next ? `Next: ${formatNextDue(next, now)}` : 'Completed'
   } else if (showAsUpcoming && task.availableFrom) {
     supporting = `Available at ${task.availableFrom}`
   } else if (isOverdue && isActivelyBlocking) {

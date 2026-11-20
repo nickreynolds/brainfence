@@ -65,6 +65,7 @@ import dev.brainfence.domain.model.BlockingRule
 import dev.brainfence.domain.model.Task
 import dev.brainfence.domain.recurrence.TimeGatePhase
 import dev.brainfence.domain.recurrence.computeNextOccurrence
+import dev.brainfence.domain.recurrence.computeTaskPhase
 import dev.brainfence.domain.recurrence.status
 import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE
 import dev.brainfence.ui.setup.ACCESSIBILITY_DISCLOSURE_TITLE
@@ -310,7 +311,7 @@ fun TaskListScreen(
                             shoppingItemCounts[task.id] ?: 0
                         } else null,
                         onClick = {
-                            if (selectedTab == HomeTab.UPCOMING) onEditTask(task)
+                            if (selectedTab == HomeTab.UPCOMING && !task.isOptionalToday()) onEditTask(task)
                             else onTaskTap(task)
                         },
                     )
@@ -384,7 +385,11 @@ private fun TaskItem(
 
     val isCompletedRecurring = showAsUpcoming && status.completed && task.recurrenceType != null
     val isNotDueToday = showAsUpcoming && !status.scheduled && !status.completed
-    val isLocked = (showAsUpcoming && !isCompletedRecurring) || (phase == TimeGatePhase.BEFORE_START && !status.completed)
+    // An off day with this period not done yet: doable now, just not due.
+    val isOptional = isNotDueToday && task.recurrenceType != null
+    val windowPhase = if (status.scheduled) phase else computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
+    val isLocked = (showAsUpcoming && !isCompletedRecurring && !isOptional) ||
+        (windowPhase == TimeGatePhase.BEFORE_START && !status.completed)
     val isOverdue = phase == TimeGatePhase.PAST_DUE && !status.completed
     val overdueText = if (status.carriedOver) "Overdue since ${carriedOverSince(status.occurrenceDate)}" else "Overdue"
     val showMeditationProgress = meditationTimer != null && meditationTimer.targetSeconds > 0 &&
@@ -417,8 +422,12 @@ private fun TaskItem(
                         task.recurrenceType, task.recurrenceConfig,
                         lastCompletion, now, zone,
                     )
+                    val next = nextDue?.let { "Next: ${formatNextDue(it, zone)}" }
                     Text(
-                        text = if (nextDue != null) "Next: ${formatNextDue(nextDue, zone)}" else "Completed",
+                        text = when {
+                            isOptional -> listOfNotNull("Optional today", next).joinToString(" \u00b7 ")
+                            else -> next ?: "Completed"
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -923,4 +932,11 @@ private fun carriedOverSince(date: java.time.LocalDate?): String {
         days < 7 -> date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
         else -> date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
     }
+}
+
+/** A recurring task on an off day whose period isn't done: it can be done now (CONTRACTS: Periods). */
+private fun Task.isOptionalToday(): Boolean {
+    if (recurrenceType == null) return false
+    val status = status()
+    return !status.scheduled && !status.completed
 }

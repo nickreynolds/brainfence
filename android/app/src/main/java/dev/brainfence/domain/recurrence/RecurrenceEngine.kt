@@ -336,7 +336,7 @@ private fun parseDayOfWeek(abbrev: String): DayOfWeek = when (abbrev.lowercase()
 data class TaskStatus(
     /** An occurrence is open now: due today, or carried over from an earlier day. */
     val scheduled: Boolean,
-    /** The open occurrence is done (with none open: completed today). */
+    /** The open occurrence is done; with none open, the current period is done. */
     val completed: Boolean,
     /** The open occurrence started on an earlier day. */
     val carriedOver: Boolean,
@@ -372,18 +372,18 @@ fun computeTaskStatus(
     val scheduledOn = schedulePredicate(recurrenceType, recurrenceConfig)
         ?: return TaskStatus(true, completedToday, false, phase, null)
 
-    val open: LocalDate? = when {
-        scheduledOn(today) -> today
-        carryOver -> {
-            val earliest = createdAt?.atZone(timeZone)?.toLocalDate()
-            (1..CARRY_OVER_LOOKBACK_DAYS).asSequence()
-                .map { today.minusDays(it) }
-                .takeWhile { earliest == null || it >= earliest }
-                .firstOrNull(scheduledOn)
-        }
-        else -> null
+    // The latest scheduled date on or before today, not before the task existed.
+    val earliest = createdAt?.atZone(timeZone)?.toLocalDate()
+    val latest: LocalDate? = (0..CARRY_OVER_LOOKBACK_DAYS).asSequence()
+        .map { today.minusDays(it) }
+        .takeWhile { earliest == null || it >= earliest }
+        .firstOrNull(scheduledOn)
+    val open = latest?.takeIf { it == today || carryOver }
+    if (open == null) {
+        // Off day: the current period runs from the latest occurrence (or creation).
+        val periodStart = latest ?: earliest ?: today
+        return TaskStatus(false, lastDate != null && lastDate >= periodStart, false, null, null)
     }
-    if (open == null) return TaskStatus(false, completedToday, false, null, null)
 
     val carriedOver = open != today
     return TaskStatus(

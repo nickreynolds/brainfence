@@ -252,7 +252,7 @@ func parseDays(_ value: JSONValue) -> Set<Weekday> {
 public struct TaskStatus: Sendable, Equatable {
     /// An occurrence is open now: due today, or carried over from an earlier day.
     public let scheduled: Bool
-    /// The open occurrence is done (with none open: completed today).
+    /// The open occurrence is done; with none open, the current period is done.
     public let completed: Bool
     /// The open occurrence started on an earlier day.
     public let carriedOver: Bool
@@ -290,19 +290,19 @@ public func computeTaskStatus(
         return TaskStatus(scheduled: true, completed: completedToday, carriedOver: false, phase: phase, occurrenceDate: nil)
     }
 
-    var open: CivilDate?
-    if scheduledOn(today) {
-        open = today
-    } else if carryOver {
-        let earliest = createdAt.map { clock.date(of: $0) }
-        for back in 1...carryOverLookbackDays {
-            let candidate = today.plusDays(-back)
-            if let earliest, candidate < earliest { break }
-            if scheduledOn(candidate) { open = candidate; break }
-        }
+    // The latest scheduled date on or before today, not before the task existed.
+    let earliest = createdAt.map { clock.date(of: $0) }
+    var latest: CivilDate?
+    for back in 0...carryOverLookbackDays {
+        let candidate = today.plusDays(-back)
+        if let earliest, candidate < earliest { break }
+        if scheduledOn(candidate) { latest = candidate; break }
     }
-    guard let open else {
-        return TaskStatus(scheduled: false, completed: completedToday, carriedOver: false, phase: nil, occurrenceDate: nil)
+    guard let open = latest, open == today || carryOver else {
+        // Off day: the current period runs from the latest occurrence (or creation).
+        let periodStart = latest ?? earliest ?? today
+        let completed = lastDate.map { $0 >= periodStart } ?? false
+        return TaskStatus(scheduled: false, completed: completed, carriedOver: false, phase: nil, occurrenceDate: nil)
     }
     let carriedOver = open != today
     return TaskStatus(
@@ -358,5 +358,13 @@ extension BrainTask {
             now: now,
             timeZone: timeZone
         )
+    }
+
+    /// A recurring task on an off day whose period isn't done yet: it can be
+    /// done now, it just isn't due (shared/CONTRACTS.md: Periods).
+    public func isOptionalToday(now: Date = Date(), timeZone: TimeZone = .current) -> Bool {
+        guard recurrenceType != nil else { return false }
+        let status = status(now: now, timeZone: timeZone)
+        return !status.scheduled && !status.completed
     }
 }
