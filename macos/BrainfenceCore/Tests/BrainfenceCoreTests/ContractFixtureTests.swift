@@ -262,4 +262,17 @@ final class ContractFixtureTests: XCTestCase {
                            (c["rest_after"]?.arrayValue ?? []).compactMap(\.intValue), name)
         }
     }
+
+    func testBoardHolds() throws {
+        let cases = try XCTUnwrap(fixture("board-holds.json")["cases"]?.arrayValue)
+        XCTAssertFalse(cases.isEmpty)
+        for c in cases {
+            let name = c["name"]?.stringValue ?? ""
+            let config = TimedSetsConfig(json: c["config"]?.jsonString)
+            XCTAssertEqual(config.board, c["board"]?.stringValue, name)
+            XCTAssertEqual(config.leftHold, c["left_hold"]?.stringValue, name)
+            XCTAssertEqual(config.rightHold, c["right_hold"]?.stringValue, name)
+            XCTAssertEqual(config.holdsCaption, c["caption"]?.stringValue, name)
+        }
+    }
 }

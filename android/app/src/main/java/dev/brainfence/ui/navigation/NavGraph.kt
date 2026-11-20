@@ -451,6 +451,7 @@ fun BrainfenceNavGraph(
                         onStartAutoRoutine = routineViewModel::startAutoRoutine,
                         onStopAutoRoutine = routineViewModel::stopAutoRoutine,
                         onSetTimedWeight = routineViewModel::setTimedSetWeight,
+                        onSetTimedSets = routineViewModel::setTimedSets,
                         onConfirmSetWeight = routineViewModel::confirmSetWeight,
                         reportSteps = reportSteps,
                         reportSubmissions = reportSubmissions,

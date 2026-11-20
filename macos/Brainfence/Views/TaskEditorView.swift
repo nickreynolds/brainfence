@@ -300,8 +300,8 @@ private struct RoutineStepsEditor: View {
     private var isWorkout: Bool { s.taskType == "workout" }
     private var types: [(String, String)] {
         isWorkout
-            ? [("weight_reps", "Weight & Reps"), ("just_reps", "Reps Only"), ("timed", "Timed"), ("checkbox", "Checkbox")]
-            : [("checkbox", "Checkbox"), ("timed", "Timed"), ("weight_reps", "Weight & Reps"), ("just_reps", "Reps Only"), ("report", "Report")]
+            ? [("weight_reps", "Weight & Reps"), ("just_reps", "Reps Only"), ("timed", "Timed"), ("timed_sets", "Interval sets"), ("checkbox", "Checkbox")]
+            : [("checkbox", "Checkbox"), ("timed", "Timed"), ("timed_sets", "Interval sets"), ("weight_reps", "Weight & Reps"), ("just_reps", "Reps Only"), ("report", "Report")]
     }
 
     var body: some View {
@@ -366,6 +366,9 @@ private struct RoutineStepsEditor: View {
             }
             if step.stepType == "report" {
                 ReportPicker(selection: binding.reportId, reports: reports)
+            }
+            if step.stepType == "timed_sets" {
+                TimedSetsEditor(step: binding)
             }
             if let group = step.supersetGroup {
                 HStack {
@@ -487,5 +490,69 @@ private struct AlternativeLocationFields: View {
             return URL(string: "https://www.openstreetmap.org/?mlat=\(lat)&mlon=\(lng)#map=17/\(lat)/\(lng)")!
         }
         return URL(string: "https://www.openstreetmap.org/")!
+    }
+}
+
+/// An interval step's timings, sides, weight logging and hangboard holds
+/// (CONTRACTS: Timed sets, Board holds).
+private struct TimedSetsEditor: View {
+    @Binding var step: EditableStep
+    @State private var hand = "left"
+
+    var body: some View {
+        let t = step.timedSets
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 16) {
+                Stepper("Reps per set: \(step.defaultSets)", value: $step.defaultSets, in: 1...50)
+                Stepper("Sets: \(t.sets)", value: $step.timedSets.sets, in: 1...10)
+            }
+            HStack(spacing: 16) {
+                Stepper("On: \(step.durationSeconds) s", value: $step.durationSeconds, in: 1...600)
+                Stepper("Off: \(t.restSeconds) s", value: $step.timedSets.restSeconds, in: 0...600)
+                Stepper("Between sets: \(t.setRestSeconds) s", value: $step.timedSets.setRestSeconds, in: 0...1800, step: 15)
+            }
+            HStack(spacing: 16) {
+                Toggle("One arm at a time (left, then right)", isOn: $step.timedSets.oneArm)
+                if t.oneArm {
+                    Stepper("Between sides: \(t.sideRestSeconds) s", value: $step.timedSets.sideRestSeconds, in: 0...600, step: 5)
+                }
+            }
+            Picker("Log weight", selection: $step.timedSets.weight) {
+                Text("No").tag(TimedSetsConfig.WeightKind?.none)
+                Text("Added to bodyweight (− = assisted)").tag(TimedSetsConfig.WeightKind?.some(.added))
+                Text("Weight lifted").tag(TimedSetsConfig.WeightKind?.some(.load))
+            }
+            .frame(maxWidth: 360)
+            Picker("Hangboard", selection: Binding(
+                get: { t.board },
+                set: { step.timedSets.board = $0; step.timedSets.leftHold = nil; step.timedSets.rightHold = nil }
+            )) {
+                Text("None").tag(String?.none)
+                ForEach(Boards.all.values.sorted { $0.name < $1.name }, id: \.id) { b in Text(b.name).tag(String?.some(b.id)) }
+            }
+            .frame(maxWidth: 360)
+            if let board = t.board.flatMap({ Boards.all[$0] }) {
+                HStack {
+                    Picker("Click a hold for the", selection: $hand) {
+                        Text("Left hand").tag("left")
+                        Text("Right hand").tag("right")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
+                    Button("Clear") {
+                        if hand == "left" { step.timedSets.leftHold = nil } else { step.timedSets.rightHold = nil }
+                    }
+                }
+                BoardView(board: board, leftHold: t.leftHold, rightHold: t.rightHold, maxWidth: 520) { id in
+                    if hand == "left" {
+                        step.timedSets.leftHold = id
+                        if step.timedSets.rightHold == nil { hand = "right" }
+                    } else {
+                        step.timedSets.rightHold = id
+                    }
+                }
+                Text(t.holdsCaption ?? "No holds picked").font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }

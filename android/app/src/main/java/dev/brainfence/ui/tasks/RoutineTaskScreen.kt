@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -115,6 +116,7 @@ fun RoutineTaskScreen(
     onStartAutoRoutine: () -> Unit = {},
     onStopAutoRoutine: () -> Unit = {},
     onSetTimedWeight: (stepId: String, setIndex: Int, weight: Double?) -> Unit = { _, _, _ -> },
+    onSetTimedSets: (stepId: String, sets: Int) -> Unit = { _, _ -> },
     onConfirmSetWeight: () -> Unit = {},
     reportSteps: Map<String, Report?> = emptyMap(),
     reportSubmissions: Map<String, ReportSubmission> = emptyMap(),
@@ -202,13 +204,15 @@ fun RoutineTaskScreen(
         } else if (isAutoRoutine) {
             AutoRoutineContent(
                 task = task,
-                steps = steps,
+                // The session's copy of each step: a set count changed before starting shows at once.
+                steps = steps.map { stepStates[it.id]?.step ?: it },
                 stepStates = stepStates,
                 autoProgress = autoProgress,
                 isCompleting = isCompleting,
                 onStart = onStartAutoRoutine,
                 onStop = onStopAutoRoutine,
                 onSetWeight = onSetTimedWeight,
+                onSetSets = onSetTimedSets,
                 onConfirmSetWeight = onConfirmSetWeight,
                 modifier = Modifier
                     .fillMaxSize()
@@ -327,6 +331,7 @@ private fun AutoRoutineContent(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onSetWeight: (stepId: String, setIndex: Int, weight: Double?) -> Unit,
+    onSetSets: (stepId: String, sets: Int) -> Unit,
     onConfirmSetWeight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -347,8 +352,10 @@ private fun AutoRoutineContent(
         val config = TimedSetsConfig.parse(step.config)
         return stepStates[step.id]?.sets?.getOrNull(set * config.hangsPerSet)?.weight
     }
-    // Steps whose weight is confirmed once, before the routine starts.
-    val startWeighted = steps.filter { TimedSetsConfig.parse(it.config).let { c -> c.weight != null && c.weightPrompt == "start" } }
+    // Steps to confirm before starting: their weight and number of sets (CONTRACTS: Before starting).
+    val toConfirm = steps.filter {
+        it.stepType == "timed_sets" && TimedSetsConfig.parse(it.config).let { c -> c.weight != null || c.sets > 1 }
+    }
 
     val phaseColor by animateColorAsState(
         targetValue = when (phase) {
@@ -368,18 +375,23 @@ private fun AutoRoutineContent(
         ) {
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Confirm weights", style = MaterialTheme.typography.titleLarge)
+                Text("Before you start", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "Added weight for each hang (negative = assisted). Pre-filled from last time.",
+                    "Weights are pre-filled from last time. A change to the number of sets is saved for next time.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            items(startWeighted, key = { it.id }) { step ->
+            items(toConfirm, key = { it.id }) { step ->
                 val config = TimedSetsConfig.parse(step.config)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(step.title, style = MaterialTheme.typography.titleSmall)
-                    WeightField(config.weight!!, weightOf(step, 0)) { onSetWeight(step.id, 0, it) }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(step.title, style = MaterialTheme.typography.titleSmall)
+                        CountStepper("Sets", config.sets, 1..10) { onSetSets(step.id, it) }
+                        if (config.weight != null && config.weightPrompt == "start") {
+                            WeightStepper(config.weight, weightOf(step, 0)) { onSetWeight(step.id, 0, it) }
+                        }
+                    }
                 }
             }
             item {
@@ -415,7 +427,7 @@ private fun AutoRoutineContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         step.description?.takeIf { it.isNotBlank() }?.let { StepNotes(it) }
-                        step.imageUrl?.let { StepImage(it, maxHeight = 160.dp) }
+                        StepVisual(step, maxHeight = 160.dp)
                         if (config.weight != null) {
                             Text(
                                 if (config.weightPrompt == "each_set") "Weight asked before each set"
@@ -429,7 +441,7 @@ private fun AutoRoutineContent(
             }
             item {
                 Button(
-                    onClick = { if (startWeighted.isNotEmpty()) confirming = true else onStart() },
+                    onClick = { if (toConfirm.isNotEmpty()) confirming = true else onStart() },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
@@ -467,13 +479,13 @@ private fun AutoRoutineContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                currentStep?.imageUrl?.let {
+                currentStep?.let {
                     Spacer(Modifier.height(8.dp))
-                    StepImage(it, maxHeight = 180.dp)
+                    StepVisual(it, maxHeight = 180.dp)
                 }
                 Spacer(Modifier.height(16.dp))
                 if (currentStep != null && currentConfig?.weight != null) {
-                    WeightField(currentConfig.weight, weightOf(currentStep, setIndex)) {
+                    WeightStepper(currentConfig.weight, weightOf(currentStep, setIndex)) {
                         onSetWeight(currentStep.id, setIndex, it)
                     }
                 }
@@ -522,15 +534,26 @@ private fun AutoRoutineContent(
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Resting before a weighted set: its weight can still change; the rest keeps running.
+                val adjustable = !paused && (phase == AutoPhase.REST || phase == AutoPhase.COUNTDOWN) &&
+                    currentConfig?.weight != null && currentConfig.weightPrompt == "start" &&
+                    currentConfig.startsSet(autoProgress.rep)
                 if (currentStep != null && currentConfig?.weight != null) {
-                    Text(
-                        TimedSetsConfig.formatWeight(currentConfig.weight, weightOf(currentStep, setIndex)),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (adjustable) {
+                        Spacer(Modifier.height(8.dp))
+                        WeightStepper(currentConfig.weight, weightOf(currentStep, setIndex), label = "Set ${setIndex + 1} weight") {
+                            onSetWeight(currentStep.id, setIndex, it)
+                        }
+                    } else {
+                        Text(
+                            TimedSetsConfig.formatWeight(currentConfig.weight, weightOf(currentStep, setIndex)),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                currentStep?.imageUrl?.let {
+                currentStep?.let {
                     Spacer(Modifier.height(8.dp))
-                    StepImage(it, maxHeight = 180.dp)
+                    StepVisual(it, maxHeight = 180.dp)
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -614,36 +637,54 @@ private fun describeTimedSets(c: TimedSetsConfig): String {
     return "${c.sets} sets of $hangs \u00b7 ${formatTimerTime(c.setRestSeconds)} between sets"
 }
 
-/** Added weight (negative = assisted) or the load lifted, in lb. Blank = bodyweight / none. */
+/** Added weight (negative = assisted) or the load lifted: the same −/+ picker as other weighted exercises. */
 @Composable
-private fun WeightField(kind: String, value: Double?, onChange: (Double?) -> Unit) {
-    var text by remember { mutableStateOf(value?.let(::formatWeight) ?: "") }
-    LaunchedEffect(value) {
-        if (text.toDoubleOrNull() != value) text = value?.let(::formatWeight) ?: ""
+private fun WeightStepper(kind: String, value: Double?, label: String? = null, onChange: (Double) -> Unit) {
+    val range = TimedSetsConfig.weightRange(kind)
+    val options = remember(kind) {
+        val step = TimedSetsConfig.WEIGHT_STEP
+        (Math.round(range.start / step)..Math.round(range.endInclusive / step)).map { it * step }
     }
-    val allowNegative = kind == "added"
-    OutlinedTextField(
-        value = text,
-        onValueChange = { input ->
-            val ok = input.isEmpty() || (allowNegative && input == "-") ||
-                input.toDoubleOrNull()?.let { allowNegative || it >= 0 } == true
-            if (ok) {
-                text = input
-                when {
-                    input.isEmpty() -> onChange(null)
-                    input.toDoubleOrNull() != null -> onChange(input.toDouble())
-                }
-            }
-        },
-        label = { Text(if (allowNegative) "Added weight (lb, \u2212 = assisted)" else "Weight (lb)") },
-        placeholder = { Text(if (allowNegative) "Bodyweight" else "0") },
-        singleLine = true,
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-            keyboardType = if (allowNegative) androidx.compose.ui.text.input.KeyboardType.Text
-            else androidx.compose.ui.text.input.KeyboardType.Decimal,
-        ),
-        modifier = Modifier.fillMaxWidth(),
+    WeightStepperPicker(
+        weight = value ?: 0.0,
+        onWeightChange = onChange,
+        options = options,
+        label = label ?: if (kind == "added") "Added weight" else "Weight",
+        format = { TimedSetsConfig.formatWeight(kind, it) },
     )
+}
+
+/** A small whole-number −/+ picker (sets before starting). */
+@Composable
+private fun CountStepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        FilledTonalIconButton(onClick = { onChange(value - 1) }, enabled = value > range.first) {
+            Icon(Icons.Default.Remove, contentDescription = "Fewer $label")
+        }
+        Text(value.toString(), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 40.dp))
+        FilledTonalIconButton(onClick = { onChange(value + 1) }, enabled = value < range.last) {
+            Icon(Icons.Default.Add, contentDescription = "More $label")
+        }
+    }
+}
+
+/** The holds to use (drawn board) or the step's picture. */
+@Composable
+internal fun StepVisual(step: RoutineStep, maxHeight: androidx.compose.ui.unit.Dp = 220.dp) {
+    val config = if (step.stepType == "timed_sets") TimedSetsConfig.parse(step.config) else null
+    val board = config?.boardLayout
+    if (config != null && board != null) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            BoardView(board, config.leftHold, config.rightHold, maxWidth = maxHeight * (board.width / board.height))
+            config.holdsCaption?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+        }
+    } else {
+        step.imageUrl?.let { StepImage(it, maxHeight) }
+    }
 }
 
 /** A step's picture (e.g. which holds to use), scaled to fit and cached by Coil. */
@@ -748,9 +789,9 @@ private fun StepCard(
             if (!step.description.isNullOrBlank()) {
                 StepNotes(step.description)
             }
-            step.imageUrl?.let {
+            if (step.imageUrl != null || step.stepType == "timed_sets") {
                 Spacer(Modifier.height(8.dp))
-                StepImage(it)
+                StepVisual(step)
             }
 
             Spacer(Modifier.height(12.dp))
@@ -987,7 +1028,11 @@ private fun CompletedSetSummary(
 private fun WeightStepperPicker(
     weight: Double,
     onWeightChange: (Double) -> Unit,
+    options: List<Double> = WEIGHT_OPTIONS,
+    label: String = "Weight",
+    format: (Double) -> String = { "${formatWeight(it)} lbs" },
 ) {
+    val WEIGHT_OPTIONS = options
     val currentIndex = WEIGHT_OPTIONS.indexOf(weight).takeIf { it >= 0 }
         ?: WEIGHT_OPTIONS.indexOfFirst { it >= weight }.takeIf { it >= 0 }
         ?: 0
@@ -1012,10 +1057,10 @@ private fun WeightStepperPicker(
             modifier = Modifier.weight(1f),
         ) {
             OutlinedTextField(
-                value = "${formatWeight(weight)} lbs",
+                value = format(weight),
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Weight") },
+                label = { Text(label) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier
                     .menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -1028,7 +1073,7 @@ private fun WeightStepperPicker(
             ) {
                 WEIGHT_OPTIONS.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text("${formatWeight(option)} lbs") },
+                        text = { Text(format(option)) },
                         onClick = {
                             onWeightChange(option)
                             expanded = false

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseJsonObject } from '@shared/json'
 import type { Report, ReportSubmission, RoutineStep, StepCompletion, Task } from '@shared/models'
 import { REPORT_DEFINITION_TABLES, REPORT_SUBMISSION_TABLES, getReports, getTodaysRoutineSubmissions } from '@shared/repos/reports'
-import { ROUTINE_TABLES, completeRoutine, getLastStepCompletions, getRoutineSteps } from '@shared/repos/routines'
+import { ROUTINE_TABLES, completeRoutine, getLastStepCompletions, getRoutineSteps, setTimedSetsCount } from '@shared/repos/routines'
 import { reportIdFromConfig } from '@shared/verification'
 import { parseTimedSetsConfig, timedSetsHangCount, timedSetsRestAfter, timedSetsSetOf, timedSetsSideOf, timedSetsStartsSet } from '@shared/timedSets'
 import { db, useQuery } from '../../lib/hooks'
@@ -74,6 +74,26 @@ function prefill(steps: RoutineStep[], last: StepCompletion[]): { states: Record
     }
   }
   return { states, rounds: initialRounds(steps) }
+}
+
+/**
+ * A timed_sets step's entries after its config changed (e.g. a new number of
+ * sets): one per hang again, each set keeping its weight (new sets take the
+ * last one's). Completed hangs are kept while their index still exists.
+ */
+export function rebuildTimedSets(old: StepState, step: RoutineStep): StepState {
+  const oldCfg = parseTimedSetsConfig(old.step.config)
+  const cfg = parseTimedSetsConfig(step.config)
+  const weightOfSet = (set: number): number | null => {
+    const first = old.sets.findIndex((_, i) => timedSetsSetOf(oldCfg, i) === set)
+    return (first >= 0 ? old.sets[first] : old.sets[old.sets.length - 1])?.weight ?? null
+  }
+  const sets = Array.from({ length: timedSetsHangCount(cfg) }, (_, i) => ({
+    ...blankSet(),
+    completed: old.sets[i]?.completed ?? false,
+    weight: weightOfSet(timedSetsSetOf(cfg, i)),
+  }))
+  return { step, sets, activeSetIndex: Math.min(old.activeSetIndex, sets.length - 1) }
 }
 
 function initialRounds(steps: RoutineStep[]): Record<string, SupersetRound> {
@@ -209,9 +229,12 @@ export function useRoutineSession(task: Task) {
     setStates((prev) => {
       const next: Record<string, StepState> = {}
       for (const step of steps) {
-        next[step.id] = prev[step.id]
-          ? { ...prev[step.id], step }
-          : { step, activeSetIndex: 0, sets: Array.from({ length: defaultSetCount(step) }, blankSet) }
+        const old = prev[step.id]
+        next[step.id] = !old
+          ? { step, activeSetIndex: 0, sets: Array.from({ length: defaultSetCount(step) }, blankSet) }
+          : step.stepType === 'timed_sets' && old.sets.length !== defaultSetCount(step)
+            ? rebuildTimedSets(old, step)
+            : { ...old, step }
       }
       return next
     })
@@ -319,6 +342,14 @@ export function useRoutineSession(task: Task) {
         const cfg = parseTimedSetsConfig(s.step.config)
         return { ...s, sets: s.sets.map((e, i) => (timedSetsSetOf(cfg, i) >= setIndex ? { ...e, weight } : e)) }
       }),
+    /** Saves a timed_sets step's number of sets as its default and rebuilds its entries. */
+    setTimedSets: (stepId: string, sets: number) => {
+      const s = latest.current.states[stepId]
+      if (!s || sets < 1) return
+      const step = { ...s.step, config: JSON.stringify({ ...parseJsonObject(s.step.config), sets }) }
+      updateStep(stepId, (prev) => rebuildTimedSets(prev, step))
+      void setTimedSetsCount(db, s.step, sets)
+    },
     goToRound: (groupId: string, round: number) =>
       setRounds((prev) => (prev[groupId] && round >= 1 && round <= prev[groupId].totalRounds ? { ...prev, [groupId]: { ...prev[groupId], currentRound: round } } : prev)),
   }
@@ -367,8 +398,11 @@ export function useRoutineSession(task: Task) {
   }
 
   // ── Automatic routine ─────────────────────────────────────────────
+  const stepsInSession = () => steps.map((s) => latest.current.states[s.id]?.step ?? s)
   const startAuto = () => {
     if (cancelAuto.current && !cancelAuto.current.cancelled) return
+    // The session's copy of each step: a set count changed before starting is there first.
+    const steps = stepsInSession()
     if (steps.length === 0) return
     let startExercise = 0
     let startRep = 0
@@ -474,7 +508,9 @@ export function useRoutineSession(task: Task) {
   }
 
   return {
-    steps, stepsLoading, states, rounds, auto, isAutoRoutine, isCompleting, allStepsCompleted, initialized,
+    // Each step as this session sees it (a set count changed here applies at once).
+    steps: steps.map((s) => states[s.id]?.step ?? s),
+    stepsLoading, states, rounds, auto, isAutoRoutine, isCompleting, allStepsCompleted, initialized,
     reportSteps, submissions, actions, finish, startAuto, stopAuto, confirmSetWeight,
   }
 }

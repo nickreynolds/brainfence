@@ -1,5 +1,6 @@
 // timed_sets steps: shared/CONTRACTS.md (Timed sets), fixtures/timed-sets.json.
 
+import { BOARDS, BoardHold, BoardLayout } from './boards.generated'
 import { parseJsonObject } from './json'
 
 /** "added": weight added to bodyweight, negative = assisted. "load": the weight lifted. */
@@ -22,6 +23,10 @@ export interface TimedSetsConfig {
   setRestSeconds: number
   weight: WeightKind | null
   weightPrompt: WeightPrompt
+  /** Hangboard (shared/boards.json) and each hand's hold; null when absent or unknown. */
+  board: string | null
+  leftHold: string | null
+  rightHold: string | null
 }
 
 export function parseTimedSetsConfig(json: string | null | undefined): TimedSetsConfig {
@@ -41,7 +46,47 @@ export function parseTimedSetsConfig(json: string | null | undefined): TimedSets
     setRestSeconds: int(c.set_rest_seconds, restSeconds, 0),
     weight: c.weight === 'added' || c.weight === 'load' ? c.weight : null,
     weightPrompt: c.weight_prompt === 'each_set' ? 'each_set' : 'start',
+    ...parseBoardHolds(c),
   }
+}
+
+/** shared/CONTRACTS.md (Board holds): unknown boards and holds are ignored. */
+function parseBoardHolds(c: Record<string, unknown>): { board: string | null; leftHold: string | null; rightHold: string | null } {
+  const board = typeof c.board === 'string' ? BOARDS[c.board] : undefined
+  if (!board) return { board: null, leftHold: null, rightHold: null }
+  const hold = (v: unknown) => (typeof v === 'string' && board.holds.some((h) => h.id === v) ? v : null)
+  return { board: board.id, leftHold: hold(c.left_hold), rightHold: hold(c.right_hold) }
+}
+
+export function boardOf(config: TimedSetsConfig): BoardLayout | null {
+  return config.board ? BOARDS[config.board] ?? null : null
+}
+
+function holdOf(board: BoardLayout, id: string | null): BoardHold | null {
+  return id ? board.holds.find((h) => h.id === id) ?? null : null
+}
+
+/** "Hold 5 · large flat edge", "Left: hold 10, small edge · Right: hold 9, …" (fixtures/board-holds.json). */
+export function boardHoldsCaption(config: TimedSetsConfig): string | null {
+  const board = boardOf(config)
+  if (!board) return null
+  const left = holdOf(board, config.leftHold)
+  const right = holdOf(board, config.rightHold)
+  const named = (h: BoardHold) => `hold ${h.number}, ${h.name}`
+  if (left && right) {
+    if (left.id === right.id) return `Hold ${left.number} · ${left.name} · both hands`
+    if (left.number === right.number) return `Hold ${left.number} · ${left.name}`
+    return `Left: ${named(left)} · Right: ${named(right)}`
+  }
+  if (left) return `Left hand only: ${named(left)}`
+  if (right) return `Right hand only: ${named(right)}`
+  return null
+}
+
+/** Weights the stepper offers, in 2.5 lb steps (CONTRACTS: Weights). */
+export const WEIGHT_STEP = 2.5
+export function weightRange(kind: WeightKind): { min: number; max: number } {
+  return kind === 'added' ? { min: -100, max: 200 } : { min: 0, max: 500 }
 }
 
 /** Hangs (entries) per set: both sides. */

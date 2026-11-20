@@ -1,7 +1,7 @@
 // Port of data/routine/RoutineRepository.kt.
 
 import { Db, SqlStatement, requireUserId } from '../db'
-import { nowIso, uuid } from '../json'
+import { nowIso, parseJsonObject, uuid } from '../json'
 import type { RoutineStep, StepCompletion } from '../models'
 
 export const ROUTINE_TABLES = ['routine_steps']
@@ -103,4 +103,11 @@ export async function insertSingleStep(db: Db, taskId: string, step: NewRoutineS
 
 export async function deleteStep(db: Db, stepId: string): Promise<void> {
   await db.execute('DELETE FROM routine_steps WHERE id = ?', [stepId])
+}
+
+/** Sets a timed_sets step's number of sets, keeping the rest of its config. */
+export async function setTimedSetsCount(db: Db, step: RoutineStep, sets: number): Promise<string> {
+  const config = JSON.stringify({ ...parseJsonObject(step.config), sets })
+  await db.execute('UPDATE routine_steps SET config = ? WHERE id = ?', [config, step.id])
+  return config
 }

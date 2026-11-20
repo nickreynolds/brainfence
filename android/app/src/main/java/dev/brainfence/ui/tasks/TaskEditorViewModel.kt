@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import dev.brainfence.domain.verification.TimedSetsConfig
 import org.json.JSONObject
 import java.time.Instant
 import java.util.Locale
@@ -39,7 +40,34 @@ data class EditableStep(
     /** The loaded step's type and config, so keys this editor doesn't manage survive a save. */
     val originalStepType: String? = null,
     val originalConfig: String = "{}",
+    /** timed_sets settings beyond reps ([defaultSets]) and work ([durationSeconds]). */
+    val timedSets: TimedSetsFields = TimedSetsFields.from("{}"),
 )
+
+/** shared/CONTRACTS.md (Timed sets): the keys the step editor manages. */
+data class TimedSetsFields(
+    val restSeconds: Int,
+    val sets: Int,
+    val setRestSeconds: Int,
+    /** sides = 2: one arm at a time. */
+    val oneArm: Boolean,
+    val sideRestSeconds: Int,
+    /** "added", "load" or null. */
+    val weight: String?,
+    val board: String?,
+    val leftHold: String?,
+    val rightHold: String?,
+) {
+    companion object {
+        fun from(config: String): TimedSetsFields {
+            val c = TimedSetsConfig.parse(config)
+            return TimedSetsFields(
+                restSeconds = c.restSeconds, sets = c.sets, setRestSeconds = c.setRestSeconds, oneArm = c.sides == 2,
+                sideRestSeconds = c.sideRestSeconds, weight = c.weight, board = c.board, leftHold = c.leftHold, rightHold = c.rightHold,
+            )
+        }
+    }
+}
 
 /** The editor's "or be at a location" option: the first GPS completion alternative. */
 data class AlternativeLocation(
@@ -199,6 +227,7 @@ class TaskEditorViewModel @Inject constructor(
                             description = rs.description.orEmpty(),
                             originalStepType = rs.stepType,
                             originalConfig = rs.config,
+                            timedSets = TimedSetsFields.from(rs.config),
                         )
                     }
                 } else emptyList()
@@ -760,9 +789,21 @@ class TaskEditorViewModel @Inject constructor(
             "weight_reps", "just_reps" -> cfg.put("default_sets", step.defaultSets)
             "timed" -> cfg.put("duration_seconds", step.durationSeconds)
             "timed_sets" -> {
+                val t = step.timedSets
                 cfg.put("reps", step.defaultSets)
                 cfg.put("work_seconds", step.durationSeconds)
-                if (!cfg.has("rest_seconds")) cfg.put("rest_seconds", 20)
+                cfg.put("rest_seconds", t.restSeconds)
+                cfg.put("sets", t.sets)
+                cfg.put("set_rest_seconds", t.setRestSeconds)
+                cfg.put("sides", if (t.oneArm) 2 else 1)
+                if (t.oneArm) cfg.put("side_rest_seconds", t.sideRestSeconds) else cfg.remove("side_rest_seconds")
+                if (t.weight != null) cfg.put("weight", t.weight) else { cfg.remove("weight"); cfg.remove("weight_prompt") }
+                listOf("board", "left_hold", "right_hold").forEach(cfg::remove)
+                if (t.board != null) {
+                    cfg.put("board", t.board)
+                    t.leftHold?.let { cfg.put("left_hold", it) }
+                    t.rightHold?.let { cfg.put("right_hold", it) }
+                }
             }
             "report" -> {
                 cfg.remove("report_id")

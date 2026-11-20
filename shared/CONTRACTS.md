@@ -208,6 +208,13 @@ An automatic interval step. `config`:
 | `set_rest_seconds` | `rest_seconds` | Rest after each set, including before the next step |
 | `weight` | none | `"added"`: weight added to bodyweight, negative means assisted (hangs). `"load"`: the weight lifted, never negative (pinch block, lifts). |
 | `weight_prompt` | `"start"` | When the runner asks for the weight: `"start"` = once, before the routine starts; `"each_set"` = right before each set |
+| `board` | none | A hangboard from `shared/boards.json` (e.g. `"bm2000"`); see Board holds |
+| `left_hold`, `right_hold` | none | Hold ids on `board` for each hand |
+
+Step editors manage `reps`, `work_seconds`, `rest_seconds`, `sets`,
+`set_rest_seconds`, `sides`, `side_rest_seconds` (only with two sides),
+`weight` (removing `weight_prompt` with it), `board`, `left_hold` and
+`right_hold`; other keys are written back unchanged.
 
 The step has `sets × sides × reps` entries, one per hang, ordered by set, then
 side, then hang. Entry *i* is in set ⌊*i* / (reps × sides)⌋ and on side
@@ -218,9 +225,18 @@ side, then hang. Entry *i* is in set ⌊*i* / (reps × sides)⌋ and on side
 - `side_rest_seconds` when *i* + 1 is a multiple of reps (switching sides);
 - `rest_seconds` otherwise.
 
-**Weights.** With `weight_prompt: "start"`, pressing Start shows every such step
-with its weight (pre-filled) to confirm before anything runs. Resuming a paused
-routine doesn't ask again. With `"each_set"`, the runner stops before the first
+**Before starting.** Pressing Start lists every `timed_sets` step that logs a
+weight or has more than one set, to confirm before anything runs: its weight
+(for `weight_prompt: "start"`, pre-filled) and its number of sets. Changing the
+sets there saves `sets` to the step's config, so it's the default from then on,
+and the step's entries are rebuilt. Resuming a paused routine doesn't ask again.
+
+**Weights.** Weights are picked with −/+ buttons in 2.5 lb steps (`added`:
+−100 to +200 lb, 0 shown as bodyweight; `load`: 0 to 500 lb).
+During the rest before any set of a weighted step after the first one it
+runs (the rest after the previous set, or after the previous step), the
+runner shows that set's weight with the same buttons. The rest keeps counting;
+leaving it alone keeps the weight. With `"each_set"`, the runner stops before the first
 hang of each set (after the rest, with no countdown in that rest) and asks for
 that set's weight, then counts down. A set's weight applies to every later set
 of the step too, until changed. Pre-filled weights come from the last
@@ -231,12 +247,34 @@ Each hang is saved as one `step_completions` row with `set_number` = its
 `"weight"` (the set's weight) for weighted steps and `"side": "left" | "right"`
 for two-sided steps.
 
+## Board holds
+
+`shared/boards.json` holds each hangboard's layout; `npm run codegen` turns it
+into code for every client. A hold's `number` is the manufacturer's (or the
+manual's) number for the left-hand hold, mirrored on the right: ids `5L` and
+`5R` are both hold 5. Centre holds have a single id (`9`).
+
+A `timed_sets` step with a known `board` names a hold for each hand with
+`left_hold` and `right_hold`. Either may be missing (one hand), unknown ids are
+ignored, and an unknown board ignores all three. Clients draw the board with
+the chosen holds highlighted and marked L / R, in place of the step's image,
+with a caption (`fixtures/board-holds.json`):
+
+| Holds | Caption |
+| --- | --- |
+| Same number (a mirrored pair) | `Hold 5 · large flat edge` |
+| The same centre hold | `Hold 9 · large flat edge · both hands` |
+| Different holds | `Left: hold 10, small edge · Right: hold 9, large flat edge` |
+| One hand | `Left hand only: hold 8, deep 2-finger pocket` |
+
+Editors pick the holds by tapping the board, one hand at a time.
+
 ## Step images
 
-`routine_steps.image_url` is an optional `https` URL to a PNG (for example the
-holds to use on a hangboard), shown with the step and on the automatic
-runner's current step. Brainfence's own images live in the public Supabase
-Storage bucket `routine-images` (`dev/routine-images/`).
+`routine_steps.image_url` is an optional `https` URL to a PNG, shown with the
+step and on the automatic runner's current step, unless the step has board
+holds (those are drawn instead). Images live in the public Supabase Storage
+bucket `routine-images`.
 
 ## Onboarding
 

@@ -1,5 +1,8 @@
 package dev.brainfence.ui.tasks
 
+import org.json.JSONObject
+import dev.brainfence.domain.verification.TimedSetsConfig
+import dev.brainfence.domain.board.Boards
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -1132,12 +1135,14 @@ private fun EditableStepCard(
                     "weight_reps" to "Weight & Reps",
                     "just_reps" to "Reps Only",
                     "timed" to "Timed",
+                    "timed_sets" to "Interval sets",
                     "checkbox" to "Checkbox",
                 )
             } else {
                 listOf(
                     "checkbox" to "Checkbox",
                     "timed" to "Timed",
+                    "timed_sets" to "Interval sets",
                     "weight_reps" to "Weight & Reps",
                     "just_reps" to "Reps Only",
                     "report" to "Report",
@@ -1207,6 +1212,10 @@ private fun EditableStepCard(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                "timed_sets" -> {
+                    Spacer(Modifier.height(8.dp))
+                    TimedSetsEditor(step, onUpdate)
+                }
                 "report" -> {
                     Spacer(Modifier.height(8.dp))
                     ReportPicker(
@@ -1234,6 +1243,103 @@ private fun EditableStepCard(
                             Text("Ungroup", style = MaterialTheme.typography.labelSmall)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** An interval step's timings, sides, weight logging and hangboard holds (CONTRACTS: Timed sets, Board holds). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimedSetsEditor(step: EditableStep, onUpdate: ((EditableStep) -> EditableStep) -> Unit) {
+    val t = step.timedSets
+    fun set(f: (TimedSetsFields) -> TimedSetsFields) = onUpdate { it.copy(timedSets = f(it.timedSets)) }
+
+    @Composable
+    fun NumberField(label: String, value: Int, min: Int, modifier: Modifier, onChange: (Int) -> Unit) {
+        OutlinedTextField(
+            value = value.toString(),
+            onValueChange = { text -> text.toIntOrNull()?.let { onChange(it.coerceAtLeast(min)) } },
+            label = { Text(label) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = modifier,
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NumberField("Reps per set", step.defaultSets, 1, Modifier.weight(1f)) { n -> onUpdate { it.copy(defaultSets = n) } }
+            NumberField("Sets", t.sets, 1, Modifier.weight(1f)) { n -> set { it.copy(sets = n) } }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NumberField("Seconds on", step.durationSeconds, 1, Modifier.weight(1f)) { n -> onUpdate { it.copy(durationSeconds = n) } }
+            NumberField("Seconds off", t.restSeconds, 0, Modifier.weight(1f)) { n -> set { it.copy(restSeconds = n) } }
+        }
+        NumberField("Rest between sets (s)", t.setRestSeconds, 0, Modifier.fillMaxWidth()) { n -> set { it.copy(setRestSeconds = n) } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("One arm at a time (left, then right)", modifier = Modifier.weight(1f))
+            Switch(checked = t.oneArm, onCheckedChange = { on -> set { it.copy(oneArm = on) } })
+        }
+        if (t.oneArm) {
+            NumberField("Rest between sides (s)", t.sideRestSeconds, 0, Modifier.fillMaxWidth()) { n -> set { it.copy(sideRestSeconds = n) } }
+        }
+
+        Text("Log weight", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(null to "No", "added" to "Added", "load" to "Lifted").forEach { (kind, label) ->
+                FilterChip(selected = t.weight == kind, onClick = { set { it.copy(weight = kind) } }, label = { Text(label) })
+            }
+        }
+        if (t.weight != null) {
+            Text(
+                if (t.weight == "added") "Weight added to bodyweight; negative means assisted" else "The weight lifted",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Text("Hangboard", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = t.board == null,
+                onClick = { set { it.copy(board = null, leftHold = null, rightHold = null) } },
+                label = { Text("None") },
+            )
+            Boards.all.values.forEach { b ->
+                FilterChip(
+                    selected = t.board == b.id,
+                    onClick = { set { it.copy(board = b.id, leftHold = null, rightHold = null) } },
+                    label = { Text(b.name) },
+                )
+            }
+        }
+        val board = t.board?.let { Boards.all[it] }
+        if (board != null) {
+            var hand by remember { mutableStateOf("left") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = hand == "left", onClick = { hand = "left" }, label = { Text("Left hand") })
+                FilterChip(selected = hand == "right", onClick = { hand = "right" }, label = { Text("Right hand") })
+            }
+            Text("Tap the board to place the selected hand", style = MaterialTheme.typography.bodySmall)
+            BoardView(board, t.leftHold, t.rightHold, onPick = { id ->
+                if (hand == "left") {
+                    set { it.copy(leftHold = id) }
+                    if (t.rightHold == null) hand = "right"
+                } else set { it.copy(rightHold = id) }
+            })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    TimedSetsConfig.parse(
+                        JSONObject().put("board", t.board).put("left_hold", t.leftHold).put("right_hold", t.rightHold).toString(),
+                    ).holdsCaption ?: "No holds picked",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { set { if (hand == "left") it.copy(leftHold = null) else it.copy(rightHold = null) } }) {
+                    Text("Clear ${hand} hand")
                 }
             }
         }

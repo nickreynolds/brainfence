@@ -3,10 +3,13 @@ import type { Report } from '@shared/models'
 import { REPORT_DEFINITION_TABLES, getReports } from '@shared/repos/reports'
 import { windowsAppRef } from '@shared/repos/blocking'
 import {
-  AlternativeLocation, EditableStep, TaskEditorState, emptyEditorState, loadEditorState, newEditableStep, saveTask, supportsAlternativeLocation, totalSteps,
+  AlternativeLocation, EditableStep, TaskEditorState, TimedSetsFields, emptyEditorState, loadEditorState, newEditableStep, saveTask, supportsAlternativeLocation, totalSteps,
   validateForSave, validateStep, verificationForType,
 } from '@shared/taskEditor'
 import { AppPicker, PickedApp } from '../components/AppPicker'
+import { BoardView } from '../components/BoardView'
+import { BOARDS } from '@shared/boards.generated'
+import { WeightKind, boardHoldsCaption, parseTimedSetsConfig } from '@shared/timedSets'
 import { Icon } from '../components/Icon'
 import { Chip, DayChips, ErrorText, Field, IconButton, Loading, NumberInput, Switch, TextInput, TopBar } from '../components/ui'
 import { cleanError, db, useQuery } from '../lib/hooks'
@@ -350,8 +353,8 @@ function RoutineConfig({ s, update, reports }: StepProps & { reports: Report[] }
   }
   const addStep = () => setSteps([...steps, { ...newEditableStep(), stepType: isWorkout ? 'weight_reps' : 'checkbox' }])
   const types = isWorkout
-    ? [['weight_reps', 'Weight & Reps'], ['just_reps', 'Reps Only'], ['timed', 'Timed'], ['checkbox', 'Checkbox']]
-    : [['checkbox', 'Checkbox'], ['timed', 'Timed'], ['weight_reps', 'Weight & Reps'], ['just_reps', 'Reps Only'], ['report', 'Report']]
+    ? [['weight_reps', 'Weight & Reps'], ['just_reps', 'Reps Only'], ['timed', 'Timed'], ['timed_sets', 'Interval sets'], ['checkbox', 'Checkbox']]
+    : [['checkbox', 'Checkbox'], ['timed', 'Timed'], ['timed_sets', 'Interval sets'], ['weight_reps', 'Weight & Reps'], ['just_reps', 'Reps Only'], ['report', 'Report']]
 
   return (
     <>
@@ -399,6 +402,7 @@ function RoutineConfig({ s, update, reports }: StepProps & { reports: Report[] }
             )}
           </div>
           {st.stepType === 'report' && <ReportPicker value={st.reportId} reports={reports} onChange={(reportId) => patch(st.id, { reportId })} />}
+          {st.stepType === 'timed_sets' && <TimedSetsEditor step={st} onChange={(p) => patch(st.id, p)} />}
           {st.supersetGroup && (
             <div className="row small" style={{ color: 'var(--tertiary)' }}>
               In superset
@@ -408,6 +412,62 @@ function RoutineConfig({ s, update, reports }: StepProps & { reports: Report[] }
         </div>
       ))}
     </>
+  )
+}
+
+/** An interval step's timings, sides, weight logging and hangboard holds (CONTRACTS: Timed sets, Board holds). */
+function TimedSetsEditor({ step, onChange }: { step: EditableStep; onChange: (p: Partial<EditableStep>) => void }) {
+  const t = step.timedSets
+  const set = (p: Partial<TimedSetsFields>) => onChange({ timedSets: { ...t, ...p } })
+  const [hand, setHand] = useState<'left' | 'right'>('left')
+  const board = t.board ? BOARDS[t.board] : null
+  const caption = boardHoldsCaption(parseTimedSetsConfig(JSON.stringify({ board: t.board, left_hold: t.leftHold, right_hold: t.rightHold })))
+  return (
+    <div className="stack sm">
+      <div className="grid2">
+        <Field label="Reps per set"><NumberInput value={step.defaultSets} min={1} max={50} onChange={(defaultSets) => onChange({ defaultSets })} /></Field>
+        <Field label="Sets"><NumberInput value={t.sets} min={1} max={10} onChange={(sets) => set({ sets })} /></Field>
+        <Field label="Seconds on"><NumberInput value={step.durationSeconds} min={1} onChange={(durationSeconds) => onChange({ durationSeconds })} /></Field>
+        <Field label="Seconds off"><NumberInput value={t.restSeconds} min={0} onChange={(restSeconds) => set({ restSeconds })} /></Field>
+        <Field label="Rest between sets (s)"><NumberInput value={t.setRestSeconds} min={0} onChange={(setRestSeconds) => set({ setRestSeconds })} /></Field>
+        <Field label="Log weight">
+          <select className="input" value={t.weight ?? ''} onChange={(e) => set({ weight: (e.target.value || null) as WeightKind | null })}>
+            <option value="">No</option>
+            <option value="added">Added to bodyweight (− = assisted)</option>
+            <option value="load">Weight lifted</option>
+          </select>
+        </Field>
+      </div>
+      <label className="row small">
+        <input type="checkbox" checked={t.oneArm} onChange={(e) => set({ oneArm: e.target.checked })} />
+        One arm at a time (left, then right)
+      </label>
+      {t.oneArm && <Field label="Rest between sides (s)"><NumberInput value={t.sideRestSeconds} min={0} onChange={(sideRestSeconds) => set({ sideRestSeconds })} /></Field>}
+      <Field label="Hangboard">
+        <select className="input" value={t.board ?? ''} onChange={(e) => set({ board: e.target.value || null, leftHold: null, rightHold: null })}>
+          <option value="">None</option>
+          {Object.values(BOARDS).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </Field>
+      {board && (
+        <div className="stack sm">
+          <div className="row">
+            <span className="small muted">Tap a hold for the</span>
+            <Chip selected={hand === 'left'} onClick={() => setHand('left')}>Left hand</Chip>
+            <Chip selected={hand === 'right'} onClick={() => setHand('right')}>Right hand</Chip>
+            <button className="btn text sm" onClick={() => set(hand === 'left' ? { leftHold: null } : { rightHold: null })}>Clear</button>
+          </div>
+          <BoardView
+            board={board} leftHold={t.leftHold} rightHold={t.rightHold} maxWidth={520}
+            onPick={(id) => {
+              set(hand === 'left' ? { leftHold: id } : { rightHold: id })
+              if (hand === 'left' && !t.rightHold) setHand('right')
+            }}
+          />
+          <div className="small muted">{caption ?? 'No holds picked'}</div>
+        </div>
+      )}
+    </div>
   )
 }
 

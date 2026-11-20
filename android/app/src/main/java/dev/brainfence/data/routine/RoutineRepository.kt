@@ -156,6 +156,14 @@ class RoutineRepository @Inject constructor(
         )
     }
 
+    /** Replaces a step's config (e.g. a timed_sets step's new default number of sets). */
+    suspend fun updateStepConfig(stepId: String, config: String) {
+        database.execute(
+            sql = "UPDATE routine_steps SET config = ? WHERE id = ?",
+            parameters = listOf(config, stepId),
+        )
+    }
+
     /**
      * Batch-insert routine steps for a newly created task.
      */

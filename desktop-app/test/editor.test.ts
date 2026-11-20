@@ -3,7 +3,7 @@
 import './helpers'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCompletionAlternatives, emptyAlternativeLocation, emptyEditorState, newEditableStep, stepConfigJson } from '../src/shared/taskEditor'
+import { buildCompletionAlternatives, emptyAlternativeLocation, emptyEditorState, newEditableStep, stepConfigJson, timedSetsFields } from '../src/shared/taskEditor'
 
 const gym = { verification_type: 'gps', label: 'Gym', extra: 1, verification_config: { lat: 1, lng: 2, radius_m: 50, mode: 'enter', min_duration_m: 30, note: 'x' } }
 const other = { verification_type: 'duration', verification_config: { duration_seconds: 60 } }
@@ -24,11 +24,25 @@ test('alternatives: turning it off removes only the managed entry', () => {
   assert.deepEqual(buildCompletionAlternatives(s), [other])
 })
 
-test('timed_sets edits keep sets, rests and weight logging', () => {
+test('timed_sets: managed keys rewritten, others kept', () => {
+  const config = {
+    reps: 5, work_seconds: 10, rest_seconds: 3, sets: 3, set_rest_seconds: 180, weight: 'added', weight_prompt: 'each_set',
+    board: 'bm2000', left_hold: '5L', right_hold: '5R', note: 'x',
+  }
   const step = {
     ...newEditableStep(), stepType: 'timed_sets', defaultSets: 6, durationSeconds: 7, originalStepType: 'timed_sets',
-    originalConfig: { reps: 5, work_seconds: 10, rest_seconds: 3, sets: 3, set_rest_seconds: 180, log_weight: true },
+    originalConfig: config, timedSets: { ...timedSetsFields(config), rightHold: '9' },
   }
-  assert.deepEqual(stepConfigJson(step), { reps: 6, work_seconds: 7, rest_seconds: 3, sets: 3, set_rest_seconds: 180, log_weight: true })
-  assert.deepEqual(stepConfigJson({ ...newEditableStep(), stepType: 'timed_sets', defaultSets: 2, durationSeconds: 10 }), { rest_seconds: 20, reps: 2, work_seconds: 10 })
+  assert.deepEqual(stepConfigJson(step), {
+    note: 'x', reps: 6, work_seconds: 7, rest_seconds: 3, sets: 3, set_rest_seconds: 180, sides: 1,
+    weight: 'added', weight_prompt: 'each_set', board: 'bm2000', left_hold: '5L', right_hold: '9',
+  })
+  // No weight and no board: their keys go, weight_prompt with them.
+  const plain = { ...step, timedSets: { ...step.timedSets, weight: null, board: null, oneArm: true, sideRestSeconds: 30 } }
+  assert.deepEqual(stepConfigJson(plain), {
+    note: 'x', reps: 6, work_seconds: 7, rest_seconds: 3, sets: 3, set_rest_seconds: 180, sides: 2, side_rest_seconds: 30,
+  })
+  assert.deepEqual(stepConfigJson({ ...newEditableStep(), stepType: 'timed_sets', defaultSets: 2, durationSeconds: 10 }), {
+    reps: 2, work_seconds: 10, rest_seconds: 20, sets: 1, set_rest_seconds: 20, sides: 1,
+  })
 })

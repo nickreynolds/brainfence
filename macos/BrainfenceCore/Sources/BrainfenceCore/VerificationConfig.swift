@@ -133,6 +133,10 @@ public struct TimedSetsConfig: Sendable, Equatable {
     public let weight: WeightKind?
     /// "start" (once, before the routine) or "each_set" (before each set).
     public let weightPrompt: String
+    /// Hangboard (shared/boards.json) and each hand's hold; nil when absent or unknown.
+    public let board: String?
+    public let leftHold: String?
+    public let rightHold: String?
 
     public init(json: String?) {
         let c = JSONValue.parse(json) ?? .object([:])
@@ -150,6 +154,45 @@ public struct TimedSetsConfig: Sendable, Equatable {
         setRestSeconds = int("set_rest_seconds", rest, min: 0)
         weight = c["weight"]?.stringValue.flatMap(WeightKind.init(rawValue:))
         weightPrompt = c["weight_prompt"]?.stringValue == "each_set" ? "each_set" : "start"
+        // shared/CONTRACTS.md (Board holds): unknown boards and holds are ignored.
+        if let id = c["board"]?.stringValue, let layout = Boards.all[id] {
+            func hold(_ key: String) -> String? {
+                guard let h = c[key]?.stringValue, layout.holds.contains(where: { $0.id == h }) else { return nil }
+                return h
+            }
+            board = id
+            leftHold = hold("left_hold")
+            rightHold = hold("right_hold")
+        } else {
+            board = nil
+            leftHold = nil
+            rightHold = nil
+        }
+    }
+
+    public var boardLayout: BoardLayout? { board.flatMap { Boards.all[$0] } }
+
+    /// "Hold 5 · large flat edge", "Left: hold 10, small edge · Right: hold 9, …" (fixtures/board-holds.json).
+    public var holdsCaption: String? {
+        guard let layout = boardLayout else { return nil }
+        let left = layout.holds.first { $0.id == leftHold }
+        let right = layout.holds.first { $0.id == rightHold }
+        func named(_ h: BoardHold) -> String { "hold \(h.number), \(h.name)" }
+        switch (left, right) {
+        case let (l?, r?):
+            if l.id == r.id { return "Hold \(l.number) · \(l.name) · both hands" }
+            if l.number == r.number { return "Hold \(l.number) · \(l.name)" }
+            return "Left: \(named(l)) · Right: \(named(r))"
+        case let (l?, nil): return "Left hand only: \(named(l))"
+        case let (nil, r?): return "Right hand only: \(named(r))"
+        default: return nil
+        }
+    }
+
+    /// The stepper's step and range in lb (CONTRACTS: Weights).
+    public static let weightStep = 2.5
+    public static func weightRange(_ kind: WeightKind) -> ClosedRange<Double> {
+        kind == .added ? -100...200 : 0...500
     }
 
     public var hangsPerSet: Int { reps * sides }

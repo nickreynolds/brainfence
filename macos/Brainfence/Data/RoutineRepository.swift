@@ -91,6 +91,11 @@ struct RoutineRepository: Sendable {
         }
     }
 
+    /// Replaces a step's config (e.g. a timed_sets step's new default number of sets).
+    func updateStepConfig(id: String, config: String) async throws {
+        try await db.execute(sql: "UPDATE routine_steps SET config = ? WHERE id = ?", parameters: [config, id])
+    }
+
     func deleteStep(id: String) async throws {
         try await db.execute(sql: "DELETE FROM routine_steps WHERE id = ?", parameters: [id])
     }

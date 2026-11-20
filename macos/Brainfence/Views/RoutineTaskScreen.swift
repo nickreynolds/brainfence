@@ -66,7 +66,7 @@ struct RoutineTaskScreen: View {
         } else if isAutoRoutine {
             AutoRoutineView(
                 task: task, session: sessionBinding, auto: auto, isCompleting: isCompleting,
-                onStart: startAuto, onStop: stopAuto, onConfirmSetWeight: { auto.phase = .countdown }
+                onStart: startAuto, onStop: stopAuto, onSetSets: setTimedSets, onConfirmSetWeight: { auto.phase = .countdown }
             )
         } else {
             ScrollView {
@@ -220,6 +220,14 @@ struct RoutineTaskScreen: View {
         }
     }
 
+    /// Saves a timed_sets step's number of sets as its default (the session rebuilds its entries).
+    private func setTimedSets(_ stepId: String, _ count: Int) {
+        guard let config = session?.setTimedSets(stepId, sets: count) else { return }
+        Task {
+            do { try await model.routineRepository.updateStepConfig(id: stepId, config: config) } catch { self.error = error.localizedDescription }
+        }
+    }
+
     private func removeStep(_ id: String) {
         Task {
             do { try await model.routineRepository.deleteStep(id: id) } catch { self.error = error.localizedDescription }
@@ -341,7 +349,7 @@ private struct StepCard: View {
             if let notes = step.description, !notes.isEmpty {
                 Text(notes).font(.caption).foregroundStyle(.secondary).lineLimit(3)
             }
-            if let url = step.imageUrl { StepImage(url: url) }
+            StepVisual(step: step)
             switch step.stepType {
             case "checkbox":
                 Button(state.sets.first?.completed == true ? "Done" : "Mark Complete") { session.toggleCheckbox(step.id) }
@@ -566,13 +574,14 @@ private struct AutoRoutineView: View {
     let isCompleting: Bool
     let onStart: () -> Void
     let onStop: () -> Void
+    let onSetSets: (String, Int) -> Void
     let onConfirmSetWeight: () -> Void
     @State private var confirming = false
 
     private var steps: [RoutineStep] { session.steps }
-    /// Steps whose weight is confirmed once, before the routine starts.
-    private var startWeighted: [RoutineStep] {
-        steps.filter { $0.timedSets.weight != nil && $0.timedSets.weightPrompt == "start" }
+    /// Steps to confirm before starting: their weight and number of sets (CONTRACTS: Before starting).
+    private var toConfirm: [RoutineStep] {
+        steps.filter { $0.stepType == "timed_sets" && ($0.timedSets.weight != nil || $0.timedSets.sets > 1) }
     }
 
     var body: some View {
@@ -587,13 +596,19 @@ private struct AutoRoutineView: View {
         VStack(spacing: 12) {
             switch auto.phase {
             case .idle where confirming:
-                Text("Confirm weights").font(.title2.weight(.semibold))
-                Text("Added weight for each hang (negative = assisted). Pre-filled from last time.")
+                Text("Before you start").font(.title2.weight(.semibold))
+                Text("Weights are pre-filled from last time. A change to the number of sets is saved for next time.")
                     .font(.callout).foregroundStyle(.secondary)
                 Form {
-                    ForEach(startWeighted) { s in
+                    ForEach(toConfirm) { s in
+                        let c = s.timedSets
                         LabeledContent(s.title) {
-                            WeightField(kind: s.timedSets.weight ?? .added, weight: weightBinding(s.id, setIndex: 0)).frame(width: 180)
+                            HStack(spacing: 16) {
+                                CountStepper(label: "Sets", value: c.sets, range: 1...10) { onSetSets(s.id, $0) }
+                                if let kind = c.weight, c.weightPrompt == "start" {
+                                    WeightStepper(kind: kind, weight: weightBinding(s.id, setIndex: 0))
+                                }
+                            }
                         }
                     }
                 }
@@ -612,7 +627,7 @@ private struct AutoRoutineView: View {
                                 if let notes = s.description, !notes.isEmpty {
                                     Text(notes).font(.caption).foregroundStyle(.secondary)
                                 }
-                                if let url = s.imageUrl { StepImage(url: url, maxHeight: 140) }
+                                StepVisual(step: s, maxHeight: 140)
                                 if let kind = s.timedSets.weight {
                                     Text(s.timedSets.weightPrompt == "each_set"
                                          ? "Weight asked before each set"
@@ -626,7 +641,7 @@ private struct AutoRoutineView: View {
                         }
                     }
                 }
-                Button("Start Routine") { if startWeighted.isEmpty { onStart() } else { confirming = true } }
+                Button("Start Routine") { if toConfirm.isEmpty { onStart() } else { confirming = true } }
                     .keyboardShortcut(.defaultAction)
             case .completed:
                 ProgressView()
@@ -636,9 +651,9 @@ private struct AutoRoutineView: View {
                 Text(current?.title ?? "").font(.title.weight(.semibold))
                 Text("Set \(setIndex + 1) of \(config?.sets ?? 1)" + (config?.sides == 2 ? " · left, then right, same weight" : ""))
                     .foregroundStyle(.secondary)
-                if let url = current?.imageUrl { StepImage(url: url, maxHeight: 200).frame(maxWidth: 420) }
+                if let current { StepVisual(step: current, maxHeight: 200).frame(maxWidth: 420) }
                 if let current, let kind = config?.weight {
-                    WeightField(kind: kind, weight: weightBinding(current.id, setIndex: setIndex)).frame(maxWidth: 240)
+                    WeightStepper(kind: kind, weight: weightBinding(current.id, setIndex: setIndex))
                 }
                 Button("Start set", action: onConfirmSetWeight).keyboardShortcut(.defaultAction)
                 Button("Pause", action: onStop)
@@ -652,10 +667,15 @@ private struct AutoRoutineView: View {
                      + (side.map { "\($0) · " } ?? "")
                      + "Rep \(hangInSide) of \(config?.reps ?? 1)")
                     .foregroundStyle(.secondary)
-                if let current, let kind = config?.weight {
-                    Text(TimedSetsConfig.format(kind, session.timedSetWeight(current.id, setIndex: setIndex))).foregroundStyle(.secondary)
+                if let current, let config, let kind = config.weight {
+                    // Resting before a weighted set: its weight can still change; the rest keeps running.
+                    if (auto.phase == .rest || auto.phase == .countdown) && config.weightPrompt == "start" && config.startsSet(auto.rep) {
+                        WeightStepper(kind: kind, weight: weightBinding(current.id, setIndex: setIndex), label: "Set \(setIndex + 1) weight")
+                    } else {
+                        Text(TimedSetsConfig.format(kind, session.timedSetWeight(current.id, setIndex: setIndex))).foregroundStyle(.secondary)
+                    }
                 }
-                if let url = current?.imageUrl { StepImage(url: url, maxHeight: 200).frame(maxWidth: 420) }
+                if let current { StepVisual(step: current, maxHeight: 200).frame(maxWidth: 420) }
                 if auto.phase == .paused {
                     Text("PAUSED").font(.title2).tracking(2)
                 } else {
@@ -697,19 +717,45 @@ private struct AutoRoutineView: View {
     }
 }
 
-/// Added weight (negative = assisted) or the load lifted, in lb. Empty = bodyweight / none.
-private struct WeightField: View {
+/// Added weight (negative = assisted) or the load lifted: −/+ in 2.5 lb steps,
+/// like other weighted exercises.
+private struct WeightStepper: View {
     let kind: TimedSetsConfig.WeightKind
     @Binding var weight: Double?
+    var label: String?
 
     var body: some View {
-        TextField(
-            kind == .added ? "Added weight (lb, − = assisted)" : "Weight (lb)",
-            value: Binding(get: { weight }, set: { v in weight = kind == .load ? v.map { max(0, $0) } : v }),
-            format: .number,
-            prompt: Text(kind == .added ? "Bodyweight" : "0")
-        )
-        .textFieldStyle(.roundedBorder)
+        let range = TimedSetsConfig.weightRange(kind)
+        let step = TimedSetsConfig.weightStep
+        let w = weight ?? 0
+        HStack {
+            Text(label ?? (kind == .added ? "Added weight" : "Weight")).foregroundStyle(.secondary)
+            Button { weight = snap(w - step) } label: { Image(systemName: "minus") }.disabled(w <= range.lowerBound)
+            Text(TimedSetsConfig.format(kind, w)).monospacedDigit().frame(minWidth: 110)
+            Button { weight = snap(w + step) } label: { Image(systemName: "plus") }.disabled(w >= range.upperBound)
+        }
+    }
+    private func snap(_ v: Double) -> Double {
+        let range = TimedSetsConfig.weightRange(kind)
+        let step = TimedSetsConfig.weightStep
+        return Swift.min(range.upperBound, Swift.max(range.lowerBound, (v / step).rounded() * step))
+    }
+}
+
+/// A small whole-number −/+ picker (sets before starting).
+private struct CountStepper: View {
+    let label: String
+    let value: Int
+    let range: ClosedRange<Int>
+    let onChange: (Int) -> Void
+
+    var body: some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary)
+            Button { onChange(value - 1) } label: { Image(systemName: "minus") }.disabled(value <= range.lowerBound)
+            Text("\(value)").monospacedDigit().frame(minWidth: 24)
+            Button { onChange(value + 1) } label: { Image(systemName: "plus") }.disabled(value >= range.upperBound)
+        }
     }
 }
 

@@ -1,0 +1,120 @@
+{
+ "description": "A timed_sets step's board holds (shared/boards.json) and their caption. `board`, `left_hold`, `right_hold` are what the client keeps after validating the config; null = ignored or absent. See shared/CONTRACTS.md (Board holds).",
+ "cases": [
+  {
+   "name": "mirrored pair",
+   "config": {
+    "board": "bm2000",
+    "left_hold": "5L",
+    "right_hold": "5R"
+   },
+   "board": "bm2000",
+   "left_hold": "5L",
+   "right_hold": "5R",
+   "caption": "Hold 5 · large flat edge"
+  },
+  {
+   "name": "different holds",
+   "config": {
+    "board": "bm2000",
+    "left_hold": "10L",
+    "right_hold": "9"
+   },
+   "board": "bm2000",
+   "left_hold": "10L",
+   "right_hold": "9",
+   "caption": "Left: hold 10, small edge · Right: hold 9, large flat edge"
+  },
+  {
+   "name": "both hands on the centre edge",
+   "config": {
+    "board": "bm2000",
+    "left_hold": "9",
+    "right_hold": "9"
+   },
+   "board": "bm2000",
+   "left_hold": "9",
+   "right_hold": "9",
+   "caption": "Hold 9 · large flat edge · both hands"
+  },
+  {
+   "name": "one hand",
+   "config": {
+    "board": "bm2000",
+    "left_hold": "8L"
+   },
+   "board": "bm2000",
+   "left_hold": "8L",
+   "right_hold": null,
+   "caption": "Left hand only: hold 8, deep 2-finger pocket"
+  },
+  {
+   "name": "right hand only",
+   "config": {
+    "board": "bm2000",
+    "right_hold": "1R"
+   },
+   "board": "bm2000",
+   "left_hold": null,
+   "right_hold": "1R",
+   "caption": "Right hand only: hold 1, 45° sloper"
+  },
+  {
+   "name": "unknown hold is ignored",
+   "config": {
+    "board": "bm2000",
+    "left_hold": "99",
+    "right_hold": "5R"
+   },
+   "board": "bm2000",
+   "left_hold": null,
+   "right_hold": "5R",
+   "caption": "Right hand only: hold 5, large flat edge"
+  },
+  {
+   "name": "board with no holds",
+   "config": {
+    "board": "bm2000"
+   },
+   "board": "bm2000",
+   "left_hold": null,
+   "right_hold": null,
+   "caption": null
+  },
+  {
+   "name": "unknown board ignores the holds",
+   "config": {
+    "board": "bm9000",
+    "left_hold": "5L",
+    "right_hold": "5R"
+   },
+   "board": null,
+   "left_hold": null,
+   "right_hold": null,
+   "caption": null
+  },
+  {
+   "name": "no board",
+   "config": {
+    "reps": 6,
+    "left_hold": "5L"
+   },
+   "board": null,
+   "left_hold": null,
+   "right_hold": null,
+   "caption": null
+  },
+  {
+   "name": "non-string values are ignored",
+   "config": {
+    "board": "bm2000",
+    "left_hold": 5,
+    "right_hold": "5R"
+   },
+   "board": "bm2000",
+   "left_hold": null,
+   "right_hold": "5R",
+   "caption": "Right hand only: hold 5, large flat edge"
+  }
+ ]
+}

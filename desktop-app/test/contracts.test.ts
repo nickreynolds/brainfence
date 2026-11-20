@@ -14,7 +14,7 @@ import { FEEDBACK_MAX_LENGTH, codePointLength, normalizeFeedback } from '../src/
 import { HomePresence, isConditionUnmet } from '../src/shared/blocking'
 import { computeTaskStatus } from '../src/shared/recurrence'
 import { parseGpsAlternatives } from '../src/shared/verification'
-import { parseTimedSetsConfig, timedSetsHangCount, timedSetsRestAfter, timedSetsSetOf, timedSetsSideOf } from '../src/shared/timedSets'
+import { parseTimedSetsConfig, timedSetsHangCount, timedSetsRestAfter, timedSetsSetOf, timedSetsSideOf, boardHoldsCaption } from '../src/shared/timedSets'
 import { task as baseTask } from './helpers'
 
 const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, '../../shared/fixtures', name), 'utf8'))
@@ -144,5 +144,15 @@ test('timed sets', () => {
     assert.deepEqual(each((i) => timedSetsSetOf(config, i)), c.set_of, c.name)
     assert.deepEqual(each((i) => timedSetsSideOf(config, i)), c.side_of, c.name)
     assert.deepEqual(each((i) => timedSetsRestAfter(config, i, c.last_step)), c.rest_after, c.name)
+  }
+})
+
+test('board holds match shared fixtures', () => {
+  for (const c of fixture('board-holds.json').cases) {
+    const config = parseTimedSetsConfig(JSON.stringify(c.config))
+    assert.equal(config.board, c.board, c.name)
+    assert.equal(config.leftHold, c.left_hold, c.name)
+    assert.equal(config.rightHold, c.right_hold, c.name)
+    assert.equal(boardHoldsCaption(config), c.caption, c.name)
   }
 })

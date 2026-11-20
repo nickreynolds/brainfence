@@ -1,0 +1,295 @@
+{
+ "description": "Hangboard layouts drawn by the apps for timed_sets steps with a board (shared/CONTRACTS.md: Board holds). Coordinates are in each board's own units, front-on, y down. Hold numbers and names follow the Beastmaker × Beacon training manual: a number names the left-hand hold and its mirror on the right (ids nL / nR); centre holds have one id. Generated into each client by shared/codegen.mjs.",
+ "boards": {
+  "bm2000": {
+   "name": "Beastmaker 2000",
+   "width": 2000,
+   "height": 580,
+   "body": {
+    "x": 85,
+    "y": 70,
+    "w": 1830,
+    "h": 480,
+    "r": 44
+   },
+   "divider_y": 390,
+   "holds": [
+    {
+     "id": "1L",
+     "number": 1,
+     "name": "45° sloper",
+     "kind": "sloper",
+     "x": 89,
+     "y": 74,
+     "w": 297,
+     "h": 176,
+     "r": 18
+    },
+    {
+     "id": "2L",
+     "number": 2,
+     "name": "35° sloper",
+     "kind": "sloper",
+     "x": 394,
+     "y": 74,
+     "w": 322,
+     "h": 168,
+     "r": 18
+    },
+    {
+     "id": "3",
+     "number": 3,
+     "name": "20° sloper",
+     "kind": "sloper",
+     "x": 724,
+     "y": 74,
+     "w": 552,
+     "h": 168,
+     "r": 18
+    },
+    {
+     "id": "2R",
+     "number": 2,
+     "name": "35° sloper",
+     "kind": "sloper",
+     "x": 1284,
+     "y": 74,
+     "w": 322,
+     "h": 168,
+     "r": 18
+    },
+    {
+     "id": "1R",
+     "number": 1,
+     "name": "45° sloper",
+     "kind": "sloper",
+     "x": 1614,
+     "y": 74,
+     "w": 297,
+     "h": 176,
+     "r": 18
+    },
+    {
+     "id": "4L",
+     "number": 4,
+     "name": "deep 2-finger pocket",
+     "kind": "pocket",
+     "x": 775,
+     "y": 150,
+     "w": 175,
+     "h": 65,
+     "r": 32.5
+    },
+    {
+     "id": "4R",
+     "number": 4,
+     "name": "deep 2-finger pocket",
+     "kind": "pocket",
+     "x": 1050,
+     "y": 150,
+     "w": 175,
+     "h": 65,
+     "r": 32.5
+    },
+    {
+     "id": "5L",
+     "number": 5,
+     "name": "large flat edge",
+     "kind": "edge",
+     "x": 105,
+     "y": 272,
+     "w": 250,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "5R",
+     "number": 5,
+     "name": "large flat edge",
+     "kind": "edge",
+     "x": 1645,
+     "y": 272,
+     "w": 250,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "6L",
+     "number": 6,
+     "name": "deep mono",
+     "kind": "mono",
+     "x": 390,
+     "y": 273,
+     "w": 70,
+     "h": 70,
+     "r": 35
+    },
+    {
+     "id": "6R",
+     "number": 6,
+     "name": "deep mono",
+     "kind": "mono",
+     "x": 1540,
+     "y": 273,
+     "w": 70,
+     "h": 70,
+     "r": 35
+    },
+    {
+     "id": "7L",
+     "number": 7,
+     "name": "deep back 2-finger pocket",
+     "kind": "pocket",
+     "x": 495,
+     "y": 272,
+     "w": 140,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "7R",
+     "number": 7,
+     "name": "deep back 2-finger pocket",
+     "kind": "pocket",
+     "x": 1365,
+     "y": 272,
+     "w": 140,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "8L",
+     "number": 8,
+     "name": "deep 2-finger pocket",
+     "kind": "pocket",
+     "x": 680,
+     "y": 272,
+     "w": 140,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "8R",
+     "number": 8,
+     "name": "deep 2-finger pocket",
+     "kind": "pocket",
+     "x": 1180,
+     "y": 272,
+     "w": 140,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "9",
+     "number": 9,
+     "name": "large flat edge",
+     "kind": "edge",
+     "x": 865,
+     "y": 272,
+     "w": 270,
+     "h": 73,
+     "r": 36.5
+    },
+    {
+     "id": "10L",
+     "number": 10,
+     "name": "small edge",
+     "kind": "edge",
+     "x": 110,
+     "y": 420,
+     "w": 250,
+     "h": 72,
+     "r": 36
+    },
+    {
+     "id": "10R",
+     "number": 10,
+     "name": "small edge",
+     "kind": "edge",
+     "x": 1640,
+     "y": 420,
+     "w": 250,
+     "h": 72,
+     "r": 36
+    },
+    {
+     "id": "11L",
+     "number": 11,
+     "name": "shallow mono",
+     "kind": "mono",
+     "x": 395,
+     "y": 423,
+     "w": 66,
+     "h": 66,
+     "r": 33
+    },
+    {
+     "id": "11R",
+     "number": 11,
+     "name": "shallow mono",
+     "kind": "mono",
+     "x": 1539,
+     "y": 423,
+     "w": 66,
+     "h": 66,
+     "r": 33
+    },
+    {
+     "id": "12L",
+     "number": 12,
+     "name": "shallow 2-finger pocket",
+     "kind": "pocket",
+     "x": 495,
+     "y": 420,
+     "w": 140,
+     "h": 72,
+     "r": 36
+    },
+    {
+     "id": "12R",
+     "number": 12,
+     "name": "shallow 2-finger pocket",
+     "kind": "pocket",
+     "x": 1365,
+     "y": 420,
+     "w": 140,
+     "h": 72,
+     "r": 36
+    },
+    {
+     "id": "13L",
+     "number": 13,
+     "name": "sloping 2-finger pocket",
+     "kind": "pocket",
+     "x": 668,
+     "y": 420,
+     "w": 144,
+     "h": 72,
+     "r": 36
+    },
+    {
+     "id": "13R",
+     "number": 13,
+     "name": "sloping 2-finger pocket",
+     "kind": "pocket",
+     "x": 1188,
+     "y": 420,
+     "w": 144,
+     "h": 72,
+     "r": 36
+    },
+    {
+     "id": "14",
+     "number": 14,
+     "name": "incut edge",
+     "kind": "edge",
+     "x": 840,
+     "y": 420,
+     "w": 320,
+     "h": 72,
+     "r": 36
+    }
+   ]
+  }
+ }
+}

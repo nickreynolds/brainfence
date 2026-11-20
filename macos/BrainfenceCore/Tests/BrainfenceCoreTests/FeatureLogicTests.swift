@@ -367,4 +367,40 @@ final class TimerSessionTests: XCTestCase {
         XCTAssertEqual(parseDurationConfig(#"{"target_seconds":90}"#)?.targetSeconds, 90)
         XCTAssertNil(parseDurationConfig("{}"))
     }
+
+    func testTimedSetsEditorKeepsUnmanagedKeys() {
+        let config: [String: JSONValue] = [
+            "reps": .int(5), "work_seconds": .int(10), "rest_seconds": .int(3), "sets": .int(3), "set_rest_seconds": .int(180),
+            "weight": .string("added"), "weight_prompt": .string("each_set"),
+            "board": .string("bm2000"), "left_hold": .string("5L"), "right_hold": .string("5R"), "note": .string("x"),
+        ]
+        var step = EditableStep(stepType: "timed_sets", defaultSets: 6, durationSeconds: 7, originalStepType: "timed_sets", originalConfig: config)
+        step.timedSets.rightHold = "9"
+        XCTAssertEqual(step.configJSON, .object([
+            "note": .string("x"), "reps": .int(6), "work_seconds": .int(7), "rest_seconds": .int(3), "sets": .int(3),
+            "set_rest_seconds": .int(180), "sides": .int(1), "weight": .string("added"), "weight_prompt": .string("each_set"),
+            "board": .string("bm2000"), "left_hold": .string("5L"), "right_hold": .string("9"),
+        ]))
+        step.timedSets.weight = nil
+        step.timedSets.board = nil
+        step.timedSets.oneArm = true
+        step.timedSets.sideRestSeconds = 30
+        XCTAssertEqual(step.configJSON, .object([
+            "note": .string("x"), "reps": .int(6), "work_seconds": .int(7), "rest_seconds": .int(3), "sets": .int(3),
+            "set_rest_seconds": .int(180), "sides": .int(2), "side_rest_seconds": .int(30),
+        ]))
+    }
+
+    func testChangingTimedSetsRebuildsEntriesKeepingWeights() {
+        let step = RoutineStep(id: "s", taskId: "t", title: "Pinch", stepOrder: 0, stepType: "timed_sets",
+                               config: #"{"reps":2,"sets":2,"sides":2,"weight":"load"}"#)
+        var session = RoutineSession(steps: [step], last: [])
+        session.setTimedSetWeight("s", setIndex: 0, weight: 20)
+        session.setTimedSetWeight("s", setIndex: 1, weight: 25)
+        let config = session.setTimedSets("s", sets: 3)
+        XCTAssertEqual(TimedSetsConfig(json: config).sets, 3)
+        XCTAssertEqual(session.state("s")?.sets.count, 12)
+        XCTAssertEqual((0..<3).map { session.timedSetWeight("s", setIndex: $0) }, [20, 25, 25])
+        XCTAssertEqual(session.steps.first?.timedSets.sets, 3)
+    }
 }

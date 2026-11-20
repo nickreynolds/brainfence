@@ -1,6 +1,9 @@
 package dev.brainfence.domain.verification
 
 import org.json.JSONArray
+import dev.brainfence.domain.board.BoardHold
+import dev.brainfence.domain.board.BoardLayout
+import dev.brainfence.domain.board.Boards
 import org.json.JSONObject
 
 /**
@@ -97,7 +100,32 @@ data class TimedSetsConfig(
     val weight: String?,
     /** "start" (once, before the routine) or "each_set" (before each set). */
     val weightPrompt: String,
+    /** Hangboard (shared/boards.json) and each hand's hold; null when absent or unknown. */
+    val board: String? = null,
+    val leftHold: String? = null,
+    val rightHold: String? = null,
 ) {
+    val boardLayout: BoardLayout? get() = board?.let { Boards.all[it] }
+
+    /** "Hold 5 · large flat edge", "Left: hold 10, small edge · Right: hold 9, …" (fixtures/board-holds.json). */
+    val holdsCaption: String?
+        get() {
+            val layout = boardLayout ?: return null
+            val left = layout.holds.find { it.id == leftHold }
+            val right = layout.holds.find { it.id == rightHold }
+            fun named(h: BoardHold) = "hold ${h.number}, ${h.name}"
+            return when {
+                left != null && right != null -> when {
+                    left.id == right.id -> "Hold ${left.number} \u00b7 ${left.name} \u00b7 both hands"
+                    left.number == right.number -> "Hold ${left.number} \u00b7 ${left.name}"
+                    else -> "Left: ${named(left)} \u00b7 Right: ${named(right)}"
+                }
+                left != null -> "Left hand only: ${named(left)}"
+                right != null -> "Right hand only: ${named(right)}"
+                else -> null
+            }
+        }
+
     val hangsPerSet: Int get() = reps * sides
 
     /** Number of hangs (entries) in the step. */
@@ -141,8 +169,20 @@ data class TimedSetsConfig(
                 setRestSeconds = int("set_rest_seconds", rest, 0),
                 weight = c.optString("weight").takeIf { it == "added" || it == "load" },
                 weightPrompt = if (c.optString("weight_prompt") == "each_set") "each_set" else "start",
-            )
+            ).withBoardHolds(c)
         }
+
+        /** shared/CONTRACTS.md (Board holds): unknown boards and holds are ignored. */
+        private fun TimedSetsConfig.withBoardHolds(c: JSONObject): TimedSetsConfig {
+            val layout = (c.opt("board") as? String)?.let { Boards.all[it] } ?: return this
+            fun hold(key: String) = (c.opt(key) as? String)?.takeIf { id -> layout.holds.any { it.id == id } }
+            return copy(board = layout.id, leftHold = hold("left_hold"), rightHold = hold("right_hold"))
+        }
+
+        /** The stepper's step and range in lb (CONTRACTS: Weights). */
+        const val WEIGHT_STEP = 2.5
+        fun weightRange(kind: String?): ClosedFloatingPointRange<Double> =
+            if (kind == "added") -100.0..200.0 else 0.0..500.0
 
         /** "+10 lb", "10 lb assisted", "Bodyweight" (added) or "25 lb" (load). */
         fun formatWeight(kind: String?, weight: Double?): String {

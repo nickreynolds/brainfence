@@ -11,6 +11,7 @@ import { nowIso, parseJsonArray, parseJsonObject, parseStringArray, uuid } from 
 import type { AppRef, Report } from './models'
 import { getRoutineSteps, insertStepStatement } from './repos/routines'
 import { getTaskRow } from './repos/tasks'
+import { WeightKind, parseTimedSetsConfig } from './timedSets'
 
 export const DEFAULT_SHORT_SIT_SECONDS = 120
 
@@ -26,12 +27,36 @@ export interface EditableStep {
   /** The loaded step's type and config, so keys this editor doesn't manage survive a save. */
   originalStepType: string | null
   originalConfig: Record<string, any>
+  /** timed_sets settings beyond reps (defaultSets) and work (durationSeconds). */
+  timedSets: TimedSetsFields
+}
+
+/** shared/CONTRACTS.md (Timed sets): the keys the step editor manages. */
+export interface TimedSetsFields {
+  restSeconds: number
+  sets: number
+  setRestSeconds: number
+  /** sides = 2: one arm at a time. */
+  oneArm: boolean
+  sideRestSeconds: number
+  weight: WeightKind | null
+  board: string | null
+  leftHold: string | null
+  rightHold: string | null
+}
+
+export function timedSetsFields(config: Record<string, unknown>): TimedSetsFields {
+  const c = parseTimedSetsConfig(JSON.stringify(config))
+  return {
+    restSeconds: c.restSeconds, sets: c.sets, setRestSeconds: c.setRestSeconds, oneArm: c.sides === 2,
+    sideRestSeconds: c.sideRestSeconds, weight: c.weight, board: c.board, leftHold: c.leftHold, rightHold: c.rightHold,
+  }
 }
 
 export function newEditableStep(): EditableStep {
   return {
     id: uuid(), title: '', stepType: 'checkbox', defaultSets: 3, durationSeconds: 60, supersetGroup: null, reportId: null, description: '',
-    originalStepType: null, originalConfig: {},
+    originalStepType: null, originalConfig: {}, timedSets: timedSetsFields({}),
   }
 }
 
@@ -212,6 +237,7 @@ export async function loadEditorState(db: Db, taskId: string): Promise<TaskEdito
           description: s.description ?? '',
           originalStepType: s.stepType,
           originalConfig: c,
+          timedSets: timedSetsFields(c),
         }
       })
     : []
@@ -302,8 +328,24 @@ export function stepConfigJson(step: EditableStep): Record<string, unknown> {
       return { ...carried, default_sets: step.defaultSets }
     case 'timed':
       return { ...carried, duration_seconds: step.durationSeconds }
-    case 'timed_sets':
-      return { rest_seconds: 20, ...carried, reps: step.defaultSets, work_seconds: step.durationSeconds }
+    case 'timed_sets': {
+      const t = step.timedSets
+      const {
+        side_rest_seconds: _sideRest, weight: _weight, weight_prompt: weightPrompt, board: _board, left_hold: _left, right_hold: _right, ...rest
+      } = carried
+      return {
+        ...rest,
+        reps: step.defaultSets,
+        work_seconds: step.durationSeconds,
+        rest_seconds: t.restSeconds,
+        sets: t.sets,
+        set_rest_seconds: t.setRestSeconds,
+        sides: t.oneArm ? 2 : 1,
+        ...(t.oneArm ? { side_rest_seconds: t.sideRestSeconds } : {}),
+        ...(t.weight ? { weight: t.weight, ...(weightPrompt != null ? { weight_prompt: weightPrompt } : {}) } : {}),
+        ...(t.board ? { board: t.board, ...(t.leftHold ? { left_hold: t.leftHold } : {}), ...(t.rightHold ? { right_hold: t.rightHold } : {}) } : {}),
+      }
+    }
     case 'report': {
       const { report_id: _old, ...rest } = carried
       return step.reportId ? { ...rest, report_id: step.reportId } : rest

@@ -52,8 +52,9 @@ Last reviewed: 2026-11-19.
 | Meditation timer (in-app session, short sit, bells) | ✅ | ✅ | ✅ | |
 | Meditation via companion apps | ✅ | ✅ | ✅ | Each platform has its own `companion_apps` entries. |
 | Routine / workout runner (weight × reps, checkboxes, timed steps, rest, supersets, pre-fill from last time, report steps, automatic interval routines) | ✅ | ✅ | ✅ | |
-| Interval sets (`timed_sets`: sets, one arm at a time, rests between hangs/sides/sets, weights: added/assisted confirmed before starting, or a load asked before each set; pre-filled from last time) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Timed sets), `fixtures/timed-sets.json`. These options aren't editable in the step editors yet (set in the database, e.g. `dev/climbing-program.ts`); editors keep them. |
-| Step images (`routine_steps.image_url`, e.g. hangboard holds) | ✅ | ✅ | ✅ | Shown on step cards and the automatic runner. Android caches with Coil, Windows with the browser cache, the Mac with URLSession's cache. Images live in the `routine-images` Storage bucket. |
+| Interval sets (`timed_sets`: sets, one arm at a time, rests between hangs/sides/sets, weights: added/assisted or a load, pre-filled from last time) | ✅ | ✅ | ✅ | `shared/CONTRACTS.md` (Timed sets), `fixtures/timed-sets.json`. "Interval sets" step type in every editor. Before starting: confirm each step's weight and number of sets (a sets change is saved as the default). Weights use the same ±2.5 lb picker as other exercises and can be changed during the rest before each set. |
+| Hangboard holds (draw the board with each hand's hold; pick holds in the editor, including different holds per hand) | ✅ | ✅ | ✅ | `shared/boards.json` (Beastmaker 2000), generated into each client by `npm run codegen`; `fixtures/board-holds.json`. Android draws with Compose Canvas, Windows with SVG, the Mac with SwiftUI Canvas. |
+| Step images (`routine_steps.image_url`) | ✅ | ✅ | ✅ | Shown on step cards and the automatic runner, unless the step has board holds. Android caches with Coil, Windows with the browser cache, the Mac with URLSession's cache. Images live in the `routine-images` Storage bucket. |
 | Journal tasks and journal history | ✅ | ✅ | ✅ | |
 | Report tasks (metric questionnaires) | ✅ | ✅ | ✅ | |
 | Shopping list tasks | ✅ | ✅ | ✅ | Arrival reminders are a location feature (below). |

@@ -7,6 +7,41 @@ import Foundation
 // platform's companion apps, an automatic routine's execution_mode) are
 // carried over, and only this platform's companion-app entries are replaced.
 
+/// shared/CONTRACTS.md (Timed sets): the keys the step editor manages.
+public struct TimedSetsFields: Sendable, Equatable {
+    public var restSeconds: Int
+    public var sets: Int
+    public var setRestSeconds: Int
+    /// sides = 2: one arm at a time.
+    public var oneArm: Bool
+    public var sideRestSeconds: Int
+    public var weight: TimedSetsConfig.WeightKind?
+    public var board: String?
+    public var leftHold: String?
+    public var rightHold: String?
+
+    public init(_ c: TimedSetsConfig) {
+        restSeconds = c.restSeconds
+        sets = c.sets
+        setRestSeconds = c.setRestSeconds
+        oneArm = c.sides == 2
+        sideRestSeconds = c.sideRestSeconds
+        weight = c.weight
+        board = c.board
+        leftHold = c.leftHold
+        rightHold = c.rightHold
+    }
+
+    /// The caption for the picked holds (CONTRACTS: Board holds).
+    public var holdsCaption: String? {
+        var o: [String: JSONValue] = [:]
+        o["board"] = board.map(JSONValue.string)
+        o["left_hold"] = leftHold.map(JSONValue.string)
+        o["right_hold"] = rightHold.map(JSONValue.string)
+        return TimedSetsConfig(json: JSONValue.object(o).jsonString).holdsCaption
+    }
+}
+
 public struct EditableStep: Sendable, Equatable, Identifiable {
     public var id: String
     public var title: String
@@ -19,6 +54,8 @@ public struct EditableStep: Sendable, Equatable, Identifiable {
     /// The loaded step's type and config, so keys this editor doesn't manage survive a save.
     public var originalStepType: String?
     public var originalConfig: [String: JSONValue]
+    /// timed_sets settings beyond reps (defaultSets) and work (durationSeconds).
+    public var timedSets: TimedSetsFields
 
     public init(
         id: String = UUID().uuidString.lowercased(), title: String = "", stepType: String = "checkbox",
@@ -26,6 +63,7 @@ public struct EditableStep: Sendable, Equatable, Identifiable {
         reportId: String? = nil, description: String = "",
         originalStepType: String? = nil, originalConfig: [String: JSONValue] = [:]
     ) {
+        self.timedSets = TimedSetsFields(TimedSetsConfig(json: JSONValue.object(originalConfig).jsonString))
         self.id = id
         self.title = title
         self.stepType = stepType
@@ -49,9 +87,23 @@ public struct EditableStep: Sendable, Equatable, Identifiable {
         case "timed":
             c["duration_seconds"] = .int(durationSeconds)
         case "timed_sets":
+            let t = timedSets
             c["reps"] = .int(defaultSets)
             c["work_seconds"] = .int(durationSeconds)
-            if c["rest_seconds"] == nil { c["rest_seconds"] = .int(20) }
+            c["rest_seconds"] = .int(t.restSeconds)
+            c["sets"] = .int(t.sets)
+            c["set_rest_seconds"] = .int(t.setRestSeconds)
+            c["sides"] = .int(t.oneArm ? 2 : 1)
+            c["side_rest_seconds"] = t.oneArm ? .int(t.sideRestSeconds) : nil
+            if let weight = t.weight {
+                c["weight"] = .string(weight.rawValue)
+            } else {
+                c["weight"] = nil
+                c["weight_prompt"] = nil
+            }
+            c["board"] = t.board.map(JSONValue.string)
+            c["left_hold"] = t.board == nil ? nil : t.leftHold.map(JSONValue.string)
+            c["right_hold"] = t.board == nil ? nil : t.rightHold.map(JSONValue.string)
         case "report":
             c["report_id"] = reportId.map(JSONValue.string)
         default:

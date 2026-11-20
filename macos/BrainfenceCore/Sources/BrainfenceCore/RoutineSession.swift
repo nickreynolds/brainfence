@@ -97,6 +97,22 @@ public struct StepState: Sendable, Equatable {
     static func fresh(_ step: RoutineStep) -> StepState {
         StepState(step: step, sets: Array(repeating: SetEntry(), count: step.defaultSetCount), activeSetIndex: 0)
     }
+
+    /// A timed_sets step's entries after its config changed (e.g. a new number
+    /// of sets): one per hang again, each set keeping its weight (new sets take
+    /// the last one's). Completed hangs are kept while their index still exists.
+    func rebuiltTimedSets(_ newStep: RoutineStep) -> StepState {
+        let oldConfig = step.timedSets
+        let config = newStep.timedSets
+        func weightOfSet(_ set: Int) -> Double? {
+            let first = sets.indices.first { oldConfig.setOf($0) == set }
+            return (first.map { sets[$0] } ?? sets.last)?.weight
+        }
+        let entries = (0..<config.hangCount).map { i in
+            SetEntry(weight: weightOfSet(config.setOf(i)), completed: sets.indices.contains(i) ? sets[i].completed : false)
+        }
+        return StepState(step: newStep, sets: entries, activeSetIndex: min(activeSetIndex, entries.count - 1))
+    }
 }
 
 public struct SupersetRound: Sendable, Equatable {
@@ -304,7 +320,11 @@ public struct RoutineSession: Sendable, Equatable {
         var next: [String: StepState] = [:]
         for step in newSteps {
             if var existing = states[step.id] {
-                existing.step = step
+                if step.stepType == "timed_sets" && existing.sets.count != step.defaultSetCount {
+                    existing = existing.rebuiltTimedSets(step)
+                } else {
+                    existing.step = step
+                }
                 next[step.id] = existing
             } else {
                 next[step.id] = .fresh(step)
@@ -429,6 +449,19 @@ public struct RoutineSession: Sendable, Equatable {
             let config = s.step.timedSets
             for i in s.sets.indices where config.setOf(i) >= setIndex { s.sets[i].weight = weight }
         }
+    }
+
+    /// Sets a timed_sets step's number of sets and rebuilds its entries.
+    /// Returns the step's new config, to save as its default.
+    public mutating func setTimedSets(_ stepId: String, sets count: Int) -> String? {
+        guard count >= 1, let s = states[stepId] else { return nil }
+        var object = JSONValue.parse(s.step.config)?.objectValue ?? [:]
+        object["sets"] = .int(count)
+        var step = s.step
+        step.config = JSONValue.object(object).jsonString
+        states[stepId] = s.rebuiltTimedSets(step)
+        steps = steps.map { $0.id == stepId ? step : $0 }
+        return step.config
     }
 
     /// The weight of a timed_sets step's set [setIndex] (0-based).

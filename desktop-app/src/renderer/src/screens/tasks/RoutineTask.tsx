@@ -11,7 +11,8 @@ import { db, useNow } from '../../lib/hooks'
 import { useRouter } from '../../lib/router'
 import { CompletedToday, NotYetAvailable, TaskTopBar, isBeforeStart, isTaskDone } from './common'
 import { AutoProgress, SetEntry, StepState, SupersetRound, useRoutineSession } from './routineSession'
-import { TimedSetsConfig, WeightKind, formatTimedWeight, parseTimedSetsConfig, timedSetsHangCount, timedSetsSetOf, timedSetsSideOf } from '@shared/timedSets'
+import { TimedSetsConfig, WEIGHT_STEP, WeightKind, boardHoldsCaption, boardOf, formatTimedWeight, parseTimedSetsConfig, timedSetsHangCount, timedSetsSetOf, timedSetsSideOf, timedSetsStartsSet, weightRange } from '@shared/timedSets'
+import { BoardView } from '../../components/BoardView'
 import { describeGpsAlternative, parseGpsAlternatives } from '@shared/verification'
 
 const formatWeight = (w: number) => (Number.isInteger(w) ? String(w) : String(w))
@@ -61,7 +62,7 @@ export function RoutineTaskScreen({ task }: { task: Task }) {
         <AutoRoutine
           steps={session.steps} states={session.states} auto={session.auto} isCompleting={session.isCompleting}
           onStart={session.startAuto} onStop={session.stopAuto} onSetWeight={session.actions.setTimedSetWeight}
-          onConfirmSetWeight={session.confirmSetWeight}
+          onSetSets={session.actions.setTimedSets} onConfirmSetWeight={session.confirmSetWeight}
         />
       </>
     )
@@ -146,7 +147,7 @@ function StepCard({ state, actions, onRemove, report, submission, isSubmitting, 
           <IconButton icon="close" title="Remove step" small onClick={onRemove} />
         </div>
         {step.description && <StepNotes text={step.description} />}
-        {step.imageUrl && <StepImage url={step.imageUrl} />}
+        <StepVisual step={step} />
         {step.stepType === 'checkbox' && (
           <button className="btn tonal block" onClick={() => actions.toggleCheckbox(step.id)}>
             <Icon name={state.sets[0]?.completed ? 'check' : 'circle'} /> {state.sets[0]?.completed ? 'Done' : 'Mark Complete'}
@@ -213,6 +214,22 @@ function StepImage({ url, maxHeight = 220 }: { url: string; maxHeight?: number }
   )
 }
 
+/** The holds to use (drawn board) or the step's picture. */
+function StepVisual({ step, maxHeight = 220 }: { step: RoutineStep; maxHeight?: number }) {
+  const c = step.stepType === 'timed_sets' ? parseTimedSetsConfig(step.config) : null
+  const board = c ? boardOf(c) : null
+  if (c && board) {
+    const caption = boardHoldsCaption(c)
+    return (
+      <div className="stack sm" style={{ alignItems: 'center', width: '100%' }}>
+        <BoardView board={board} leftHold={c.leftHold} rightHold={c.rightHold} maxWidth={maxHeight * (board.width / board.height)} />
+        {caption && <div className="small muted">{caption}</div>}
+      </div>
+    )
+  }
+  return step.imageUrl ? <StepImage url={step.imageUrl} maxHeight={maxHeight} /> : null
+}
+
 function describeTimedSets(c: TimedSetsConfig): string {
   const hangs = `${c.reps}× ${c.workSeconds}s on / ${c.restSeconds}s off${c.sides === 2 ? ' per hand (left, then right)' : ''}`
   if (c.sets <= 1) return hangs
@@ -271,14 +288,14 @@ function SetsContent({ state, showWeight, actions }: { state: StepState; showWei
   )
 }
 
-function Stepper({ label, value, step, max, onChange }: { label: string; value: number; step: number; max: number; onChange: (v: number) => void }) {
-  const clamp = (v: number) => Math.max(0, Math.min(max, Math.round(v / step) * step))
+function Stepper({ label, value, step, max, min = 0, onChange }: { label: string; value: number; step: number; max: number; min?: number; onChange: (v: number) => void }) {
+  const clamp = (v: number) => Math.max(min, Math.min(max, Math.round(v / step) * step))
   return (
     <div className="field">
       <label>{label}</label>
       <div className="stepper">
-        <button className="btn tonal sm" disabled={value <= 0} onClick={() => onChange(clamp(value - step))} aria-label={`Decrease ${label}`}><Icon name="remove" size="sm" /></button>
-        <div className="grow"><NumberInput value={value} min={0} max={max} step={step} onChange={(v) => onChange(Math.max(0, Math.min(max, v)))} /></div>
+        <button className="btn tonal sm" disabled={value <= min} onClick={() => onChange(clamp(value - step))} aria-label={`Decrease ${label}`}><Icon name="remove" size="sm" /></button>
+        <div className="grow"><NumberInput value={value} min={min} max={max} step={step} onChange={(v) => onChange(Math.max(min, Math.min(max, v)))} /></div>
         <button className="btn tonal sm" disabled={value >= max} onClick={() => onChange(clamp(value + step))} aria-label={`Increase ${label}`}><Icon name="add" size="sm" /></button>
       </div>
     </div>
@@ -352,9 +369,10 @@ function SupersetCard({ steps, states, round, actions, groupId }: { steps: Routi
   )
 }
 
-function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSetWeight, onConfirmSetWeight }: {
+function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSetWeight, onSetSets, onConfirmSetWeight }: {
   steps: RoutineStep[]; states: Record<string, StepState>; auto: AutoProgress; isCompleting: boolean
   onStart: () => void; onStop: () => void; onSetWeight: (stepId: string, setIndex: number, weight: number | null) => void
+  onSetSets: (stepId: string, sets: number) => void
   onConfirmSetWeight: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
@@ -368,24 +386,30 @@ function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSet
     const cfg = parseTimedSetsConfig(step.config)
     return states[step.id]?.sets[setIndex * cfg.reps * cfg.sides]?.weight ?? null
   }
-  // Steps whose weight is confirmed once, before the routine starts.
-  const startWeighted = steps.filter((s) => {
+  // Steps to confirm before starting: their weight and number of sets (CONTRACTS: Before starting).
+  const toConfirm = steps.filter((s) => {
+    if (s.stepType !== 'timed_sets') return false
     const c = parseTimedSetsConfig(s.config)
-    return c.weight != null && c.weightPrompt === 'start'
+    return c.weight != null || c.sets > 1
   })
 
   if (auto.phase === 'IDLE' && confirming) {
     return (
       <div className="stack lg" style={{ marginTop: 8 }}>
-        <div className="title-md">Confirm weights</div>
-        <div className="small muted">Added weight for each hang (negative = assisted). Pre-filled from last time.</div>
+        <div className="title-md">Before you start</div>
+        <div className="small muted">Weights are pre-filled from last time. A change to the number of sets is saved for next time.</div>
         <div className="list">
-          {startWeighted.map((s) => {
+          {toConfirm.map((s) => {
             const c = parseTimedSetsConfig(s.config)
             return (
-              <div key={s.id} className="list-item" style={{ alignItems: 'center' }}>
-                <div className="grow headline">{s.title}</div>
-                <div style={{ width: 220 }}><WeightField kind={c.weight!} value={weightOf(s, 0)} onChange={(w) => onSetWeight(s.id, 0, w)} /></div>
+              <div key={s.id} className="list-item" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div className="grow headline" style={{ minWidth: 160 }}>{s.title}</div>
+                <div style={{ width: 150 }}>
+                  <Stepper label="Sets" value={c.sets} step={1} max={10} min={1} onChange={(n) => onSetSets(s.id, n)} />
+                </div>
+                {c.weight && c.weightPrompt === 'start' && (
+                  <div style={{ width: 240 }}><WeightStepper kind={c.weight} value={weightOf(s, 0)} onChange={(w) => onSetWeight(s.id, 0, w)} /></div>
+                )}
               </div>
             )
           })}
@@ -410,14 +434,14 @@ function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSet
                   <div className="headline">{i + 1}. {s.title}</div>
                   <div className="supporting">{describeTimedSets(c)}</div>
                   {s.description && <div className="supporting" style={{ whiteSpace: 'pre-wrap' }}>{s.description}</div>}
-                  {s.imageUrl && <StepImage url={s.imageUrl} maxHeight={140} />}
+                  <StepVisual step={s} maxHeight={140} />
                   {c.weight && <div className="supporting">{c.weightPrompt === 'each_set' ? 'Weight asked before each set' : `Last time: ${formatTimedWeight(c.weight, weightOf(s, 0))}`}</div>}
                 </div>
               </div>
             )
           })}
         </div>
-        <button className="btn block" onClick={() => (startWeighted.length > 0 ? setConfirming(true) : onStart())}><Icon name="play" /> Start Routine</button>
+        <button className="btn block" onClick={() => (toConfirm.length > 0 ? setConfirming(true) : onStart())}><Icon name="play" /> Start Routine</button>
       </div>
     )
   }
@@ -426,6 +450,9 @@ function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSet
   const setIndex = currentConfig ? timedSetsSetOf(currentConfig, auto.rep) : 0
   const hangInSide = currentConfig ? (auto.rep % currentConfig.reps) + 1 : auto.rep + 1
   const side = currentConfig && currentConfig.sides === 2 ? (timedSetsSideOf(currentConfig, auto.rep) === 0 ? 'Left hand' : 'Right hand') : null
+  // Resting before a weighted set: its weight can still change; the rest keeps running.
+  const adjustable = !paused && (auto.phase === 'REST' || auto.phase === 'COUNTDOWN') &&
+    currentConfig?.weight != null && currentConfig.weightPrompt === 'start' && timedSetsStartsSet(currentConfig, auto.rep)
 
   if (auto.phase === 'WEIGHT' && current && currentConfig?.weight) {
     return (
@@ -433,8 +460,8 @@ function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSet
         <div className="muted">Exercise {auto.exerciseIndex + 1} of {steps.length}</div>
         <div className="title-lg">{current.title}</div>
         <div className="muted">Set {setIndex + 1} of {currentConfig.sets}{currentConfig.sides === 2 ? ' · left, then right, same weight' : ''}</div>
-        {current.imageUrl && <div style={{ width: 'min(420px, 100%)' }}><StepImage url={current.imageUrl} /></div>}
-        <div style={{ width: 240 }}><WeightField kind={currentConfig.weight} value={weightOf(current, setIndex)} onChange={(w) => onSetWeight(current.id, setIndex, w)} /></div>
+        <div style={{ width: 'min(420px, 100%)' }}><StepVisual step={current} /></div>
+        <div style={{ width: 240 }}><WeightStepper kind={currentConfig.weight} value={weightOf(current, setIndex)} onChange={(w) => onSetWeight(current.id, setIndex, w)} /></div>
         <button className="btn" onClick={onConfirmSetWeight}><Icon name="play" /> Start set</button>
         <button className="btn text" onClick={onStop}>Pause</button>
       </div>
@@ -446,13 +473,15 @@ function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSet
       <div className="muted">Exercise {auto.exerciseIndex + 1} of {steps.length}</div>
       {(auto.phase === 'REST' || auto.phase === 'COUNTDOWN') && !paused && <div className="small" style={{ color, fontWeight: 700, letterSpacing: 1 }}>UP NEXT</div>}
       <div className="title-lg">{current?.title}</div>
-      {current?.imageUrl && <div style={{ width: 'min(420px, 100%)' }}><StepImage url={current.imageUrl} /></div>}
+      {current && <div style={{ width: 'min(420px, 100%)' }}><StepVisual step={current} /></div>}
       <div className="muted">
         {currentConfig && currentConfig.sets > 1 && `Set ${setIndex + 1} of ${currentConfig.sets} · `}
         {side && `${side} · `}
         Rep {hangInSide} of {currentConfig?.reps ?? 1}
       </div>
-      {current && currentConfig?.weight && <div className="muted">{formatTimedWeight(currentConfig.weight, weightOf(current, setIndex))}</div>}
+      {current && currentConfig?.weight && (adjustable
+        ? <div style={{ width: 240 }}><WeightStepper kind={currentConfig.weight} label={`Set ${setIndex + 1} weight`} value={weightOf(current, setIndex)} onChange={(w) => onSetWeight(current.id, setIndex, w)} /></div>
+        : <div className="muted">{formatTimedWeight(currentConfig.weight, weightOf(current, setIndex))}</div>)}
       {paused ? (
         <div className="title-md" style={{ letterSpacing: 2 }}>PAUSED</div>
       ) : (
@@ -469,30 +498,20 @@ function AutoRoutine({ steps, states, auto, isCompleting, onStart, onStop, onSet
   )
 }
 
-/** Added weight (negative = assisted) or the load lifted, in lb. Blank = bodyweight / none. */
-function WeightField({ kind, value, onChange }: { kind: WeightKind; value: number | null; onChange: (w: number | null) => void }) {
-  const [text, setText] = useState(value == null ? '' : String(value))
-  useEffect(() => {
-    if ((text === '' ? null : Number(text)) !== value) setText(value == null ? '' : String(value))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value])
+/** Added weight (negative = assisted) or the load lifted: −/+ in 2.5 lb steps, like other weighted exercises. */
+function WeightStepper({ kind, value, label, onChange }: { kind: WeightKind; value: number | null; label?: string; onChange: (w: number) => void }) {
+  const { min, max } = weightRange(kind)
+  const w = value ?? 0
+  const snap = (v: number) => Math.max(min, Math.min(max, Math.round(v / WEIGHT_STEP) * WEIGHT_STEP))
   return (
-    <Field label={kind === 'added' ? 'Added weight (lb, − = assisted)' : 'Weight (lb)'}>
-      <input
-        className="input"
-        type="number"
-        step={0.5}
-        min={kind === 'load' ? 0 : undefined}
-        value={text}
-        placeholder={kind === 'added' ? 'Bodyweight' : '0'}
-        onChange={(e) => {
-          setText(e.target.value)
-          const n = Number(e.target.value)
-          if (e.target.value === '') onChange(null)
-          else if (Number.isFinite(n) && (kind === 'added' || n >= 0)) onChange(n)
-        }}
-      />
-    </Field>
+    <div className="field">
+      <label>{label ?? (kind === 'added' ? 'Added weight' : 'Weight')}</label>
+      <div className="stepper">
+        <button className="btn tonal sm" disabled={w <= min} onClick={() => onChange(snap(w - WEIGHT_STEP))} aria-label="Decrease weight"><Icon name="remove" size="sm" /></button>
+        <div className="grow" style={{ textAlign: 'center', fontWeight: 600 }}>{formatTimedWeight(kind, w)}</div>
+        <button className="btn tonal sm" disabled={w >= max} onClick={() => onChange(snap(w + WEIGHT_STEP))} aria-label="Increase weight"><Icon name="add" size="sm" /></button>
+      </div>
+    </div>
   )
 }
 

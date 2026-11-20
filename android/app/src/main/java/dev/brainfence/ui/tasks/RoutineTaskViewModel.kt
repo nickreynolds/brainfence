@@ -49,6 +49,24 @@ data class StepUiState(
     val activeSetIndex: Int = 0,
 )
 
+/**
+ * A timed_sets step's entries after its config changed (e.g. a new number of
+ * sets): one per hang again, each set keeping its weight (new sets take the
+ * last one's). Completed hangs are kept while their index still exists.
+ */
+internal fun rebuildTimedSets(old: StepUiState, step: RoutineStep): StepUiState {
+    val oldCfg = TimedSetsConfig.parse(old.step.config)
+    val cfg = TimedSetsConfig.parse(step.config)
+    fun weightOfSet(set: Int): Double? {
+        val first = old.sets.indices.firstOrNull { oldCfg.setOf(it) == set }
+        return (first?.let { old.sets[it] } ?: old.sets.lastOrNull())?.weight
+    }
+    val sets = (0 until cfg.hangCount).map { i ->
+        StepSetEntry(completed = old.sets.getOrNull(i)?.completed ?: false, weight = weightOfSet(cfg.setOf(i)))
+    }
+    return StepUiState(step = step, sets = sets, activeSetIndex = old.activeSetIndex.coerceAtMost(sets.size - 1))
+}
+
 /** Tracks round progress for a superset group. */
 data class SupersetRoundState(
     val groupId: String,
@@ -162,6 +180,19 @@ class RoutineTaskViewModel @Inject constructor(
                         }
                         _stepStates.value = _stepStates.value + newStates
                         applyReportCompletions()
+                        saveProgress()
+                    }
+                    // Config changes (synced, or a set count changed here): a timed_sets
+                    // step gets one entry per hang again.
+                    val changed = stepList.mapNotNull { step ->
+                        val old = _stepStates.value[step.id] ?: return@mapNotNull null
+                        if (old.step == step) return@mapNotNull null
+                        step.id to if (step.stepType == "timed_sets" && old.sets.size != defaultSetCount(step)) {
+                            rebuildTimedSets(old, step)
+                        } else old.copy(step = step)
+                    }
+                    if (changed.isNotEmpty()) {
+                        _stepStates.value = _stepStates.value + changed
                         saveProgress()
                     }
                     // Remove states for deleted steps
@@ -469,7 +500,8 @@ class RoutineTaskViewModel @Inject constructor(
 
     fun startAutoRoutine() {
         if (autoRoutineJob?.isActive == true) return
-        val stepList = steps.value
+        // The session's copy of each step: a set count changed before starting is there first.
+        val stepList = steps.value.map { _stepStates.value[it.id]?.step ?: it }
         if (stepList.isEmpty()) return
 
         // Find resume point from completed step states
@@ -601,6 +633,17 @@ class RoutineTaskViewModel @Inject constructor(
             )
         }
         saveProgress()
+    }
+
+    /** Saves a timed_sets step's number of sets as its default and rebuilds its entries. */
+    fun setTimedSets(stepId: String, sets: Int) {
+        val state = _stepStates.value[stepId] ?: return
+        if (sets < 1) return
+        val config = runCatching { JSONObject(state.step.config) }.getOrDefault(JSONObject()).put("sets", sets).toString()
+        val step = state.step.copy(config = config)
+        _stepStates.value = _stepStates.value + (stepId to rebuildTimedSets(state, step))
+        saveProgress()
+        viewModelScope.launch { routineRepository.updateStepConfig(stepId, config) }
     }
 
     /** The runner's wait for a set's weight; completed by [confirmSetWeight]. */

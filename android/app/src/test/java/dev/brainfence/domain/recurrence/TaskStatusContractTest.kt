@@ -103,4 +103,18 @@ class TaskStatusContractTest {
             assertEquals(name, (0 until rests.length()).map { rests.getInt(it) }, (0 until config.hangCount).map { config.restAfter(it, lastStep) })
         }
     }
+
+    @Test
+    fun boardHolds() {
+        val cases = fixture("board-holds.json").getJSONArray("cases").objects()
+        assertTrue(cases.isNotEmpty())
+        for (case in cases) {
+            val config = TimedSetsConfig.parse(case.getJSONObject("config").toString())
+            val name = case.getString("name")
+            assertEquals(name, case.nullableString("board"), config.board)
+            assertEquals(name, case.nullableString("left_hold"), config.leftHold)
+            assertEquals(name, case.nullableString("right_hold"), config.rightHold)
+            assertEquals(name, case.nullableString("caption"), config.holdsCaption)
+        }
+    }
 }

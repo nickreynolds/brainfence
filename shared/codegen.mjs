@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Generates each client's schema and color code from shared/schema.json and
-// shared/tokens.json. Run from anywhere: `npm run codegen` (writes files) or
+// Generates each client's schema, color and hangboard code from
+// shared/schema.json, shared/tokens.json and shared/boards.json. Run from anywhere: `npm run codegen` (writes files) or
 // `npm run codegen:check` (exits 1 if a generated file is out of date).
 // See shared/CONTRACTS.md.
 
@@ -14,6 +14,7 @@ const check = process.argv.includes('--check')
 
 const schema = JSON.parse(readFileSync(join(shared, 'schema.json'), 'utf8'))
 const tokens = JSON.parse(readFileSync(join(shared, 'tokens.json'), 'utf8'))
+const boards = Object.entries(JSON.parse(readFileSync(join(shared, 'boards.json'), 'utf8')).boards)
 
 // ── Validation ──────────────────────────────────────────────────────────────
 
@@ -238,6 +239,155 @@ private extension Color {
 }
 `
 
+// ── Boards ──────────────────────────────────────────────────────────────────
+
+const holdKinds = ['sloper', 'edge', 'pocket', 'mono']
+for (const [id, b] of boards) {
+  if (!/^[a-z0-9]+$/.test(id)) throw new Error(`board ${id}: ids are lowercase letters and digits`)
+  const seen = new Set()
+  for (const h of b.holds) {
+    if (seen.has(h.id)) throw new Error(`board ${id}: duplicate hold ${h.id}`)
+    seen.add(h.id)
+    if (!holdKinds.includes(h.kind)) throw new Error(`board ${id}: hold ${h.id} has unknown kind ${h.kind}`)
+    for (const k of ['number', 'x', 'y', 'w', 'h', 'r']) if (typeof h[k] !== 'number') throw new Error(`board ${id}: hold ${h.id}.${k}`)
+  }
+}
+const num = (n) => (Number.isInteger(n) ? `${n}.0` : String(n))
+const str = (t) => JSON.stringify(t)
+
+const kotlinBoards = `${header('//', 'boards.json')}
+package dev.brainfence.domain.board
+
+/** A hold: a rounded rect in board units (y down). [kind]: sloper, edge, pocket or mono. */
+data class BoardHold(
+    val id: String,
+    val number: Int,
+    val name: String,
+    val kind: String,
+    val x: Float,
+    val y: Float,
+    val w: Float,
+    val h: Float,
+    val r: Float,
+)
+
+data class BoardRect(val x: Float, val y: Float, val w: Float, val h: Float, val r: Float)
+
+data class BoardLayout(
+    val id: String,
+    val name: String,
+    val width: Float,
+    val height: Float,
+    val body: BoardRect,
+    val dividerY: Float,
+    val holds: List<BoardHold>,
+)
+
+object Boards {
+    val all: Map<String, BoardLayout> = mapOf(
+${boards.map(([id, b]) => `        ${str(id)} to BoardLayout(
+            id = ${str(id)},
+            name = ${str(b.name)},
+            width = ${num(b.width)}f,
+            height = ${num(b.height)}f,
+            body = BoardRect(${['x', 'y', 'w', 'h', 'r'].map((k) => `${num(b.body[k])}f`).join(', ')}),
+            dividerY = ${num(b.divider_y)}f,
+            holds = listOf(
+${b.holds.map((h) => `                BoardHold(${str(h.id)}, ${h.number}, ${str(h.name)}, ${str(h.kind)}, ${['x', 'y', 'w', 'h', 'r'].map((k) => `${num(h[k])}f`).join(', ')}),`).join('\n')}
+            ),
+        ),`).join('\n')}
+    )
+}
+`
+
+const tsBoards = `${header('//', 'boards.json')}
+/** A hold: a rounded rect in board units (y down). */
+export interface BoardHold {
+  id: string
+  number: number
+  name: string
+  kind: 'sloper' | 'edge' | 'pocket' | 'mono'
+  x: number
+  y: number
+  w: number
+  h: number
+  r: number
+}
+
+export interface BoardLayout {
+  id: string
+  name: string
+  width: number
+  height: number
+  body: { x: number; y: number; w: number; h: number; r: number }
+  dividerY: number
+  holds: readonly BoardHold[]
+}
+
+export const BOARDS: Readonly<Record<string, BoardLayout>> = {
+${boards.map(([id, b]) => `  ${id}: {
+    id: '${id}',
+    name: ${str(b.name)},
+    width: ${b.width},
+    height: ${b.height},
+    body: { x: ${b.body.x}, y: ${b.body.y}, w: ${b.body.w}, h: ${b.body.h}, r: ${b.body.r} },
+    dividerY: ${b.divider_y},
+    holds: [
+${b.holds.map((h) => `      { id: ${str(h.id)}, number: ${h.number}, name: ${str(h.name)}, kind: '${h.kind}', x: ${h.x}, y: ${h.y}, w: ${h.w}, h: ${h.h}, r: ${h.r} },`).join('\n')}
+    ],
+  },`).join('\n')}
+}
+`
+
+const swiftBoards = `${header('//', 'boards.json')}
+/// A hold: a rounded rect in board units (y down). \`kind\`: sloper, edge, pocket or mono.
+public struct BoardHold: Sendable, Equatable {
+    public let id: String
+    public let number: Int
+    public let name: String
+    public let kind: String
+    public let x: Double
+    public let y: Double
+    public let w: Double
+    public let h: Double
+    public let r: Double
+}
+
+public struct BoardRect: Sendable, Equatable {
+    public let x: Double
+    public let y: Double
+    public let w: Double
+    public let h: Double
+    public let r: Double
+}
+
+public struct BoardLayout: Sendable, Equatable {
+    public let id: String
+    public let name: String
+    public let width: Double
+    public let height: Double
+    public let body: BoardRect
+    public let dividerY: Double
+    public let holds: [BoardHold]
+}
+
+public enum Boards {
+    public static let all: [String: BoardLayout] = [
+${boards.map(([id, b]) => `        ${str(id)}: BoardLayout(
+            id: ${str(id)},
+            name: ${str(b.name)},
+            width: ${num(b.width)},
+            height: ${num(b.height)},
+            body: BoardRect(${['x', 'y', 'w', 'h', 'r'].map((k) => `${k}: ${num(b.body[k])}`).join(', ')}),
+            dividerY: ${num(b.divider_y)},
+            holds: [
+${b.holds.map((h) => `                BoardHold(id: ${str(h.id)}, number: ${h.number}, name: ${str(h.name)}, kind: ${str(h.kind)}, ${['x', 'y', 'w', 'h', 'r'].map((k) => `${k}: ${num(h[k])}`).join(', ')}),`).join('\n')}
+            ]
+        ),`).join('\n')}
+    ]
+}
+`
+
 // ── Write / check ───────────────────────────────────────────────────────────
 
 const outputs = {
@@ -249,6 +399,9 @@ const outputs = {
   'macos/Brainfence/Sync/AppSchema.swift': swiftSchema,
   'macos/BrainfenceCore/Sources/BrainfenceCore/SchemaColumns.swift': swiftColumns,
   'macos/Brainfence/Theme/Palette.swift': swiftPalette,
+  'android/app/src/main/java/dev/brainfence/domain/board/Boards.kt': kotlinBoards,
+  'desktop-app/src/shared/boards.generated.ts': tsBoards,
+  'macos/BrainfenceCore/Sources/BrainfenceCore/Boards.swift': swiftBoards,
 }
 
 let stale = 0
