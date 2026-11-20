@@ -71,7 +71,6 @@ async function main() {
     created_at: now,
     updated_at: now,
   };
-  // Images are uploaded and linked by dev/update-climbing-task.ts.
   const stepRows = CLIMBING_PROGRAM.map((s, i) => ({
     id: randomUUID(),
     user_id: user.id,
