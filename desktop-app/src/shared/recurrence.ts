@@ -232,6 +232,8 @@ export interface TaskStatus {
   phase: TimeGatePhase | null
   /** Start of the open occurrence's day, when one is open on a recurring task. */
   occurrenceDate: LocalDate | null
+  /** Not due today and nothing owed: can be done now as an extra (CONTRACTS: Optional). */
+  optional: boolean
 }
 
 /** How far back carry-over looks for the previous occurrence. */
@@ -244,12 +246,12 @@ export function computeTaskStatus(task: TaskStatusInput, now: Date): TaskStatus 
   const completedToday = last != null && sameDate(localDateOf(last), today)
 
   if (task.recurrenceType == null) {
-    return { scheduled: true, completed: last != null, carriedOver: false, phase, occurrenceDate: null }
+    return { scheduled: true, completed: last != null, carriedOver: false, phase, occurrenceDate: null, optional: false }
   }
   const scheduledOn = schedulePredicate(task.recurrenceType, task.recurrenceConfig)
   if (scheduledOn == null) {
     // interval: open all the time, done for today once completed today.
-    return { scheduled: true, completed: completedToday, carriedOver: false, phase, occurrenceDate: null }
+    return { scheduled: true, completed: completedToday, carriedOver: false, phase, occurrenceDate: null, optional: false }
   }
 
   // The latest scheduled date on or before today, not before the task existed.
@@ -270,15 +272,18 @@ export function computeTaskStatus(task: TaskStatusInput, now: Date): TaskStatus 
     // Off day: the current period runs from the latest occurrence (or creation).
     const periodStart = latest ?? earliest ?? today
     const completed = last != null && compareDates(localDateOf(last), periodStart) >= 0
-    return { scheduled: false, completed, carriedOver: false, phase: null, occurrenceDate: null }
+    return { scheduled: false, completed, carriedOver: false, phase: null, occurrenceDate: null, optional: !completedToday }
   }
   const carriedOver = !sameDate(open, today)
+  const completed = last != null && compareDates(localDateOf(last), open) >= 0
   return {
     scheduled: true,
-    completed: last != null && compareDates(localDateOf(last), open) >= 0,
+    completed,
     carriedOver,
     phase: carriedOver ? 'PAST_DUE' : phase,
     occurrenceDate: open,
+    // A done carried-over week can be done again as an extra (not twice a day).
+    optional: carriedOver && completed && !completedToday,
   }
 }
 

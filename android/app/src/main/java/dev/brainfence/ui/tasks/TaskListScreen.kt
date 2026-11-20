@@ -1,5 +1,6 @@
 package dev.brainfence.ui.tasks
 
+import androidx.compose.material3.FilledTonalButton
 import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
@@ -311,9 +312,10 @@ fun TaskListScreen(
                             shoppingItemCounts[task.id] ?: 0
                         } else null,
                         onClick = {
-                            if (selectedTab == HomeTab.UPCOMING && !task.isOptionalToday()) onEditTask(task)
+                            if (selectedTab == HomeTab.UPCOMING) onEditTask(task)
                             else onTaskTap(task)
                         },
+                        onStart = { onTaskTap(task) },
                     )
                 }
             }
@@ -351,6 +353,8 @@ private fun TaskItem(
     meditationTimer: dev.brainfence.service.MeditationTimerState?,
     shoppingItemCount: Int?,
     onClick: () -> Unit,
+    /** Upcoming rows that are optional today: open the task (the row itself opens the editor). */
+    onStart: () -> Unit = {},
 ) {
     // Shopping lists are permanent: no completion, no schedule — just the open count.
     if (shoppingItemCount != null) {
@@ -385,8 +389,8 @@ private fun TaskItem(
 
     val isCompletedRecurring = showAsUpcoming && status.completed && task.recurrenceType != null
     val isNotDueToday = showAsUpcoming && !status.scheduled && !status.completed
-    // An off day with this period not done yet: doable now, just not due.
-    val isOptional = isNotDueToday && task.recurrenceType != null
+    // Not due today and nothing owed: can be started now as an extra (CONTRACTS: Optional).
+    val isOptional = showAsUpcoming && status.optional
     val windowPhase = if (status.scheduled) phase else computeTaskPhase(task.availableFrom, task.dueAt, Instant.now())
     val isLocked = (showAsUpcoming && !isCompletedRecurring && !isOptional) ||
         (windowPhase == TimeGatePhase.BEFORE_START && !status.completed)
@@ -403,7 +407,7 @@ private fun TaskItem(
         modifier = Modifier
             .clickable(enabled = canClick, onClick = onClick)
             .alpha(when {
-                showAsCompleted || isCompletedRecurring -> 0.5f
+                (showAsCompleted || isCompletedRecurring) && !isOptional -> 0.5f
                 isLocked -> 0.4f
                 else -> 1f
             }),
@@ -511,13 +515,20 @@ private fun TaskItem(
                 )
             }
         },
-        trailingContent = if (isEnforcedBlocker) {
+        trailingContent = if (isEnforcedBlocker || isOptional) {
             {
-                Icon(
-                    imageVector        = Icons.Default.Block,
-                    contentDescription = "Blocking condition",
-                    tint               = MaterialTheme.blockingColors.blocked,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isOptional) {
+                        FilledTonalButton(onClick = onStart) { Text("Start") }
+                    }
+                    if (isEnforcedBlocker) {
+                        Icon(
+                            imageVector        = Icons.Default.Block,
+                            contentDescription = "Blocking condition",
+                            tint               = MaterialTheme.blockingColors.blocked,
+                        )
+                    }
+                }
             }
         } else null,
         colors = ListItemDefaults.colors(
@@ -934,9 +945,3 @@ private fun carriedOverSince(date: java.time.LocalDate?): String {
     }
 }
 
-/** A recurring task on an off day whose period isn't done: it can be done now (CONTRACTS: Periods). */
-private fun Task.isOptionalToday(): Boolean {
-    if (recurrenceType == null) return false
-    val status = status()
-    return !status.scheduled && !status.completed
-}

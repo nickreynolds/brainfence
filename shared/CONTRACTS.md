@@ -120,6 +120,7 @@ pure function of the task, its latest completion and the current local time
 | `completed` | The open occurrence is done; with none open, the current period is done (below) |
 | `carried_over` | The open occurrence started on an earlier day |
 | `phase` | `BEFORE_START`, `ACTIVE`, `PAST_DUE` from the `available_from` / `due_at` window, or null with no window. A carried-over occurrence is always `PAST_DUE`. With no open occurrence it's null. |
+| `optional` | Today isn't one of its scheduled dates, nothing is owed (no open occurrence, or the carried-over one is done), and it wasn't completed today: it can be done now, as an extra |
 
 **Which occurrence is open**, for today's local date T:
 
@@ -141,6 +142,10 @@ pure function of the task, its latest completion and the current local time
   So a Monday PUSH done on Tuesday is done for the week, and Thursday's
   occurrence of a Mon–Thu task can be done until Sunday. Off-day periods are
   never due, overdue or blocking.
+- **Optional.** Only `daily`, `weekly` and `monthly` tasks are ever `optional`
+  (below). A task that's done for its period is still optional on later off
+  days, as an extra session (the completion is recorded as usual), but not
+  again on a day it was already completed.
 - The open occurrence on date D is **completed** when the latest completion's
   local date is on or after D. So a carried-over task is done by completing it
   on any day from D on, and the next scheduled date opens a fresh occurrence,
@@ -159,9 +164,10 @@ blocks.
 **Task list.** *Active*: scheduled, not completed, not `BEFORE_START`.
 *Done*: completed today. *Upcoming*: completed recurring tasks (showing the
 next occurrence), scheduled tasks before their window opens, and recurring
-tasks with no open occurrence (showing the next one). Those last ones, when
-their period isn't done, can be opened and completed from Upcoming; the others
-are locked. A carried-over row says
+tasks with no open occurrence (showing the next one). Tapping an Upcoming row
+opens the editor. `optional` rows say "Optional today" and have a Start button
+that opens the task (or asks to complete it); task screens let an optional task
+be done even when its period is. A carried-over row says
 when it was due ("Overdue since Monday").
 
 ## Completion alternatives

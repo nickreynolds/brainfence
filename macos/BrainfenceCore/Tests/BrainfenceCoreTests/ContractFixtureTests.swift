@@ -219,6 +219,7 @@ final class ContractFixtureTests: XCTestCase {
             XCTAssertEqual(status.scheduled, expect["scheduled"]?.boolValue, name)
             XCTAssertEqual(status.completed, expect["completed"]?.boolValue, name)
             XCTAssertEqual(status.carriedOver, expect["carried_over"]?.boolValue, name)
+            XCTAssertEqual(status.optional, expect["optional"]?.boolValue, name)
             let phase: String? = switch status.phase {
             case .beforeStart: "BEFORE_START"
             case .active: "ACTIVE"

@@ -63,6 +63,7 @@ class TaskStatusContractTest {
             assertEquals(name, expect.getBoolean("scheduled"), status.scheduled)
             assertEquals(name, expect.getBoolean("completed"), status.completed)
             assertEquals(name, expect.getBoolean("carried_over"), status.carriedOver)
+            assertEquals(name, expect.getBoolean("optional"), status.optional)
             assertEquals(name, expect.nullableString("phase"), status.phase?.name)
             assertEquals(name, expect.getBoolean("unmet"), isConditionUnmet(task, now, zone, home))
         }

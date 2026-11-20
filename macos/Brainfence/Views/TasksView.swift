@@ -57,10 +57,10 @@ private struct TaskListView: View {
                         task: task,
                         now: now,
                         tab: tab,
-                        shoppingCount: task.taskType == "shopping" ? shoppingCounts[task.id] ?? 0 : nil
-                    ) {
-                        tap(task)
-                    }
+                        shoppingCount: task.taskType == "shopping" ? shoppingCounts[task.id] ?? 0 : nil,
+                        onTap: { tap(task) },
+                        onStart: { start(task) }
+                    )
                 }
             }
         }
@@ -102,9 +102,16 @@ private struct TaskListView: View {
     }
 
     private func tap(_ task: BrainTask) {
-        if tab == .upcoming && !task.isOptionalToday() {
+        if tab == .upcoming {
             model.navigation.editor = .init(taskId: task.id)
-        } else if task.opensTaskScreen {
+        } else {
+            start(task)
+        }
+    }
+
+    /// Opens the task, or asks to complete one with no screen of its own.
+    private func start(_ task: BrainTask) {
+        if task.opensTaskScreen {
             model.navigation.taskPath.append(task.id)
         } else if !task.isDone && !isBeforeStart(task) {
             confirming = task
@@ -129,6 +136,8 @@ private struct TaskListRow: View {
     let tab: TaskListView.Tab
     let shoppingCount: Int?
     let onTap: () -> Void
+    /// Upcoming rows that are optional today: open the task (the row itself opens the editor).
+    var onStart: () -> Void = {}
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -162,8 +171,8 @@ private struct TaskListRow: View {
         let showAsDone = tab == .done
         let status = status
         let completedRecurring = tab == .upcoming && status.completed && task.recurrenceType != nil
-        // An off day with this period not done yet: doable now, just not due.
-        let optional = tab == .upcoming && task.isOptionalToday(now: now)
+        // Not due today and nothing owed: can be started now as an extra (CONTRACTS: Optional).
+        let optional = tab == .upcoming && status.optional
         let windowPhase = status.scheduled
             ? phase
             : computeTaskPhase(availableFrom: task.availableFrom, dueAt: task.dueAt, now: now)
@@ -171,6 +180,7 @@ private struct TaskListRow: View {
         let overdue = phase == .pastDue && !status.completed
         let canTap = tab == .upcoming || (!showAsDone && !locked && !completedRecurring)
 
+        HStack {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 leadingIcon(done: showAsDone || completedRecurring, locked: locked, overdue: overdue)
@@ -193,10 +203,14 @@ private struct TaskListRow: View {
                 }
             }
             .contentShape(Rectangle())
-            .opacity(showAsDone || completedRecurring || locked ? 0.6 : 1)
+            .opacity((showAsDone || completedRecurring) && !optional || locked ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .disabled(!canTap)
+        if optional {
+            Button("Start", action: onStart)
+        }
+        }
     }
 
     @ViewBuilder
@@ -221,7 +235,7 @@ private struct TaskListRow: View {
                 lastCompletionAt: Timestamp.parse(task.lastCompletionAt), now: now
             )
             let nextText = next.map { "Next: \($0.formatted(.relative(presentation: .named)))" }
-            if notDueToday && task.recurrenceType != nil {
+            if status.optional {
                 return ["Optional today", nextText].compactMap { $0 }.joined(separator: " · ")
             }
             return nextText ?? "Completed"

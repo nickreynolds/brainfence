@@ -344,6 +344,8 @@ data class TaskStatus(
     val phase: TimeGatePhase?,
     /** The open occurrence's date, for recurring tasks. */
     val occurrenceDate: LocalDate?,
+    /** Not due today and nothing owed: can be done now as an extra (CONTRACTS: Optional). */
+    val optional: Boolean = false,
 )
 
 /** How far back carry-over looks for the previous occurrence. */
@@ -382,17 +384,21 @@ fun computeTaskStatus(
     if (open == null) {
         // Off day: the current period runs from the latest occurrence (or creation).
         val periodStart = latest ?: earliest ?: today
-        return TaskStatus(false, lastDate != null && lastDate >= periodStart, false, null, null)
+        return TaskStatus(false, lastDate != null && lastDate >= periodStart, false, null, null, optional = !completedToday)
     }
 
     val carriedOver = open != today
+    val completed = lastDate != null && lastDate >= open
     return TaskStatus(
         scheduled = true,
-        completed = lastDate != null && lastDate >= open,
+        completed = completed,
         carriedOver = carriedOver,
         phase = if (carriedOver) TimeGatePhase.PAST_DUE else phase,
         occurrenceDate = open,
+        // A done carried-over week can be done again as an extra (not twice a day).
+        optional = carriedOver && completed && !completedToday,
     )
+
 }
 
 /**

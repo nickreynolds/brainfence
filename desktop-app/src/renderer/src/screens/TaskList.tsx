@@ -106,7 +106,10 @@ export function TaskListScreen() {
 
   const onTap = (task: Task) => {
     if (opensScreen(task)) navigate(`task/${task.id}`)
-    else if (!computeTaskStatus(task, new Date()).completed) setPending(task)
+    else {
+      const status = computeTaskStatus(task, new Date())
+      if (!status.completed || status.optional) setPending(task)
+    }
   }
 
   return (
@@ -167,7 +170,8 @@ export function TaskListScreen() {
               isActivelyBlocking={activelyBlocking.has(task.id)}
               meditation={timers.meditation[task.id]}
               shoppingCount={task.taskType === 'shopping' ? shoppingCounts[task.id] ?? 0 : null}
-              onClick={() => (tab === 'upcoming' && !isOptionalToday(task, now) ? navigate(`editor/${task.id}`) : onTap(task))}
+              onClick={() => (tab === 'upcoming' ? navigate(`editor/${task.id}`) : onTap(task))}
+              onStart={() => onTap(task)}
             />
           ))}
         </div>
@@ -190,14 +194,7 @@ export function TaskListScreen() {
   )
 }
 
-/** A recurring task on an off day whose period isn't done: it can be done now (CONTRACTS: Periods). */
-function isOptionalToday(task: Task, now: Date): boolean {
-  if (task.recurrenceType == null) return false
-  const status = computeTaskStatus(task, now)
-  return !status.scheduled && !status.completed
-}
-
-function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, meditation, shoppingCount, onClick }: {
+function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, meditation, shoppingCount, onClick, onStart }: {
   task: Task
   now: Date
   tab: Tab
@@ -206,6 +203,8 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   meditation: MeditationTimerState | undefined
   shoppingCount: number | null
   onClick: () => void
+  /** Upcoming rows that are optional today: open the task (the row itself opens the editor). */
+  onStart?: () => void
 }) {
   // Shopping lists are permanent: no completion, no schedule — just the open count.
   if (shoppingCount != null) {
@@ -226,8 +225,8 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
   const phase = status.phase
   const isCompletedRecurring = showAsUpcoming && status.completed && task.recurrenceType != null
   const isNotDueToday = showAsUpcoming && !status.scheduled && !status.completed
-  // An off day with this period not done yet: doable now, just not due.
-  const isOptional = isNotDueToday && task.recurrenceType != null
+  // Not due today and nothing owed: can be started now as an extra (CONTRACTS: Optional).
+  const isOptional = showAsUpcoming && status.optional
   const isLocked = (showAsUpcoming && !isCompletedRecurring && !isOptional) ||
     (!status.completed && (status.scheduled ? phase : computeTaskPhase(task.availableFrom, task.dueAt, now)) === 'BEFORE_START')
   const isOverdue = phase === 'PAST_DUE' && !status.completed
@@ -263,7 +262,7 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
 
   return (
     <div
-      className={`list-item ${canClick ? 'clickable' : ''} ${showAsCompleted || isCompletedRecurring ? 'dim' : isLocked ? 'locked' : ''}`}
+      className={`list-item ${canClick ? 'clickable' : ''} ${(showAsCompleted || isCompletedRecurring) && !isOptional ? 'dim' : isLocked ? 'locked' : ''}`}
       onClick={canClick ? onClick : undefined}
     >
       {leading}
@@ -272,6 +271,9 @@ function TaskRow({ task, now, tab, isEnforcedBlocker, isActivelyBlocking, medita
         {showMeditation && <MeditationProgress state={meditation!} />}
         {supporting && <div className="supporting">{supporting}</div>}
       </div>
+      {isOptional && onStart && (
+        <button className="btn tonal sm" onClick={(e) => { e.stopPropagation(); onStart() }}><Icon name="play" size="sm" /> Start</button>
+      )}
       {isEnforcedBlocker && <Icon name="block" style={{ color: 'var(--blocked)' }} />}
     </div>
   )

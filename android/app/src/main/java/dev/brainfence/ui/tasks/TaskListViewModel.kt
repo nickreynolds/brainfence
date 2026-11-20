@@ -1,5 +1,6 @@
 package dev.brainfence.ui.tasks
 
+import dev.brainfence.domain.recurrence.isDoneForNow
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -293,7 +294,7 @@ class TaskListViewModel @Inject constructor(
     val pendingTask = _pendingTask.asStateFlow()
 
     fun requestComplete(task: Task) {
-        if (!task.status().completed) _pendingTask.value = task
+        if (!task.isDoneForNow()) _pendingTask.value = task
     }
 
     fun confirmComplete() {

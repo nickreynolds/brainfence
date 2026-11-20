@@ -116,6 +116,7 @@ test('task status', () => {
         carried_over: status.carriedOver,
         phase: status.phase,
         unmet: isConditionUnmet(t, now, c.home as HomePresence),
+        optional: status.optional,
       },
       c.expect,
       c.name,

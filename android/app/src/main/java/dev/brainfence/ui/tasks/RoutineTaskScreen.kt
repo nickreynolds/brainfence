@@ -1,5 +1,6 @@
 package dev.brainfence.ui.tasks
 
+import dev.brainfence.domain.recurrence.isDoneForNow
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
@@ -126,7 +127,7 @@ fun RoutineTaskScreen(
     onBack: () -> Unit,
 ) {
     val isRoutine = task.taskType == "routine"
-    val isDone = task.status().completed
+    val isDone = task.isDoneForNow()
 
     // Keep screen on while routine is in progress
     if (!isDone) {

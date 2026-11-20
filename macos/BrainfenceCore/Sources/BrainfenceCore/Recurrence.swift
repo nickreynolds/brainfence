@@ -260,6 +260,8 @@ public struct TaskStatus: Sendable, Equatable {
     public let phase: TimeGatePhase?
     /// The open occurrence's date, for recurring tasks.
     public let occurrenceDate: CivilDate?
+    /// Not due today and nothing owed: can be done now as an extra (CONTRACTS: Optional).
+    public var optional: Bool = false
 }
 
 /// How far back carry-over looks for the previous occurrence.
@@ -302,15 +304,18 @@ public func computeTaskStatus(
         // Off day: the current period runs from the latest occurrence (or creation).
         let periodStart = latest ?? earliest ?? today
         let completed = lastDate.map { $0 >= periodStart } ?? false
-        return TaskStatus(scheduled: false, completed: completed, carriedOver: false, phase: nil, occurrenceDate: nil)
+        return TaskStatus(scheduled: false, completed: completed, carriedOver: false, phase: nil, occurrenceDate: nil, optional: !completedToday)
     }
     let carriedOver = open != today
+    let completed = lastDate.map { $0 >= open } ?? false
     return TaskStatus(
         scheduled: true,
-        completed: lastDate.map { $0 >= open } ?? false,
+        completed: completed,
         carriedOver: carriedOver,
         phase: carriedOver ? .pastDue : phase,
-        occurrenceDate: open
+        occurrenceDate: open,
+        // A done carried-over week can be done again as an extra (not twice a day).
+        optional: carriedOver && completed && !completedToday
     )
 }
 
@@ -360,11 +365,10 @@ extension BrainTask {
         )
     }
 
-    /// A recurring task on an off day whose period isn't done yet: it can be
-    /// done now, it just isn't due (shared/CONTRACTS.md: Periods).
-    public func isOptionalToday(now: Date = Date(), timeZone: TimeZone = .current) -> Bool {
-        guard recurrenceType != nil else { return false }
+    /// Done for its current occurrence, unless it's optional today: then a
+    /// task screen lets it be done again (shared/CONTRACTS.md: Optional).
+    public func isDoneForNow(now: Date = Date(), timeZone: TimeZone = .current) -> Bool {
         let status = status(now: now, timeZone: timeZone)
-        return !status.scheduled && !status.completed
+        return status.completed && !status.optional
     }
 }

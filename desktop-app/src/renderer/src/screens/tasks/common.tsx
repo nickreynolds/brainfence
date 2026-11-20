@@ -47,9 +47,13 @@ export function NotYetAvailable({ task }: { task: Task }) {
   )
 }
 
-/** Done for its current occurrence (a carried-over task done yesterday counts). */
+/**
+ * Done for its current occurrence (a carried-over task done yesterday counts),
+ * unless it's optional today: then it can be done again (CONTRACTS: Optional).
+ */
 export function isTaskDone(task: Task, now = new Date()): boolean {
-  return computeTaskStatus(task, now).completed
+  const status = computeTaskStatus(task, now)
+  return status.completed && !status.optional
 }
 
 export function isBeforeStart(task: Task, now = new Date()): boolean {

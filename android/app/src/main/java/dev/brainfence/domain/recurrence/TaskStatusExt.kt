@@ -20,3 +20,10 @@ fun Task.status(
     currentTime = currentTime,
     timeZone = timeZone,
 )
+
+/**
+ * Done for its current occurrence, unless it's optional today: then a task
+ * screen lets it be done again (shared/CONTRACTS.md: Optional).
+ */
+fun Task.isDoneForNow(currentTime: Instant = Instant.now(), timeZone: ZoneId = ZoneId.systemDefault()): Boolean =
+    status(currentTime, timeZone).let { it.completed && !it.optional }

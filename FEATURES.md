@@ -43,7 +43,7 @@ Last reviewed: 2026-11-19.
 | --- | :-: | :-: | :-: | --- |
 | Task list (Active / Done / Upcoming) | ✅ | ✅ | ✅ | |
 | Create and edit tasks (wizard with every task type) | ✅ | ✅ | ✅ | Desktops enter a location as latitude / longitude. |
-| Recurrence (daily, selected days, weekly) | ✅ | ✅ | ✅ | A recurring task is only due (and only blocks) on the days its recurrence lands on. On other days it can still be done from Upcoming ("Optional today"), and that counts for the current period (e.g. a Monday PUSH done Tuesday is done for the week). `shared/CONTRACTS.md` (Task occurrences and blocking, Periods). |
+| Recurrence (daily, selected days, weekly) | ✅ | ✅ | ✅ | A recurring task is only due (and only blocks) on the days its recurrence lands on. On other days it can still be started from Upcoming ("Optional today" with a Start button; tapping the row edits it), and that counts for the current period (e.g. a Monday PUSH done Tuesday is done for the week). A task already done for its period can be done again on later days as an extra. `shared/CONTRACTS.md` (Task occurrences and blocking, Periods). |
 | Carry over until done (a missed occurrence stays due, and blocking, until done or the next one starts) | ✅ | ✅ | ✅ | `shared/fixtures/task-status.json`. Editor toggle on recurring tasks. Rows say "Overdue since Monday". |
 | Completion alternatives: "or be at a location" on any task (e.g. a workout that also completes at the climbing gym) | ✅ | ➕ | ➖ | `shared/CONTRACTS.md` (Completion alternatives). Every client edits and shows them. Android completes them with geofences; Windows from the PC's location (allowed exception, with "Check now"); the Mac shows "your phone completes this". |
 | Time-of-day gates (`available_from` / `due_at`) | ✅ | ✅ | ✅ | |

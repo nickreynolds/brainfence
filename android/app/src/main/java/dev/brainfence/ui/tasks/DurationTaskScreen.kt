@@ -1,5 +1,6 @@
 package dev.brainfence.ui.tasks
 
+import dev.brainfence.domain.recurrence.isDoneForNow
 import dev.brainfence.domain.recurrence.status
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -87,7 +88,7 @@ fun DurationTaskScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            if (task.status().completed) {
+            if (task.isDoneForNow()) {
                 // Already completed
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
